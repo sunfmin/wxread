@@ -302,20 +302,29 @@ pub fn not_confirmed(target: &Target, seconds: u64) -> Refusal {
 }
 
 /// Text as macOS recognizes it, made comparable: no whitespace, no
-/// quotes, full-width parentheses made ASCII. It reads `wxread 退群测试` as
-/// `wxread退群测试` and `（园）` as `(园)`.
+/// quotes, full-width punctuation, letters and digits made ASCII, `【】`
+/// made `[]`. It reads `wxread 退群测试` as `wxread退群测试`, `（园）` as
+/// `(园)` and `：` as `:`.
 pub fn normalize(text: &str) -> String {
     let mut made = String::new();
     for c in text.chars() {
-        match c {
-            '（' => made.push('('),
-            '）' => made.push(')'),
+        match narrow(c) {
             '"' | '“' | '”' | '\'' | '‘' | '’' | '「' | '」' => {}
             c if c.is_whitespace() => {}
             c => made.push(c),
         }
     }
     made
+}
+
+/// The ASCII form of a full-width `c` (`（` is `(`, `Ａ` is `A`), or `c`.
+fn narrow(c: char) -> char {
+    match c {
+        '\u{FF01}'..='\u{FF5E}' => char::from_u32(u32::from(c).wrapping_sub(0xFEE0)).unwrap_or(c),
+        '【' => '[',
+        '】' => ']',
+        c => c,
+    }
 }
 
 /// One line of text recognized in a screenshot of WeChat's window, and
@@ -767,9 +776,10 @@ fn first<'a>(lines: &[&'a Line], y: u32, wanted: fn(&Line) -> bool) -> Option<&'
     lines.iter().copied().find(|line| line.y > y && wanted(line))
 }
 
-/// The chats a search's matches `lines` list by `name`, top first: each
-/// reads exactly the name, indented past its avatar from the list's left
-/// edge.
+/// The chats a search's matches `lines` list by `name`, made comparable:
+/// each [`lists`] the name, indented past its avatar from the list's left
+/// edge. Those that read the whole name come first, then those cut short,
+/// each top first.
 fn chats_named<'a>(lines: &'a [Line], name: &str) -> Vec<&'a Line> {
     let mut edge = u32::MAX;
     for line in lines {
@@ -777,12 +787,29 @@ fn chats_named<'a>(lines: &'a [Line], name: &str) -> Vec<&'a Line> {
     }
     let mut found: Vec<&Line> = Vec::new();
     for line in lines {
-        if line.x >= edge.saturating_add(MATCH_INDENT) && normalize(&line.text) == name {
+        if line.x >= edge.saturating_add(MATCH_INDENT) && lists(&line.text, name) {
             found.push(line);
         }
     }
-    found.sort_by_key(|l| (l.y, l.x));
+    found.sort_by_key(|l| (normalize(&l.text) != name, l.y, l.x));
     found
+}
+
+/// What a name cut short in a list ends in, as macOS reads it: `…`, `⋯`,
+/// or one or more `.`.
+const ELLIPSIS: [char; 3] = ['.', '…', '⋯'];
+
+/// Whether a chat read as `text` in a list is listed by `name`, made
+/// comparable: it reads the name, or the name cut short, a part of it
+/// before an [`ELLIPSIS`]. The chat's title and its Group Name are what
+/// tell it is the group.
+fn lists(text: &str, name: &str) -> bool {
+    let text = normalize(text);
+    if text == name {
+        return true;
+    }
+    let stem = text.trim_end_matches(ELLIPSIS);
+    stem.len() < text.len() && !stem.is_empty() && stem.len() < name.len() && name.starts_with(stem)
 }
 
 /// Whether `text`, made comparable, is one of `labels`.

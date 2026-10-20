@@ -15,6 +15,10 @@ the same points.
   onto two lines, a group of the same name the account has left, the chat
   list level with the confirmation). The `-other` screens are the ones a
   run must stop on.
+- `search-truncated.jsonl` is the matches a search listed for
+  朱富贵会员群A02（杭州区域） (46264918477@chatroom) on 2026-10-20, as the run
+  that stopped on it read them: the name's full-width parentheses read as
+  ASCII, and the chat listed by it cut short, its ellipsis read as `.`.
 
 No screenshot is kept, and none of the owner's chats: the chat list's lines
 are left out of every screen.

@@ -178,6 +178,44 @@ fn a_search_listing_no_chat_by_the_name_stops_with_no_click() {
 }
 
 #[test]
+fn a_chat_listed_by_the_name_cut_short_is_opened() {
+    // 46264918477@chatroom's search, as the run that stopped on it read it.
+    let name = "朱富贵会员群A02（杭州区域）";
+    let moves = walk(group(name, name, 168), &["search-truncated"]);
+    assert_eq!(
+        moves[0],
+        Move::Then(vec![Act::Click { x: 203, y: 105 }, Act::Wait(1200)], Look::Chat)
+    );
+}
+
+#[test]
+fn a_chat_listed_by_a_name_cut_short_is_the_name_ended_in_an_ellipsis() {
+    let name = normalize("朱富贵会员群A02（杭州区域）");
+    for read in ["朱富贵会员群A02(杭州区.", "朱富贵会员群A02(杭州区...", "朱富贵会员群A02（杭州区…"]
+    {
+        assert!(lists(read, &name), "{read}");
+    }
+    for read in
+        ["朱富贵会员群A02(杭州区", "朱富贵会员群A03.", ".", "…", "朱富贵会员群A02(杭州区域)二."]
+    {
+        assert!(!lists(read, &name), "{read}");
+    }
+    assert!(lists("朱富贵会员群A02(杭州区域)", &name));
+}
+
+#[test]
+fn chats_listed_by_the_whole_name_are_opened_before_those_cut_short() {
+    let line = |text: &str, y| Line { text: text.into(), x: 128, y, w: 150, h: 14 };
+    let lines = vec![
+        Line { text: "Group Chats".into(), x: 83, y: 54, w: 80, h: 14 },
+        line("wxread 退群.", 98),
+        line("wxread 退群测试", 194),
+    ];
+    let found: Vec<u32> = chats_named(&lines, &normalize(NAME)).iter().map(|l| l.y).collect();
+    assert_eq!(found, [194, 98]);
+}
+
+#[test]
 fn a_chat_by_the_name_that_is_not_the_group_is_passed_for_the_next_match() {
     // The first match opens a group the account has left: its title holds
     // no member count. The search is made again and the next match opened.
@@ -489,6 +527,12 @@ fn next_says_what_to_run_now() {
 fn text_is_compared_without_spaces_quotes_or_full_width_parentheses() {
     assert_eq!(normalize(" “wxread 退群测试（园）” "), "wxread退群测试(园)");
     assert_eq!(normalize("Group Name"), "GroupName");
+}
+
+#[test]
+fn full_width_punctuation_is_compared_as_its_ascii() {
+    assert_eq!(normalize("【群】：一，二！？；Ａ１"), "[群]:一,二!?;A1");
+    assert_eq!(normalize("＂引＂＇号＇"), "引号");
 }
 
 proptest! {

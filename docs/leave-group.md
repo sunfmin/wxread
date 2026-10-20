@@ -24,8 +24,10 @@ nothing inside the window. A menu is pressed through Accessibility; everything
 inside the window is found by macOS's text recognition (Vision,
 `VNRecognizeTextRequest`, accurate, `zh-Hans` and `en-US`) on a screenshot of the
 window (`screencapture -x -o -l <window id>`), in the window's points. Recognized
-text is compared with spaces and quotes removed and full-width parentheses made
-ASCII: Vision reads `wxread 退群测试` as `wxread退群测试` and `（园）` as `(园)`.
+text is compared with spaces and quotes removed and full-width punctuation,
+letters and digits made ASCII (`【】` made `[]`): Vision reads `wxread 退群测试`
+as `wxread退群测试`, `（园）` as `(园)`, and `朱富贵会员群A02（杭州区域）` as
+`朱富贵会员群A02(杭州区域)`.
 WeChat on this Mac shows English; each label below is given in English and in
 Chinese.
 
@@ -217,9 +219,15 @@ that left are kept, as their text, in crates/leave/screens/recorded-*.
   read: `Most used`, the group, `Group Chats`, the group, `Internet search
   results` and searches of the internet; in the next search, both groups of the
   name under `Most used` and no `Group Chats`. So headings are not relied on: a
-  chat listed is a line that reads exactly the name, indented past its avatar
+  chat listed is a line that reads the name, indented past its avatar
   (35 points or more from the list's left edge; the searches of the internet
-  start nearer). wxread clicks the first, and when its chat's title is the name
+  start nearer). A name too long for the list is cut short there, its
+  ellipsis read as `.`, `...` or `…`: 朱富贵会员群A02（杭州区域）
+  (46264918477@chatroom) was listed as `朱富贵会员群A02(杭州区.`, and a run
+  stopped on it. So a line that reads a start of the name before an ellipsis
+  is listed by the name too, after the lines that read it whole; the chat's
+  title, its Group Name and the confirmation still tell whether it is the
+  group. wxread clicks the first, and when its chat's title is the name
   alone (a group the account has left) searches again and clicks the next, at
   most four chats in all. Any other title stops the run.
 - **WeChat's other windows.** WeChat had a file open in a window of its own
