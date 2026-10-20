@@ -166,6 +166,66 @@ impl Default for Tally {
     }
 }
 
+/// What macOS must allow the app running wxread (a terminal, an agent's
+/// host) for `wxread group leave` to drive WeChat's window
+/// (docs/adr/0011-a-group-is-left-by-driving-wechats-window-only-with-yes.md).
+/// Reading needs neither.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Permission {
+    /// To press WeChat's menus and send its keys and clicks.
+    Accessibility,
+    /// To take the screenshot of WeChat's window its text is read from.
+    ScreenRecording,
+}
+
+impl Permission {
+    pub const ALL: [Permission; 2] = [Permission::Accessibility, Permission::ScreenRecording];
+
+    /// Its key in doctor's answer.
+    pub fn name(self) -> &'static str {
+        match self {
+            Permission::Accessibility => "accessibility",
+            Permission::ScreenRecording => "screen_recording",
+        }
+    }
+
+    /// What it is needed for.
+    pub fn needed_for(self) -> &'static str {
+        match self {
+            Permission::Accessibility => {
+                "`wxread group leave`, to press WeChat's menus and send its keys and clicks"
+            }
+            Permission::ScreenRecording => {
+                "`wxread group leave`, to take the screenshot of WeChat's window it reads"
+            }
+        }
+    }
+
+    /// What is wrong without it.
+    pub fn problem(self) -> &'static str {
+        match self {
+            Permission::Accessibility => {
+                "Accessibility is not allowed for the app running wxread: the keys and clicks it sends WeChat would be dropped"
+            }
+            Permission::ScreenRecording => {
+                "Screen Recording is not allowed for the app running wxread: it cannot take the screenshot of WeChat's window it reads"
+            }
+        }
+    }
+
+    /// The line that allows it, naming its pane of System Settings.
+    pub fn fix(self) -> &'static str {
+        match self {
+            Permission::Accessibility => {
+                "allow the app running wxread (your terminal, or the agent's host) in System Settings › Privacy & Security › Accessibility, then run it again"
+            }
+            Permission::ScreenRecording => {
+                "allow the app running wxread (your terminal, or the agent's host) in System Settings › Privacy & Security › Screen & System Audio Recording (Screen Recording before macOS 15), then quit and reopen that app and run it again"
+            }
+        }
+    }
+}
+
 /// What fixes keys that are missing.
 pub const GET_KEYS: &str = "`wxread keys --help` says how to get the keys; then pass the file with `--keys <file>`, or its contents as WXREAD_KEYS";
 /// What fixes reading another app's data, which macOS refused.
@@ -410,6 +470,18 @@ mod tests {
     fn no_account_says_to_log_in() {
         let report = diagnose(&seen(Listing::Accounts(vec![]), keys_of(&[])));
         assert!(report.findings[0].fix.starts_with("log in to WeChat"));
+    }
+
+    #[test]
+    fn each_permission_names_its_pane_and_what_needs_it() {
+        let panes = ["› Accessibility,", "› Screen & System Audio Recording"];
+        for (permission, pane) in Permission::ALL.into_iter().zip(panes) {
+            assert!(permission.fix().contains(pane), "{}", permission.fix());
+            assert!(permission.needed_for().starts_with("`wxread group leave`"));
+            assert!(permission.problem().contains("is not allowed for the app running wxread"));
+        }
+        let names: Vec<&str> = Permission::ALL.iter().map(|p| p.name()).collect();
+        assert_eq!(names, ["accessibility", "screen_recording"]);
     }
 
     proptest! {

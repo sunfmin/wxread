@@ -879,6 +879,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wxread-leave"
+version = "0.1.1"
+dependencies = [
+ "flux-rs",
+ "proptest",
+ "serde_json",
+ "wxread-doctor",
+]
+
+[[package]]
 name = "wxread-media"
 version = "0.1.1"
 dependencies = [
