@@ -14,7 +14,8 @@ use serde_json::{Map, Value, json};
 use crate::Kind;
 
 /// WeChat's types: text, an image, a voice message, a contact's card, a
-/// video, a sticker, a place, an app message, and WeChat's own notices.
+/// video, a sticker, a place, an app message, a voice or video call, and
+/// WeChat's own notices.
 pub const TEXT: i64 = 1;
 pub const IMAGE: i64 = 3;
 pub const VOICE: i64 = 34;
@@ -23,6 +24,7 @@ pub const VIDEO: i64 = 43;
 pub const STICKER: i64 = 47;
 pub const LOCATION: i64 = 48;
 pub const APP: i64 = 49;
+pub const CALL: i64 = 50;
 pub const SYSTEM: i64 = 10000;
 /// A notice WeChat keeps as XML: a recall, among others.
 pub const SYSTEM_XML: i64 = 10002;
@@ -54,6 +56,21 @@ const RED_PACKET: i64 = 2001;
 const RECALLED: [&str; 2] = ["撤回了一条消息", "recalled a message"];
 /// How the account's own recall's notice starts.
 const OWN: [&str; 2] = ["你", "You"];
+
+/// What a connected call's bubble shows before its duration.
+const CALL_DURATION: &str = "通话时长";
+/// A call that did not connect, by what its bubble shows: cancelled by the
+/// one who called ("已取消", "对方已取消"), declined by the one called
+/// ("对方已拒绝", "已在其它设备拒绝"), or not answered ("对方无应答",
+/// "未接听", "忙线未接听").
+const CALL_ENDED: [(&str, &str); 6] = [
+    ("取消", "cancelled"),
+    ("拒绝", "declined"),
+    ("无应答", "missed"),
+    ("未应答", "missed"),
+    ("未接听", "missed"),
+    ("忙线", "missed"),
+];
 
 /// A forward's `datatype` of a message in it: text, an image, a voice
 /// message, a video, a link, a place, a file, a forwarded history.
@@ -134,6 +151,7 @@ pub fn parse(account: &str, local_type: i64, content: &str, packed: &[u8]) -> Pa
         CARD => card(root),
         LOCATION => location(root),
         APP => app(root, sub),
+        CALL => call(root),
         _ => None,
     })
     .unwrap_or_else(Parsed::unknown)
@@ -272,6 +290,57 @@ fn location(root: Node) -> Option<Parsed> {
             "address": attr(l, "label"),
         }),
     ))
+}
+
+/// A voice or video call's bubble, `<voipmsg type="VoIPBubbleMsg">`,
+/// alone or in a `<msg>`: its medium by its room type (0 video, 1 voice),
+/// and how it ended by what it shows (`通话时长 01:04:50`, `已取消`), a
+/// connected one's duration read from that, else from its `<duration>`.
+fn call(root: Node) -> Option<Parsed> {
+    let voip = if root.has_tag_name("voipmsg") { Some(root) } else { child(root, "voipmsg") };
+    let b = child(voip?, "VoIPBubbleMsg")?;
+    let medium = match text(b, "room_type").as_deref() {
+        Some("0") => Some("video"),
+        Some("1") => Some("voice"),
+        _ => None,
+    };
+    let shown = text(b, "msg");
+    let said = shown.as_deref().unwrap_or_default();
+    let ended = CALL_ENDED.into_iter().find(|(word, _)| said.contains(word)).map(|(_, s)| s);
+    let seconds = match ended {
+        Some(_) => None,
+        None => call_seconds(said)
+            .or_else(|| text(b, "duration").and_then(|d| d.parse::<i64>().ok()).filter(|d| *d > 0)),
+    };
+    let state = ended.or(seconds.map(|_| "connected"));
+    Some(Parsed::of(
+        Kind::Call,
+        json!({ "medium": medium, "state": state, "seconds": seconds, "text": shown }),
+    ))
+}
+
+/// The seconds a connected call's bubble shows it lasted: `通话时长 01:04:50`
+/// is 3890, `通话时长 00:31` 31. None when it shows no duration, or one that
+/// does not read as hours, minutes and seconds.
+pub fn call_seconds(shown: &str) -> Option<i64> {
+    let time = shown.trim().strip_prefix(CALL_DURATION)?.trim();
+    let parts: Vec<&str> = time.split(':').collect();
+    if parts.len() < 2 || parts.len() > 3 {
+        return None;
+    }
+    let mut seconds: i64 = 0;
+    for (at, part) in parts.iter().enumerate() {
+        if part.is_empty() || part.len() > 2 || !part.bytes().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        let n: i64 = part.parse().ok()?;
+        // Each part but the first, the hours or minutes, is under 60.
+        if at > 0 && n >= 60 {
+            return None;
+        }
+        seconds = seconds.checked_mul(60)?.checked_add(n)?;
+    }
+    Some(seconds)
 }
 
 /// An app message of subtype `sub`.
