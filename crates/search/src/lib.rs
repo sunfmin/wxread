@@ -35,7 +35,7 @@ pub struct Query {
 
 /// `text` as a match reads it: lower case, with no whitespace.
 fn folded(text: &str) -> String {
-    text.chars().filter(|c| !c.is_whitespace()).flat_map(char::to_lowercase).collect()
+    text.split_whitespace().collect::<String>().to_lowercase()
 }
 
 impl Query {
