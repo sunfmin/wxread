@@ -110,6 +110,11 @@ THE KINDS AND THEIR FIELDS
               these (answered on another device); seconds how long a
               connected one lasted (通话时长 01:04:50 is 3890), null for
               the rest; text what WeChat shows of it
+  group_notice
+              {text, by: {id, display_name}, at}: the group's notice
+              (群公告) posted into its chat: its text; who posted it, by
+              id and shown as the sender is; when it was posted (RFC 3339,
+              UTC). `wxread group <id>` answers the notice it has now
   image       {name, md5, file_present, thumbnail_present}: name finds
               its file, msg/attach/<md5 of the chat id>/<YYYY-MM>/Img/
               <name>.dat under the account's directory, sealed
