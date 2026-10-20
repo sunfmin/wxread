@@ -13,42 +13,24 @@ export PATH RUSTUP_TOOLCHAIN
 
 cargo fmt --all --check
 
+# The gate's reading of Flux's summaries is itself tested.
+./flux-summary-test.sh >/dev/null
+
 # Flux runs first, alone: beside the tests it shares the cores, and its time
 # measures them. A solver query past twenty seconds fails naming its function
 # (`-Ffixpoint-timeout`), it checks on past an error so one run names every
 # slow function (`-Fcatch-bugs`), and it reports the slowest (`-Ftimings`).
 # Every function of every pure crate is checked: Flux's summary of each one
-# must say `0 trusted; 0 ignored`. A dependency is summarised too, and is not
-# held to it: a pure crate's summary is the one printed just before cargo
-# says that crate's artifact is done.
+# must say `0 trusted; 0 ignored` (./flux-summary.sh reads it).
 FLUXFLAGS="-Ftimings -Ffixpoint-timeout=20 -Fcatch-bugs -Flog-dir=$PWD/target/flux-log"
 export FLUXFLAGS
 flux_log=$(mktemp)
 trap 'rm -f "$flux_log"' EXIT
 ./verify.sh --message-format=json-render-diagnostics >"$flux_log" 2>&1 && flux_status=0 || flux_status=$?
-pure=$(sed -n 's/^PURE="\(.*\)"$/\1/p' verify.sh)
-summaries=$(awk '
-    /^\{/ {
-        if (/"reason":"compiler-artifact"/) {
-            match($0, /"name":"[^"]*"/)
-            print substr($0, RSTART + 8, RLENGTH - 9) "\t" last
-            last = ""
-        }
-        next
-    }
-    { print > "/dev/stderr" }
-    /^summary\./ { last = $0 }' "$flux_log")
+awk '!/^\{/' "$flux_log" >&2
 [ "$flux_status" -eq 0 ] || exit "$flux_status"
-for crate in $pure; do
-  summary=$(printf '%s\n' "$summaries" | awk -F'\t' -v c="${crate//-/_}" -v d="$crate" '$1 == c || $1 == d { s = $2 } END { print s }')
-  case "$summary" in
-  *"; 0 trusted; 0 ignored."*) ;;
-  *)
-    echo "gate: the pure crate $crate must not exempt anything from Flux, and Flux reports: ${summary:-no summary of it}" >&2
-    exit 1
-    ;;
-  esac
-done
+# shellcheck disable=SC2046
+./flux-summary.sh "$flux_log" $(sed -n 's/^PURE="\(.*\)"$/\1/p' verify.sh)
 
 cargo clippy --workspace --all-targets --quiet -- -D warnings
 
