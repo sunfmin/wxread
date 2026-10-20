@@ -1111,7 +1111,7 @@ fn note_row() -> Row {
 fn note_items(file: impl Fn(&str) -> (Value, Value, Value)) -> Value {
     let (body_id, body, _) = file("58f6f1ad9a8dc9939d7948311046641e");
     let (image_id, image, thumb) = file("084b81e4ceaa08076026a325299e26fe");
-    let said = |kind: &str, t: i64, fields: Value| json!({ "kind": kind, kind: fields, "sender": null, "sender_name": null, "at": null, "type": t });
+    let said = |kind: &str, t: i64, fields: Value| json!({ "kind": kind, kind: fields, "sender": null, "at": null, "type": t });
     json!([
         said(
             "file",
