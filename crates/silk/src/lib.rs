@@ -1,7 +1,7 @@
 //! A SILK v3 decoder in safe Rust: WeChat's voice codec, decoded from
 //! bytes to mono 16-bit PCM ([`decode`]), so `wxread voice` writes a voice
 //! message as a file that plays with no other tool
-//! (docs/adr/0005-voice-is-decoded-in-process.md).
+//! (docs/adr/0007-voice-is-decoded-in-process.md).
 //!
 //! The decoder is silk-decoder-rs 0.1.0 (MIT, `LICENSE`), a port of the
 //! SILK SDK's reference decoder, vendored as bizkernel vendored it: as it

@@ -1,7 +1,7 @@
 //! What `wxread voice` decides of a voice message: the message id it was
 //! given, the WAV its decoded samples are written as and how long they
 //! last, and each refusal with its fix. The effect crate reads the
-//! databases, decodes the SILK (docs/adr/0005-voice-is-decoded-in-process.md)
+//! databases, decodes the SILK (docs/adr/0007-voice-is-decoded-in-process.md)
 //! and writes the file; nothing here reads or writes.
 
 /// The options of `wxread voice`.

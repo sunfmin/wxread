@@ -1,6 +1,6 @@
 //! `wxread voice`: finds one voice message in its chat's message
 //! databases, its sound in the account's media databases, decodes the
-//! SILK in-process (docs/adr/0005-voice-is-decoded-in-process.md) and
+//! SILK in-process (docs/adr/0007-voice-is-decoded-in-process.md) and
 //! writes the file `--out` names: the one file wxread writes.
 
 use std::path::PathBuf;
