@@ -784,6 +784,7 @@ dependencies = [
  "wxread-keys",
  "wxread-media",
  "wxread-messages",
+ "wxread-moments",
  "wxread-resign",
  "wxread-schema",
  "wxread-search",
@@ -897,6 +898,17 @@ dependencies = [
  "wxread-contacts",
  "wxread-media",
  "wxread-schema",
+]
+
+[[package]]
+name = "wxread-moments"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "roxmltree",
+ "wxread-answer",
+ "wxread-media",
+ "wxread-messages",
 ]
 
 [[package]]

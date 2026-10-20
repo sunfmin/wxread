@@ -12,6 +12,7 @@ mod favorites;
 mod file;
 mod help;
 mod messages;
+mod moments;
 mod release;
 mod resign;
 mod search;

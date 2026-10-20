@@ -1,7 +1,6 @@
 wxread reads WeChat for Mac 4.x directly. Each command prints one JSON
 object; a failure is {"error": "…"}, non-zero, naming its fix.
 Usage: wxread [--data-dir <dir>] [--keys <file>] <command>
-
 Commands:
   articles  official accounts' articles, newest first; one account's alone
   avatar    write a contact's avatar, as the image it is (--out)
@@ -10,10 +9,11 @@ Commands:
   contacts  the account's contacts by id; --query finds one
   doctor    run first: find WeChat's accounts and the keys; name each fix
   favorites what the account saved (收藏), each as its kind
-  file      file get <id>: write a media message's or favorite's file
+  file      file get <id>: write a message's, favorite's or Moment's file
   group     a group's notice, owner and members, each named in it
   keys      read every database key from the running WeChat (sudo)
   messages  a chat's messages, each as its kind, a page at a time
+  moments   the Moments WeChat loaded: text, media, likes, comments
   resign    re-sign WeChat so keys can read it; changes it only with --yes
   search    find messages across every chat, newest first
   voice     a voice message written as a file that plays; WeChat's 转文字

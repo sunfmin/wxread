@@ -130,3 +130,12 @@ pub const FAVORITE_DB: &str = "favorite/favorite.db";
 /// `<favitem>` XML, `fromusr` the chat it was saved from and
 /// `realchatname` who said it there, in a group.
 pub const FAV_DB_ITEM: &str = "CREATE TABLE fav_db_item(local_id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER, type INTEGER, update_seq INTEGER, flag INTEGER, update_time INTEGER, version INTEGER, content TEXT, source_id TEXT, sync_status INTEGER, upload_status INTEGER, upload_error_code INTEGER, trans_res_status INTEGER, trans_res_error_code INTEGER, fromusr TEXT, fromusr_id INTEGER, realchatname TEXT, realchatname_id INTEGER, ext_buf TEXT, star INTEGER, star_type INTEGER, star_biz_key TEXT)";
+/// The Moments WeChat has loaded: `sns/sns.db`.
+pub const SNS_DB: &str = "sns/sns.db";
+
+/// One row a Moment (朋友圈) WeChat has loaded, as SIWX found WeChat 4.1
+/// writes it: `tid` its id (WeChat's unsigned id of it, read signed),
+/// `user_name` its author's id, `content` its `<SnsDataItem>` XML, the
+/// Moment as WeChat's server sent it (`TimelineObject`) and its likes and
+/// comments as WeChat last loaded them (`LocalExtraInfo`).
+pub const SNS_TIMELINE: &str = "CREATE TABLE SnsTimeLine(tid INTEGER PRIMARY KEY DESC, user_name TEXT, content TEXT, pack_info_buf TEXT)";

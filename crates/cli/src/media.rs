@@ -129,12 +129,15 @@ fn voice_rows(
 /// The account's image key, found as wxkey finds it: derived from a
 /// kvcomm file's code and the account's id, the one that opens the
 /// account's first image sealed under one, a message's, else a favorite's
-/// thumbnail; None when none does.
+/// thumbnail, else a Moment's image; None when none does.
 pub fn image_key(account: &Account) -> Option<ImageKey> {
     let attach = account.dir().join("msg/attach");
     let images = months(&attach).into_iter().flat_map(|chat| months(&chat)).map(|m| m.join("Img"));
     let thumbs = months(&account.dir().join(wxread_favorites::SHELF).join("thumb"));
-    let sample = images.chain(thumbs).find_map(|dir| {
+    let moments = months(&account.dir().join("cache"))
+        .into_iter()
+        .flat_map(|month| months(&month.join("Sns/Img")));
+    let sample = images.chain(thumbs).chain(moments).find_map(|dir| {
         let mut files: Vec<PathBuf> =
             std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
         files.sort();

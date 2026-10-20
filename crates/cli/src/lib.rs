@@ -21,6 +21,7 @@ pub mod keys;
 pub mod media;
 mod memory;
 pub mod messages;
+pub mod moments;
 pub mod resign;
 pub mod search;
 pub mod voice;
@@ -187,6 +188,21 @@ enum Command {
     },
     /// Read every database key from the running WeChat
     Keys,
+    /// List the Moments WeChat has loaded, newest first, a page at a time
+    Moments {
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+        /// Only the Moments this contact posted, by their id
+        #[arg(long, value_name = "ID")]
+        contact: Option<String>,
+        /// How many Moments a page holds, 1 to 1000 (100 unless given)
+        #[arg(long, value_name = "N")]
+        limit: Option<String>,
+        /// Where the page starts: the `next` of the answer before
+        #[arg(long, value_name = "NEXT")]
+        cursor: Option<String>,
+    },
     /// Re-sign WeChat with get-task-allow so `sudo wxread keys` can read it; only with --yes
     Resign {
         /// The WeChat app to re-sign (/Applications/WeChat.app, else Weixin.app, unless given)
@@ -218,9 +234,9 @@ enum Command {
 
 #[derive(Subcommand)]
 enum FileAction {
-    /// Write a media message's file, or its thumbnail, as the file it is
+    /// Write a media message's or a Moment's file, or its thumbnail, as the file it is
     Get {
-        /// The message's id, as `wxread messages` answers it, or a favorite's file_id
+        /// The message's id, as `wxread messages` answers it, a favorite's file_id, or a Moment's medium's, as `wxread moments` does
         #[arg(value_name = "ID")]
         id: String,
         /// The thumbnail WeChat keeps of an image or a video, not the file
@@ -260,6 +276,7 @@ fn help_of(name: &str) -> Option<&'static str> {
         "group" => Some(include_str!("help/group.txt")),
         "keys" => Some(include_str!("help/keys.txt")),
         "messages" => Some(include_str!("help/messages.txt")),
+        "moments" => Some(include_str!("help/moments.txt")),
         "resign" => Some(include_str!("help/resign.txt")),
         "search" => Some(include_str!("help/search.txt")),
         "voice" => Some(include_str!("help/voice.txt")),
@@ -357,6 +374,10 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
             })
         }
         Command::Keys => keys::run(cli.data_dir),
+        Command::Moments { account, contact, limit, cursor } => {
+            world::World::from_env(cli.data_dir, cli.keys)
+                .and_then(|w| moments::run(&w, &moments::Asked { account, contact, limit, cursor }))
+        }
         Command::Resign { app, yes } => resign::run(app, yes),
         Command::Voice { id, account, chat, out, raw } => {
             world::World::from_env(cli.data_dir, cli.keys)

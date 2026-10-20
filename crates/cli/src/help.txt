@@ -25,7 +25,8 @@ RUN FIRST
   wxread search <text>
                     the messages of every chat that hold a text
   wxread file get <id> --out <path>
-                    a media message's file, written as the file it is
+                    a media message's file, or a Moment's, written as
+                    the file it is
   wxread favorites  what the account saved (收藏), each as its kind
   wxread voice <id> --chat <id> --out <path>
                     a voice message as a file that plays, and its 转文字
@@ -47,6 +48,7 @@ WHAT A COMMAND ANSWERS
     keys      each database's path under db_storage, to its enc_key and
               salt
     messages  account chat messages next
+    moments   account moments next
     resign    app applied get_task_allow entitlements next
     search    account query searched messages next
     voice     account chat id path format duration_ms size length_ms
@@ -61,9 +63,9 @@ THE COMMANDS
   Reading the account, run by you or an agent:
       chats messages search voice
       contacts contact group
-      articles favorites
-  Getting a media message's or a favorite's file, or an avatar, run by
-  you or an agent:
+      articles favorites moments
+  Getting a media message's, a favorite's or a Moment's file, or an
+  avatar, run by you or an agent:
       file avatar
   Getting the keys, run by the person whose Mac it is, with sudo:
       keys

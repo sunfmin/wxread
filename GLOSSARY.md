@@ -53,6 +53,10 @@ _Avoid_: public account, subscription, biz account
 One piece an official account published, with its title, digest, url and cover; one push of an official account's holds one or several.
 _Avoid_: post, news, biz message
 
+**Moment**:
+One post to Moments (朋友圈): its author, when, its text, location, link and media, and the likes and comments on it, as WeChat on this Mac last loaded it into `sns/sns.db`; WeChat caches its media under `cache/<YYYY-MM>/Sns`, each by its Moment's and its own id.
+_Avoid_: post, feed, timeline item, SNS
+
 **Chat**:
 A conversation the account has: direct, with one contact, or in one group.
 _Avoid_: session, conversation, thread
@@ -86,12 +90,8 @@ WeChat's own index of the chats' messages (`message/message_fts.db`): for each m
 _Avoid_: FTS, search index, fts db
 
 **Media**:
-A file a message carries rather than holds: an image, a video, a voice message, a file.
+A file a message or a Moment carries rather than holds: an image, a video, a voice message, a file; one of them a medium.
 _Avoid_: attachment, resource
-
-**Moment**:
-One post the account's contacts or the account shared to their Moments (朋友圈), with its text, its media, likes and comments, as WeChat has cached it in `sns/sns.db`; WeChat caches its media under `cache/<YYYY-MM>/Sns`.
-_Avoid_: feed, timeline item, SNS
 
 **Re-signing**:
 Signing the WeChat app again, ad-hoc, with its entitlements and `get-task-allow` added, so root may read the running WeChat's memory; what `wxread resign --yes` does, undone by reinstalling WeChat.

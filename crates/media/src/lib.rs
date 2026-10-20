@@ -60,6 +60,12 @@ pub enum Media {
         post: u64,
         media: u64,
     },
+    /// A Moment's video, by the ids of its post and of its media, as
+    /// `sns/sns.db` says them.
+    MomentVideo {
+        post: u64,
+        media: u64,
+    },
 }
 
 impl Media {
@@ -67,7 +73,7 @@ impl Media {
     pub fn kind(&self) -> &'static str {
         match self {
             Media::Image { .. } | Media::MomentImage { .. } => "image",
-            Media::Video { .. } => "video",
+            Media::Video { .. } | Media::MomentVideo { .. } => "video",
             Media::File { .. } => "file",
             Media::Sticker { .. } => "sticker",
             Media::Voice => "voice",
@@ -75,9 +81,15 @@ impl Media {
     }
 
     /// Whether WeChat keeps a thumbnail of its kind: an image's and a
-    /// video's.
+    /// video's, a message's or a Moment's.
     pub fn has_thumbnail(&self) -> bool {
-        matches!(self, Media::Image { .. } | Media::Video { .. } | Media::MomentImage { .. })
+        matches!(
+            self,
+            Media::Image { .. }
+                | Media::Video { .. }
+                | Media::MomentImage { .. }
+                | Media::MomentVideo { .. }
+        )
     }
 
     /// The directory under the account's whose months (`YYYY-MM`) hold its
@@ -89,7 +101,7 @@ impl Media {
             Media::Image { .. } => Some(format!("msg/attach/{chat_dir}")),
             Media::Video { .. } => Some("msg/video".into()),
             Media::File { .. } => Some("msg/file".into()),
-            Media::MomentImage { .. } => Some("cache".into()),
+            Media::MomentImage { .. } | Media::MomentVideo { .. } => Some("cache".into()),
             Media::Sticker { .. } | Media::Voice => None,
         }
     }
@@ -106,9 +118,17 @@ impl Media {
             (Media::Video { name: Some(n) }, false) => vec![format!("{n}.mp4")],
             (Media::Video { name: Some(n) }, true) => vec![format!("{n}_thumb.jpg")],
             (Media::File { name: Some(n), .. }, false) if is_one_name(n) => vec![n.clone()],
-            (Media::MomentImage { post, media }, false) => vec![moment_image(*post, *media, 2)],
+            (Media::MomentImage { post, media }, false) => {
+                vec![moment("Img", *post, *media, 2, "")]
+            }
             (Media::MomentImage { post, media }, true) => {
-                vec![moment_image(*post, *media, 1), moment_image(*post, *media, 6)]
+                vec![moment("Img", *post, *media, 1, ""), moment("Img", *post, *media, 6, "")]
+            }
+            (Media::MomentVideo { post, media }, false) => {
+                vec![moment("Video", *post, *media, 3, ".mp4")]
+            }
+            (Media::MomentVideo { post, media }, true) => {
+                vec![moment("Video", *post, *media, 3, ".jpg")]
             }
             _ => Vec::new(),
         }
@@ -144,12 +164,13 @@ pub struct Held {
     pub thumbnail: Option<bool>,
 }
 
-/// The path in a month of `cache` of the copy `copy` (2 the image, 1 and
-/// 6 smaller ones) WeChat caches of media `media` of Moment `post`.
-fn moment_image(post: u64, media: u64, copy: u8) -> String {
+/// The path in a month of `cache`, under `Sns/<shelf>` and ending `ext`,
+/// of the copy `copy` (an image's 2, its smaller 1 and 6; a video's 3)
+/// WeChat caches of media `media` of Moment `post`.
+fn moment(shelf: &str, post: u64, media: u64, copy: u8, ext: &str) -> String {
     let k = format!("{:x}", md5::compute(format!("{post}_{media}_{copy}")));
     let (dir, name) = k.split_at(2);
-    format!("Sns/Img/{dir}/{name}")
+    format!("Sns/{shelf}/{dir}/{name}{ext}")
 }
 
 /// Whether `name` is one name in a directory, not a path out of it.
@@ -235,6 +256,20 @@ pub fn sticker_fix(id: &str, served: bool) -> String {
     )
 }
 
+/// What makes WeChat load a `kind` of a Moment it does not hold: media
+/// `id` of the Moment `author` (as WeChat shows them) posted at `at`;
+/// `thumbnail` whether the answer holds the thumbnail in its place.
+pub fn moment_fix(kind: &str, id: &str, author: &str, at: &str, thumbnail: bool) -> String {
+    let instead = if thumbnail {
+        format!("; until then {OUT_FLAG} holds its thumbnail, which WeChat does hold")
+    } else {
+        String::new()
+    };
+    format!(
+        "WeChat for Mac on this Mac does not hold this {kind} of a Moment (it keeps only what it loaded while Moments were viewed, and clears that): open {author}'s Moment of {at} in WeChat's Moments and let the {kind} load, then run this again for {id}{instead}"
+    )
+}
+
 /// What makes WeChat fetch an avatar of `contact` it does not hold.
 pub fn avatar_fix(contact: &str) -> String {
     format!(
@@ -259,7 +294,7 @@ pub fn not_media(id: &str, kind: &str) -> String {
 /// What fixes a message id that is not one.
 pub fn not_an_id(id: &str) -> String {
     format!(
-        "{id} is not a message's id: pass one as `wxread messages` answers it (its \"id\", WeChat's server id, digits), or a favorite's file_id as `wxread favorites` answers it (fav:<favorite>:<item>)"
+        "{id} is not a message's id: pass one as `wxread messages` answers it (its \"id\", WeChat's server id, digits), a favorite's file_id as `wxread favorites` answers it (fav:<favorite>:<item>), or a Moment's medium's as `wxread moments` answers it under media (<the Moment's id>:<its place>)"
     )
 }
 
@@ -340,6 +375,17 @@ mod tests {
     }
 
     #[test]
+    fn a_moments_video_is_named_by_its_post_and_media_ids() {
+        let video = Media::MomentVideo { post: 14720510141367799999, media: 14720510155579726 };
+        let k = format!("{:x}", md5::compute("14720510141367799999_14720510155579726_3"));
+        let (head, rest) = k.split_at(2);
+        assert_eq!(video.shelf("ignored"), Some("cache".into()));
+        assert_eq!(video.names(false), [format!("Sns/Video/{head}/{rest}.mp4")]);
+        assert_eq!(video.names(true), [format!("Sns/Video/{head}/{rest}.jpg")]);
+        assert!(video.has_thumbnail() && !video.sealed() && video.kind() == "video");
+    }
+
+    #[test]
     fn a_files_name_never_leads_out_of_its_month() {
         for name in ["../../db_storage/x", "a/b", "..", "", "."] {
             let file = Media::File { name: Some(name.into()), size: None };
@@ -382,5 +428,11 @@ mod tests {
         );
         assert!(!fetch_fix("video", "1", "c", "t", false).contains("thumbnail"));
         assert!(no_thumbnail("file", "7").contains("leave --thumbnail out"));
+        let fix = moment_fix("video", "1:0", "Amy", "2025-10-09T08:53:35Z", true);
+        assert!(
+            fix.contains("open Amy's Moment of 2025-10-09T08:53:35Z")
+                && fix.contains("--out holds its thumbnail"),
+            "{fix}"
+        );
     }
 }

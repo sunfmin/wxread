@@ -13,7 +13,7 @@ use wxread_doctor::DB_STORAGE;
 use wxread_schema::{
     CHAT_ROOM, CHAT_ROOM_INFO_DETAIL, CHATROOM_MEMBER, CONTACT, CONTACT_DB, FAV_DB_ITEM,
     FAVORITE_DB, FTS_NAME2ID, FTS_RANGE, HEAD_IMAGE, HEAD_IMAGE_DB, MEDIA_NAME2ID, MESSAGE_FTS_DB,
-    NAME2ID, SESSION, SESSION_DB, TIMESTAMP, VOICE_INFO, ZSTD, fts_content,
+    NAME2ID, SESSION, SESSION_DB, SNS_DB, SNS_TIMELINE, TIMESTAMP, VOICE_INFO, ZSTD, fts_content,
 };
 use wxread_sqlcipher::{PAGE, RESERVE};
 
@@ -128,6 +128,9 @@ pub struct Article(pub &'static str, pub &'static str, pub &'static str, pub &'s
 /// (49) of a link (its appmsg type 5).
 pub const ARTICLES: i64 = 49 | 5 << 32;
 
+/// A Moment in `sns/sns.db`: its `tid`, its author's id, its XML.
+pub struct Posted(pub i64, pub &'static str, pub String);
+
 /// A favorite in `favorite/favorite.db`: its id, type, when it was saved,
 /// its `<favitem>`, and the `fromusr` and `realchatname` its row says.
 pub struct Saved {
@@ -164,7 +167,9 @@ pub struct Stale(pub &'static str, pub i64, pub &'static str, pub i64);
 /// `index` what WeChat's full-text index covers (None for an account it
 /// keeps none for), and `stale` its entries whose messages are gone;
 /// `favorites` what it saved, `recent_favorites` those only in committed
-/// frames of the favorites database's WAL.
+/// frames of the favorites database's WAL; `moments` the Moments WeChat
+/// loaded, the last of them only in a committed frame of its database's
+/// WAL.
 pub struct Account {
     pub id: &'static str,
     pub storage: PathBuf,
@@ -180,6 +185,7 @@ pub struct Account {
     pub voices: Vec<Voice>,
     pub files: Vec<(String, Vec<u8>)>,
     pub kvcomm: Vec<u32>,
+    pub moments: Vec<Posted>,
     pub index: Option<Vec<Indexed>>,
     pub stale: Vec<Stale>,
     pub favorites: Vec<Saved>,
@@ -206,6 +212,7 @@ impl Account {
             voices: Vec::new(),
             files: Vec::new(),
             kvcomm: Vec::new(),
+            moments: Vec::new(),
             index: None,
             stale: Vec::new(),
             favorites: Vec::new(),
@@ -269,6 +276,9 @@ impl Account {
         }
         if !self.voices.is_empty() {
             all.push(MEDIA_DB.to_string());
+        }
+        if !self.moments.is_empty() {
+            all.push(SNS_DB.to_string());
         }
         if !self.favorites.is_empty() || !self.recent_favorites.is_empty() {
             all.push(FAVORITE_DB.to_string());
@@ -374,6 +384,20 @@ impl Account {
                     .unwrap();
             }
             self.seal(MEDIA_DB, &bytes(&media), &[]);
+        }
+        if let Some((last, before)) = self.moments.split_last() {
+            let sns = plain(SNS_TIMELINE);
+            let post = |Posted(tid, author, content): &Posted| {
+                sns.execute(
+                    "INSERT INTO SnsTimeLine(tid, user_name, content) VALUES (?1, ?2, ?3)",
+                    params![tid, author, content],
+                )
+                .unwrap();
+            };
+            before.iter().for_each(post);
+            let earlier = bytes(&sns);
+            post(last);
+            self.seal(SNS_DB, &earlier, &[(&earlier, &bytes(&sns), true)]);
         }
         if !self.favorites.is_empty() || !self.recent_favorites.is_empty() {
             let favorites = plain(FAV_DB_ITEM);
