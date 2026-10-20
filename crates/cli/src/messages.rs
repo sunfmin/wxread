@@ -47,49 +47,92 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let start = cursor.as_ref().map_or(Start::First(order), Start::After);
     let account =
         Account::open(world, asked.account.as_deref(), &[CONTACT_DB, MESSAGE_DBS, MEDIA_DB_PATHS])?;
-    let contacts_db = account.database(CONTACT_DB)?;
-    let names =
-        Names { contacts: contacts(&contacts_db)?, in_group: in_group(&contacts_db, &chat)? };
-    let table = wxread_schema::messages_table(&chat);
-    let mut rows = Vec::new();
-    let mut found = false;
-    let mut senders = Vec::new();
-    for db in wxread_messages::message_dbs(&account.databases()?) {
-        let path = wxread_messages::db_path(&db);
-        let conn = account.database(&path)?;
-        let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(&path, &e.to_string()));
-        senders.extend(ids(&conn).map_err(sql)?);
-        if !has_table(&conn, &table).map_err(sql)? {
-            continue;
-        }
-        found = true;
-        rows.extend(read(&conn, &db, &table, range, start, limit).map_err(sql)?);
-    }
-    if !found {
-        return Err(NoMessages(wxread_messages::no_such_chat(&chat, account.id())).into());
-    }
-    let own = wxread_messages::names::account_id(account.id(), |id| {
-        names.contacts.contains_key(id) || senders.iter().any(|s| s == id)
-    });
-    let chat = Chat { id: chat, account: own };
-    // The media databases are read only when a voice message may be on
-    // the page, to tell whether WeChat holds its sound.
-    let voice =
-        |r: &Row| wxread_messages::kinds::split(r.local_type).0 == wxread_messages::kinds::VOICE;
-    let voices = if rows.iter().any(voice) {
-        media::voices(&account, Some(&chat.id), None)?.into_iter().map(|(id, _)| id).collect()
-    } else {
-        BTreeSet::new()
-    };
-    let (dir, chat_dir) = (account.dir(), wxread_media::chat_dir(&chat.id));
-    let held = |m: &Media, r: &Row| media::held(&dir, m, &chat_dir, r.server_id, &voices);
-    let page = wxread_messages::page(&chat, &names, rows, range, start, limit, held);
+    let page = Store::open(&account)?.page(&chat, range, start, limit)?;
     Ok(json!({
         "account": account.id(),
-        "chat": crate::contacts::chat(&account, &chat.id)?,
+        "chat": crate::contacts::chat(&account, &chat)?,
         "messages": page.messages,
         "next": page.next.map(|n| n.text()),
     }))
+}
+
+/// An account's message databases, each read out of its file once, and
+/// what names their senders: what reads the messages of one chat, or of
+/// many without reading the databases again for each.
+pub struct Store<'a> {
+    account: &'a Account,
+    contacts_db: Connection,
+    contacts: BTreeMap<String, Contact>,
+    /// Each message database: its name, its path under db_storage, and it.
+    dbs: Vec<(String, String, Connection)>,
+    /// Every id the message databases' `Name2Id` names.
+    senders: Vec<String>,
+}
+
+impl<'a> Store<'a> {
+    /// The message databases of `account`, and its contacts.
+    pub fn open(account: &'a Account) -> anyhow::Result<Store<'a>> {
+        let contacts_db = account.database(CONTACT_DB)?;
+        let contacts = contacts(&contacts_db)?;
+        let mut dbs = Vec::new();
+        let mut senders = Vec::new();
+        for db in wxread_messages::message_dbs(&account.databases()?) {
+            let path = wxread_messages::db_path(&db);
+            let conn = account.database(&path)?;
+            let sql =
+                |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(&path, &e.to_string()));
+            senders.extend(ids(&conn).map_err(sql)?);
+            dbs.push((db, path, conn));
+        }
+        Ok(Store { account, contacts_db, contacts, dbs, senders })
+    }
+
+    /// The page of chat `chat`'s messages from `start` within `range`, at
+    /// most `limit`, as `wxread messages` answers them; [`NoMessages`] when
+    /// WeChat on this Mac holds none of its messages.
+    pub fn page(
+        &self,
+        chat: &str,
+        range: Range,
+        start: Start<'_>,
+        limit: Limit,
+    ) -> anyhow::Result<wxread_messages::Page> {
+        let account = self.account;
+        let names =
+            Names { contacts: self.contacts.clone(), in_group: in_group(&self.contacts_db, chat)? };
+        let table = wxread_schema::messages_table(chat);
+        let mut rows = Vec::new();
+        let mut found = false;
+        for (db, path, conn) in &self.dbs {
+            let sql =
+                |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(path, &e.to_string()));
+            if !has_table(conn, &table).map_err(sql)? {
+                continue;
+            }
+            found = true;
+            rows.extend(read(conn, db, &table, range, start, limit).map_err(sql)?);
+        }
+        if !found {
+            return Err(NoMessages(wxread_messages::no_such_chat(chat, account.id())).into());
+        }
+        let own = wxread_messages::names::account_id(account.id(), |id| {
+            names.contacts.contains_key(id) || self.senders.iter().any(|s| s == id)
+        });
+        let chat = Chat { id: chat.to_string(), account: own };
+        // The media databases are read only when a voice message may be on
+        // the page, to tell whether WeChat holds its sound.
+        let voice = |r: &Row| {
+            wxread_messages::kinds::split(r.local_type).0 == wxread_messages::kinds::VOICE
+        };
+        let voices = if rows.iter().any(voice) {
+            media::voices(account, Some(&chat.id), None)?.into_iter().map(|(id, _)| id).collect()
+        } else {
+            BTreeSet::new()
+        };
+        let (dir, chat_dir) = (account.dir(), wxread_media::chat_dir(&chat.id));
+        let held = |m: &Media, r: &Row| media::held(&dir, m, &chat_dir, r.server_id, &voices);
+        Ok(wxread_messages::page(&chat, &names, rows, range, start, limit, held))
+    }
 }
 
 /// The failure of a chat WeChat on this Mac holds no message of, as the

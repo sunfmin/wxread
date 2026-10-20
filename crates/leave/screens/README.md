@@ -19,6 +19,15 @@ the same points.
   朱富贵会员群A02（杭州区域） (46264918477@chatroom) on 2026-10-20, as the run
   that stopped on it read them: the name's full-width parentheses read as
   ASCII, and the chat listed by it cut short, its ellipsis read as `.`.
+- `search-dash.jsonl` and `chat-dash.jsonl` are the search and the chat
+  of 智能通信定位圈—广域物联②群 (5308573596@chatroom) as read on
+  2026-10-20: its `—` read as `一` (and `广` as `厂` in the search box), a
+  text cursor `|` after the name. The chat's messages and senders are
+  written for the test, in the places the real ones were read.
+- `chat-truncated.jsonl`, `chat-ads.jsonl` and `chat-images.jsonl` are
+  written for the tests: a title with its parentheses read half full-width,
+  a chat of ads that another group is fed too, and a chat of images
+  only, told by its senders' names and times.
 
 No screenshot is kept, and none of the owner's chats: the chat list's lines
 are left out of every screen.

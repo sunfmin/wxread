@@ -12,7 +12,7 @@ use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::{Path, PathBuf};
 use std::ptr::{self, NonNull};
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail};
 use objc2::encode::{Encode, Encoding};
@@ -327,12 +327,19 @@ pub fn idle() -> f64 {
     nanos as f64 / 1e9
 }
 
+/// How long WeChat is waited for to become the active app, and how often
+/// that is looked at.
+const FRONT_WAIT: Duration = Duration::from_secs(3);
+const FRONT_POLL: Duration = Duration::from_millis(20);
+
 /// WeChat's process and its main window, with the window's frame on the
-/// screen, in points.
+/// screen, in points; and what the pasteboard held before a paste, until
+/// it is put back.
 pub struct Window {
     pid: i32,
     id: u32,
     frame: CGRect,
+    kept: Option<Vec<Retained<AnyObject>>>,
 }
 
 /// One window on screen: its number, layer, name and frame.
@@ -384,7 +391,7 @@ impl Window {
             .find(|w| MAIN_TITLES.contains(&w.name.as_str()))
             .or_else(|| shown.iter().max_by(|a, b| area(&a.frame).total_cmp(&area(&b.frame))));
         match main {
-            Some(w) => Ok(Window { pid, id: w.id, frame: w.frame }),
+            Some(w) => Ok(Window { pid, id: w.id, frame: w.frame, kept: None }),
             None => bail!(
                 "WeChat has no window on screen: open its window (click WeChat in the Dock), then run it again"
             ),
@@ -423,7 +430,8 @@ impl Window {
     /// removed as soon as it is read.
     pub fn look(&mut self) -> anyhow::Result<Screen> {
         // The window may have moved since the last look.
-        *self = Window::of(self.pid)?;
+        let now = Window::of(self.pid)?;
+        (self.id, self.frame) = (now.id, now.frame);
         let dir = private_dir()?;
         let read = (|| {
             let lines = shot(&dir, self.id, self.frame.size)?.ok_or_else(|| {
@@ -450,8 +458,10 @@ impl Window {
         })
     }
 
-    /// Does `act` to the window.
-    pub fn act(&self, act: &Act) -> anyhow::Result<()> {
+    /// Does `act` to the window. What the pasteboard held before a paste
+    /// is put back before anything else is done.
+    pub fn act(&mut self, act: &Act) -> anyhow::Result<()> {
+        self.restore();
         match act {
             Act::Front => front(self.pid),
             Act::Key(key) => {
@@ -461,7 +471,10 @@ impl Window {
                 Ok(())
             }
             Act::Menu(item) => menu(self.pid, *item),
-            Act::Paste(text) => paste(self.pid, text),
+            Act::Paste(text) => {
+                self.kept = Some(paste(self.pid, text)?);
+                Ok(())
+            }
             Act::Click { x, y } => {
                 // A click on a window of an app not in front only brings it there.
                 if !frontmost(self.pid) {
@@ -474,16 +487,26 @@ impl Window {
                 scroll(self.at(*x, *y));
                 Ok(())
             }
-            Act::Wait(ms) => {
-                sleep(Duration::from_millis(*ms));
-                Ok(())
-            }
+        }
+    }
+
+    /// Puts back what the pasteboard held before the last paste, if it was
+    /// not put back yet.
+    pub fn restore(&mut self) {
+        if let Some(kept) = self.kept.take() {
+            restore_pasteboard(&kept);
         }
     }
 
     /// A point of the window, on the screen.
     fn at(&self, x: u32, y: u32) -> CGPoint {
         CGPoint { x: self.frame.origin.x + f64::from(x), y: self.frame.origin.y + f64::from(y) }
+    }
+}
+
+impl Drop for Window {
+    fn drop(&mut self) {
+        self.restore();
     }
 }
 
@@ -630,19 +653,26 @@ fn frontmost(pid: i32) -> bool {
 }
 
 /// Makes process `pid` the active app through Accessibility, and checks it
-/// is: asking an app to activate itself from the background is not always
-/// honored.
+/// is, looking every [`FRONT_POLL`] for at most [`FRONT_WAIT`]: asking an
+/// app to activate itself from the background is not always honored.
 fn front(pid: i32) -> anyhow::Result<()> {
     let app = Owned::new(unsafe { AXUIElementCreateApplication(pid) })
         .ok_or_else(|| anyhow!("WeChat's process {pid} answers no Accessibility element"))?;
     let name = cf_string("AXFrontmost");
-    for _ in 0..10 {
-        unsafe { AXUIElementSetAttributeValue(app.0, name.0, kCFBooleanTrue) };
-        sleep(Duration::from_millis(300));
+    let since = Instant::now();
+    let mut asked = since;
+    unsafe { AXUIElementSetAttributeValue(app.0, name.0, kCFBooleanTrue) };
+    while since.elapsed() < FRONT_WAIT {
         if frontmost(pid) {
             raise_main(app.0);
             return Ok(());
         }
+        // Asked again now and then: an app busy drawing can miss it.
+        if asked.elapsed() >= FRONT_WAIT / 6 {
+            unsafe { AXUIElementSetAttributeValue(app.0, name.0, kCFBooleanTrue) };
+            asked = Instant::now();
+        }
+        sleep(FRONT_POLL);
     }
     bail!(
         "WeChat did not become the active app, so nothing was clicked: run it again with the Mac left alone, or leave the group in WeChat itself"
@@ -660,7 +690,6 @@ fn raise_main(app: AXUIElementRef) {
             AXUIElementSetAttributeValue(window, main.0, kCFBooleanTrue);
         }
     }
-    sleep(Duration::from_millis(300));
 }
 
 /// The app in front now, to give the front back to.
@@ -754,27 +783,42 @@ fn scroll(at: CGPoint) {
 }
 
 /// Puts `text` where WeChat's focus is by Edit › Paste: typed keys stay in
-/// a Chinese input source's composition. The pasteboard holds `text` for
-/// that moment only, and what it held is put back.
-fn paste(pid: i32, text: &str) -> anyhow::Result<()> {
-    autoreleasepool(|_| unsafe {
+/// a Chinese input source's composition. Answers what the pasteboard held
+/// before, for [`restore_pasteboard`] to put back once WeChat has taken the
+/// text (the next act, or the path's end); a failure puts it back at once.
+fn paste(pid: i32, text: &str) -> anyhow::Result<Vec<Retained<AnyObject>>> {
+    let kept = autoreleasepool(|_| unsafe {
         let board: Retained<AnyObject> = msg_send![class!(NSPasteboard), generalPasteboard];
         let kept = pasteboard_items(&board);
         let _: isize = msg_send![&*board, clearContents];
         let set: bool =
             msg_send![&*board, setString: &*ns_string(text), forType: NSPasteboardTypeString];
-        let pressed = if set {
-            menu(pid, MenuItem::Paste)
-        } else {
-            Err(anyhow!("the name could not be put on the pasteboard: run it again"))
-        };
-        sleep(Duration::from_millis(300));
+        (kept, set)
+    });
+    let (kept, set) = kept;
+    let pressed = if set {
+        menu(pid, MenuItem::Paste)
+    } else {
+        Err(anyhow!("the name could not be put on the pasteboard: run it again"))
+    };
+    match pressed {
+        Ok(()) => Ok(kept),
+        Err(e) => {
+            restore_pasteboard(&kept);
+            Err(e)
+        }
+    }
+}
+
+/// Puts `kept`, what the pasteboard held, back on it.
+fn restore_pasteboard(kept: &[Retained<AnyObject>]) {
+    autoreleasepool(|_| unsafe {
+        let board: Retained<AnyObject> = msg_send![class!(NSPasteboard), generalPasteboard];
         let _: isize = msg_send![&*board, clearContents];
         if !kept.is_empty() {
             let items: Vec<&AnyObject> = kept.iter().map(|i| &**i).collect();
             let _: bool = msg_send![&*board, writeObjects: &*ns_array(&items)];
         }
-        pressed
     })
 }
 

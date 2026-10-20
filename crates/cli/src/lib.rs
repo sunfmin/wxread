@@ -261,6 +261,9 @@ enum GroupAction {
         /// Leave them; without this, only say what it would do and change nothing
         #[arg(long)]
         yes: bool,
+        /// Open each one's chat and say whether it is told to be the group; never leave
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -403,10 +406,10 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| favorites::run(&w, &favorites::Asked { account, limit, cursor }))
         }
-        Command::Group { action: Some(GroupAction::Leave { ids, account, yes }), .. } => {
-            world::World::from_env(cli.data_dir, cli.keys)
-                .and_then(|w| leave(&w, ids, account, yes))
-        }
+        Command::Group {
+            action: Some(GroupAction::Leave { ids, account, yes, dry_run }), ..
+        } => world::World::from_env(cli.data_dir, cli.keys)
+            .and_then(|w| leave(&w, ids, account, yes, dry_run)),
         Command::Group { action: None, id, account } => {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| contacts::group(&w, account.as_deref(), &id.unwrap_or_default()))
@@ -445,12 +448,13 @@ fn leave(
     ids: Vec<String>,
     account: Option<String>,
     yes: bool,
+    dry_run: bool,
 ) -> anyhow::Result<Value> {
     #[cfg(target_os = "macos")]
-    return leave::run(w, &leave::Asked { ids, account, yes });
+    return leave::run(w, &leave::Asked { ids, account, yes, dry_run });
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (w, ids, account, yes);
+        let _ = (w, ids, account, yes, dry_run);
         anyhow::bail!(
             "`wxread group leave` drives WeChat for Mac's window: run it on the Mac WeChat is logged in on"
         )

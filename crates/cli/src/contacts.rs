@@ -59,9 +59,26 @@ pub fn group(world: &World, account: Option<&str>, id: &str) -> anyhow::Result<V
 /// answers it.
 pub fn read_group(account: &Account, contacts: &Contacts, id: &str) -> anyhow::Result<Group> {
     let db = account.database(CONTACT_DB)?;
-    let own = own_id(account, contacts);
-    wxread_contacts::group(id, contacts, room(&db, id)?, notice(&db, id)?, &own)
+    group_in(&db, contacts, id, &own_id(account, contacts))
+}
+
+/// Group `id` as `group` answers it, read out of `db`, the account's
+/// contact database already open, whose contacts are `contacts` and whose
+/// own id is `own`: what reads many groups without opening it again.
+pub fn group_in(
+    db: &Connection,
+    contacts: &Contacts,
+    id: &str,
+    own: &str,
+) -> anyhow::Result<Group> {
+    wxread_contacts::group(id, contacts, room(db, id)?, notice(db, id)?, own)
         .map_err(|e| anyhow!(e))
+}
+
+/// The ids of group `id`'s members, as `db`, the account's contact
+/// database, lists them now.
+pub fn members(db: &Connection, id: &str) -> anyhow::Result<Vec<String>> {
+    Ok(room(db, id)?.members)
 }
 
 fn contact_json(c: &Contact) -> Value {
