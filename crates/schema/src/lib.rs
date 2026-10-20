@@ -42,3 +42,67 @@ pub const HEAD_IMAGE_DB: &str = "head_image/head_image.db";
 
 /// Each avatar WeChat holds, a JPEG or a PNG, by its contact's `username`.
 pub const HEAD_IMAGE: &str = "CREATE TABLE head_image(username TEXT PRIMARY KEY, md5 TEXT, image_buffer BLOB, update_time INTEGER)";
+
+/// The official accounts' messages, WeChat's store for them apart from the
+/// chats': `message/biz_message_<n>.db`, one or more, each holding some of
+/// the official accounts whole.
+pub const BIZ_MESSAGE_PREFIX: &str = "message/biz_message_";
+
+/// Whether database `path` is one of the official accounts' message stores.
+pub fn is_biz_message_db(path: &str) -> bool {
+    path.strip_prefix(BIZ_MESSAGE_PREFIX)
+        .and_then(|rest| rest.strip_suffix(".db"))
+        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// In each message store: the ids its messages name, one row each, an
+/// official account's `gh_…` among them.
+pub const NAME2ID: &str = "CREATE TABLE Name2Id(user_name TEXT PRIMARY KEY, is_session INTEGER)";
+
+/// In each message store: one chat's messages (an official account's, in
+/// a `biz_message_<n>.db`), its table named [`messages_table`].
+/// `local_type` is the message's type in its low 32 bits and its subtype in
+/// the high (an app message `49 | <appmsg type> << 32`), `create_time` when
+/// it was sent in seconds since the epoch, and `message_content` its XML,
+/// zstd-compressed when `WCDB_CT_message_content` is [`ZSTD`].
+pub fn messages(table: &str) -> String {
+    format!(
+        "CREATE TABLE {table}(local_id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER, local_type INTEGER, sort_seq INTEGER, real_sender_id INTEGER, create_time INTEGER, status INTEGER, upload_status INTEGER, download_status INTEGER, server_seq INTEGER, origin_source INTEGER, source TEXT, message_content TEXT, compress_content TEXT, packed_info_data BLOB, WCDB_CT_message_content INTEGER DEFAULT NULL, WCDB_CT_source INTEGER DEFAULT NULL)"
+    )
+}
+
+/// The table of chat `id`'s messages: `Msg_` and the MD5 of its id, in
+/// lowercase hex.
+pub fn messages_table(id: &str) -> String {
+    format!("Msg_{:x}", md5::compute(id.as_bytes()))
+}
+
+/// What `WCDB_CT_message_content` is when the content is zstd-compressed.
+pub const ZSTD: i64 = 4;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_chat_s_messages_are_in_the_table_of_its_id_s_md5() {
+        assert_eq!(messages_table("gh_abc"), format!("Msg_{:x}", md5::compute("gh_abc")));
+        assert_eq!(messages_table(""), "Msg_d41d8cd98f00b204e9800998ecf8427e");
+    }
+
+    #[test]
+    fn the_official_accounts_stores_are_biz_message_n() {
+        for path in ["message/biz_message_0.db", "message/biz_message_12.db"] {
+            assert!(is_biz_message_db(path), "{path}");
+        }
+        for path in [
+            "message/message_0.db",
+            "message/biz_message_.db",
+            "message/biz_message_0.db-wal",
+            "biz_message_0.db",
+            "message/biz_message_x.db",
+        ] {
+            assert!(!is_biz_message_db(path), "{path}");
+        }
+    }
+}
