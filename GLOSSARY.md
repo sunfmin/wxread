@@ -22,8 +22,28 @@ The secret that opens one database; each database has its own, and only the runn
 _Avoid_: password, passphrase, DB key
 
 **Contact**:
-Another WeChat identity the account knows: a person, a group, or an official account.
+A WeChat identity the account knows, by its id: a person, a group, or an official account (its id `gh_…`).
 _Avoid_: friend, buddy
+
+**Group**:
+A contact that is many people in one chat, its id `<n>@chatroom`, with an owner, its members and a notice.
+_Avoid_: chatroom, room, group chat
+
+**Member**:
+A person in a group, whether or not the account has them as a contact, with the name they set in that group, if any.
+_Avoid_: participant, user
+
+**Notice**:
+What a group pins for its members (群公告): its text, who posted it and when.
+_Avoid_: announcement, bulletin
+
+**Remark**:
+What the account calls a contact, set by the account and seen only by it (备注).
+_Avoid_: alias, nickname, note
+
+**Display name**:
+A contact's name as WeChat shows it: the account's remark, else their name in the group it is shown in, else their own name.
+_Avoid_: name, label, shown name
 
 **Chat**:
 A conversation the account has: direct, with one contact, or in one group.

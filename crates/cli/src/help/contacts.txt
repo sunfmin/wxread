@@ -1,0 +1,54 @@
+wxread contacts: the account's contacts, by id, a page at a time.
+
+WHEN TO RUN IT
+  To find a contact or a group, and its id, before `wxread contact <id>`,
+  `wxread group <id>` or reading its chat. Run by you or an agent, once
+  the keys are supplied; it changes nothing.
+
+WHAT IT READS
+  The account's contact/contact.db and head_image/head_image.db under its
+  db_storage, each with the WAL beside it (what WeChat wrote last), with
+  their keys: the file --keys names, else the contents of WXREAD_KEYS.
+  Each is decrypted into memory and read there, after its key is checked
+  against its first page. It writes nothing, anywhere: no decrypted byte
+  reaches the disk.
+
+OPTIONS
+  --account <id>    the account to read, as `wxread doctor` names it;
+                    with only one logged in, that one
+  --query <text>    only the contacts whose id, WeChat ID, name or remark
+                    holds it, whatever its case
+  --limit <n>       how many contacts a page holds, 1 to 1000; 100 unless
+                    given
+  --cursor <next>   start after the page that answered this `next`
+
+WHAT IT ANSWERS
+    account   the account read: its directory's name, as doctor's id
+    contacts  [{id, display_name, name, remark, alias, signature, kind,
+              has_avatar}], by id:
+              id            a wxid, a group's <n>@chatroom, or an official
+                            account's gh_...: what `wxread contact`,
+                            `wxread group` and `wxread chats` name it by
+              display_name  as WeChat shows it: the account's remark,
+                            else its name; "" for neither
+              name          what it calls itself; "" for none
+              remark        what the account calls it; null for none
+              alias         the WeChat ID it chose (微信号); null for none
+              signature     its signature; null for none
+              kind          "person", "group" or "official_account"
+              has_avatar    whether WeChat holds its avatar
+    next      pass it as --cursor for the next page; null on the last one
+
+TRIPS YOU UP
+  - The contacts are everyone WeChat knows of the account: friends, its
+    groups, official accounts, and people it met only in a group, the
+    account itself among them.
+  - In a group a member is shown by their name in it when the account has
+    no remark for them: `wxread group <id>` answers that name.
+  - A --query is matched against each contact as it is, by its text; it
+    does not match pinyin.
+  - The keys must open both databases. One missing, or one that no longer
+    opens its database (WeChat created its databases again: logging out
+    and in, some updates), is an error naming the database; its fix is
+    `sudo wxread keys`, then supplying the keys again.
+  - Several accounts logged in is an error naming them: pass --account.

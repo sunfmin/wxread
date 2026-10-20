@@ -10,7 +10,9 @@ autotests = false
 
 [dependencies]
 wxread-account = { path = "../account" }
+wxread-answer = { path = "../answer" }
 wxread-chats = { path = "../chats" }
+wxread-contacts = { path = "../contacts" }
 wxread-doctor = { path = "../doctor" }
 wxread-keys = { path = "../keys" }
 wxread-schema = { path = "../schema" }

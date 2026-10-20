@@ -3,15 +3,8 @@
 //! reads the rows out of the session and contact databases; nothing here
 //! reads or writes.
 
-use flux_rs::attrs::*;
-
-/// The options that page.
-pub const LIMIT_FLAG: &str = "--limit";
-pub const CURSOR_FLAG: &str = "--cursor";
-
-/// How many chats a page holds unless `--limit` says, and at most.
-pub const DEFAULT_LIMIT: usize = 100;
-pub const MAX_LIMIT: usize = 1000;
+use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
+use wxread_contacts::display_name;
 
 /// One row of `SessionTable`, and the account's contact of the same id,
 /// when it has one.
@@ -39,9 +32,12 @@ pub enum Kind {
 }
 
 impl Kind {
-    /// The kind of the chat `id`: a group's id is `<n>@chatroom`.
+    /// The kind of the chat `id`: in a group when its contact is one.
     pub fn of(id: &str) -> Kind {
-        if id.ends_with("@chatroom") { Kind::Group } else { Kind::Direct }
+        match wxread_contacts::Kind::of(id) {
+            wxread_contacts::Kind::Group => Kind::Group,
+            wxread_contacts::Kind::Person | wxread_contacts::Kind::OfficialAccount => Kind::Direct,
+        }
     }
 
     pub fn name(self) -> &'static str {
@@ -62,42 +58,6 @@ pub struct Chat {
     /// When its last message was (RFC 3339, UTC), or None for none.
     pub last_message_at: Option<String>,
     pub unread: u64,
-}
-
-/// How many chats one page holds: from one to [`MAX_LIMIT`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[refined_by(n: int)]
-#[invariant(1 <= n && n <= MAX_LIMIT)]
-pub struct Limit {
-    #[field(usize[n])]
-    n: usize,
-}
-
-impl Limit {
-    /// The limit `n`, when it is one.
-    pub fn new(n: usize) -> Option<Limit> {
-        match n {
-            1..=MAX_LIMIT => Some(Limit { n }),
-            _ => None,
-        }
-    }
-
-    #[spec(fn() -> Limit[DEFAULT_LIMIT])]
-    pub fn default_limit() -> Limit {
-        Limit { n: DEFAULT_LIMIT }
-    }
-
-    #[spec(fn(Limit[@n]) -> usize{v: v == n && 1 <= v && v <= MAX_LIMIT})]
-    pub fn get(self) -> usize {
-        self.n
-    }
-}
-
-/// What fixes a `--limit` that is not one.
-pub fn limit_refused(given: &str) -> String {
-    format!(
-        "{LIMIT_FLAG} {given} is not a number of chats from 1 to {MAX_LIMIT}: pass one, or leave {LIMIT_FLAG} out for {DEFAULT_LIMIT}"
-    )
 }
 
 /// Where a page ended: the last chat it listed, by where WeChat sorts it.
@@ -166,11 +126,9 @@ pub fn page(rows: Vec<Row>, after: Option<&Cursor>, limit: Limit) -> Page {
 }
 
 fn chat(row: Row) -> Chat {
-    let named = |s: Option<String>| s.filter(|s| !s.is_empty());
-    let name = row
-        .contact
-        .and_then(|c| named(c.remark).or_else(|| named(c.nick_name)))
-        .unwrap_or_default();
+    let name = row.contact.map_or_else(String::new, |c| {
+        display_name(c.remark.as_deref(), None, c.nick_name.as_deref())
+    });
     Chat {
         kind: Kind::of(&row.id),
         name,
@@ -180,42 +138,11 @@ fn chat(row: Row) -> Chat {
     }
 }
 
-/// `secs` since the epoch as RFC 3339 in UTC (`2026-10-20T01:02:03Z`); None
-/// for none (0 or before) and for a time past the year 9999.
-pub fn rfc3339(secs: i64) -> Option<String> {
-    if secs <= 0 || secs > 253_402_300_799 {
-        return None;
-    }
-    let days = secs.checked_div(86_400)?;
-    let time = secs.checked_rem(86_400)?;
-    // Howard Hinnant's civil_from_days, for a day on or after the epoch.
-    let z = days.checked_add(719_468)?;
-    let era = z.checked_div(146_097)?;
-    let doe = z.checked_sub(era.checked_mul(146_097)?)?;
-    let yoe = doe
-        .checked_sub(doe.checked_div(1_460)?)?
-        .checked_add(doe.checked_div(36_524)?)?
-        .checked_sub(doe.checked_div(146_096)?)?
-        .checked_div(365)?;
-    let doy = doe.checked_sub(
-        yoe.checked_mul(365)?
-            .checked_add(yoe.checked_div(4)?)?
-            .checked_sub(yoe.checked_div(100)?)?,
-    )?;
-    let mp = doy.checked_mul(5)?.checked_add(2)?.checked_div(153)?;
-    let day =
-        doy.checked_sub(mp.checked_mul(153)?.checked_add(2)?.checked_div(5)?)?.checked_add(1)?;
-    let month = if mp < 10 { mp.checked_add(3)? } else { mp.checked_sub(9)? };
-    let year = yoe.checked_add(era.checked_mul(400)?)?.checked_add(i64::from(month <= 2))?;
-    let (hour, rest) = (time.checked_div(3_600)?, time.checked_rem(3_600)?);
-    let (minute, second) = (rest.checked_div(60)?, rest.checked_rem(60)?);
-    Some(format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use wxread_answer::MAX_LIMIT;
 
     fn row(id: &str, sort: i64) -> Row {
         Row {
@@ -283,22 +210,6 @@ mod tests {
     }
 
     #[test]
-    fn times_are_rfc3339_in_utc() {
-        assert_eq!(rfc3339(1).as_deref(), Some("1970-01-01T00:00:01Z"));
-        assert_eq!(rfc3339(951_782_400).as_deref(), Some("2000-02-29T00:00:00Z"));
-        assert_eq!(rfc3339(253_402_300_799).as_deref(), Some("9999-12-31T23:59:59Z"));
-        assert_eq!(rfc3339(253_402_300_800), None);
-        assert_eq!(rfc3339(-5), None);
-    }
-
-    #[test]
-    fn a_limit_is_one_to_the_most() {
-        assert_eq!(Limit::new(0), None);
-        assert_eq!(Limit::new(MAX_LIMIT + 1), None);
-        assert_eq!(Limit::new(MAX_LIMIT).map(Limit::get), Some(MAX_LIMIT));
-    }
-
-    #[test]
     fn a_cursor_wxread_did_not_write_is_refused_with_its_fix() {
         for text in ["", "x", "12", "a:b", "12:"] {
             let why = Cursor::parse(text).unwrap_err();
@@ -326,16 +237,6 @@ mod tests {
                 }
             }
             prop_assert_eq!(paged, whole.chats);
-        }
-
-        #[test]
-        fn a_time_is_written_as_the_seconds_it_was(secs in 1i64..253_402_300_800) {
-            let text = rfc3339(secs).unwrap();
-            prop_assert_eq!(text.len(), 20);
-            let (date, time) = text.split_once('T').unwrap();
-            let parts: Vec<i64> = time.trim_end_matches('Z').split(':').map(|p| p.parse().unwrap()).collect();
-            prop_assert_eq!(parts[0] * 3600 + parts[1] * 60 + parts[2], secs % 86_400);
-            prop_assert!(date.as_bytes()[4] == b'-' && date.as_bytes()[7] == b'-');
         }
     }
 }

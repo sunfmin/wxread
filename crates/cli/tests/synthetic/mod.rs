@@ -10,11 +10,27 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, DatabaseName, params};
 use wxread_doctor::DB_STORAGE;
-use wxread_schema::{CONTACT, CONTACT_DB, SESSION, SESSION_DB};
+use wxread_schema::{
+    CHAT_ROOM, CHAT_ROOM_INFO_DETAIL, CHATROOM_MEMBER, CONTACT, CONTACT_DB, HEAD_IMAGE,
+    HEAD_IMAGE_DB, SESSION, SESSION_DB,
+};
 use wxread_sqlcipher::{PAGE, RESERVE};
 
 /// A contact of the account: its id, its own name, the account's remark.
 pub struct Contact(pub &'static str, pub &'static str, pub &'static str);
+
+/// More of a contact: its id, its WeChat ID and its signature.
+pub struct Profile(pub &'static str, pub &'static str, pub &'static str);
+
+/// A group the account is in: its id (a contact's), its owner, each member
+/// with their name in it ("" for none; a member who is no contact is only
+/// in its `ext_buffer`), and its notice: text, who posted it, when.
+pub struct Group {
+    pub id: &'static str,
+    pub owner: &'static str,
+    pub members: Vec<(&'static str, &'static str)>,
+    pub notice: Option<(&'static str, &'static str, i64)>,
+}
 
 /// A chat in `SessionTable`: its id, when its last message was (which is
 /// where WeChat sorts it, in seconds), and its unread messages.
@@ -23,7 +39,9 @@ pub struct Session(pub &'static str, pub i64, pub i64);
 /// One account's directory under a data directory, and what its databases
 /// hold: `contacts` and `sessions` in the databases themselves, `recent`
 /// sessions only in committed frames of the session database's WAL, and
-/// `uncommitted` in frames after them that no commit ended.
+/// `uncommitted` in frames after them that no commit ended; `profiles` more
+/// of some contacts, `avatars` the contacts WeChat holds an avatar of, and
+/// `groups` each group's record and notice.
 pub struct Account {
     pub id: &'static str,
     pub storage: PathBuf,
@@ -31,10 +49,13 @@ pub struct Account {
     pub sessions: Vec<Session>,
     pub recent: Vec<Session>,
     pub uncommitted: Vec<Session>,
+    pub profiles: Vec<Profile>,
+    pub avatars: Vec<&'static str>,
+    pub groups: Vec<Group>,
 }
 
 /// The databases a synthetic account has.
-pub const DATABASES: [&str; 2] = [CONTACT_DB, SESSION_DB];
+pub const DATABASES: [&str; 3] = [CONTACT_DB, HEAD_IMAGE_DB, SESSION_DB];
 
 impl Account {
     pub fn new(data_dir: &Path, id: &'static str) -> Account {
@@ -45,6 +66,9 @@ impl Account {
             sessions: Vec::new(),
             recent: Vec::new(),
             uncommitted: Vec::new(),
+            profiles: Vec::new(),
+            avatars: Vec::new(),
+            groups: Vec::new(),
         }
     }
 
@@ -97,7 +121,52 @@ impl Account {
                 )
                 .unwrap();
         }
+        for Profile(id, alias, signature) in &self.profiles {
+            contacts
+                .execute(
+                    "UPDATE contact SET alias = ?2, description = ?3 WHERE username = ?1",
+                    params![id, alias, signature],
+                )
+                .unwrap();
+        }
+        contacts
+            .execute_batch(&format!("{CHATROOM_MEMBER}; {CHAT_ROOM}; {CHAT_ROOM_INFO_DETAIL};"))
+            .unwrap();
+        for group in &self.groups {
+            for (member, _) in &group.members {
+                contacts
+                    .execute(
+                        "INSERT INTO chatroom_member(room_id, member_id) SELECT g.id, m.id FROM contact g, contact m WHERE g.username = ?1 AND m.username = ?2",
+                        params![group.id, member],
+                    )
+                    .unwrap();
+            }
+            contacts
+                .execute(
+                    "INSERT INTO chat_room(id, username, owner, ext_buffer) SELECT id, username, ?2, ?3 FROM contact WHERE username = ?1",
+                    params![group.id, group.owner, ext_buffer(&group.members)],
+                )
+                .unwrap();
+            if let Some((text, editor, at)) = group.notice {
+                contacts
+                    .execute(
+                        "INSERT INTO chat_room_info_detail(room_id_, username_, announcement_, announcement_editor_, announcement_publish_time_) SELECT id, username, ?2, ?3, ?4 FROM contact WHERE username = ?1",
+                        params![group.id, text, editor, at],
+                    )
+                    .unwrap();
+            }
+        }
         self.seal(CONTACT_DB, &bytes(&contacts), &[]);
+        let avatars = plain(HEAD_IMAGE);
+        for id in &self.avatars {
+            avatars
+                .execute(
+                    "INSERT INTO head_image(username, md5, image_buffer, update_time) VALUES (?1, 'md5', x'ffd8ffe0', 1760000000)",
+                    params![id],
+                )
+                .unwrap();
+        }
+        self.seal(HEAD_IMAGE_DB, &bytes(&avatars), &[]);
         let sessions = plain(SESSION);
         insert(&sessions, &self.sessions);
         let before = bytes(&sessions);
@@ -142,6 +211,28 @@ impl Account {
             .unwrap();
         }
     }
+}
+
+/// A group's `ext_buffer` as WeChat writes it: a field 1 a member, holding
+/// their id (field 1) and their name in the group (field 2) when they set
+/// one, each beside a varint WeChat writes there too.
+fn ext_buffer(members: &[(&str, &str)]) -> Vec<u8> {
+    let field = |number: u8, bytes: &[u8]| {
+        let mut out = vec![number << 3 | 2, bytes.len() as u8];
+        out.extend_from_slice(bytes);
+        out
+    };
+    let mut buffer = Vec::new();
+    for (id, name) in members {
+        let mut member = field(1, id.as_bytes());
+        if !name.is_empty() {
+            member.extend(field(2, name.as_bytes()));
+        }
+        member.extend([0x18, 0x01]);
+        buffer.extend(field(1, &member));
+        buffer.extend([0x10, 0x02]);
+    }
+    buffer
 }
 
 fn insert(db: &Connection, sessions: &[Session]) {

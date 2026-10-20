@@ -7,7 +7,8 @@ license.workspace = true
 publish = false
 
 [dependencies]
-flux-rs.workspace = true
+wxread-answer = { path = "../answer" }
+wxread-contacts = { path = "../contacts" }
 
 [dev-dependencies]
 proptest.workspace = true
@@ -16,6 +17,3 @@ proptest.workspace = true
 [package.metadata.flux]
 enabled = true
 check_overflow = "strict"
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }
