@@ -47,7 +47,7 @@ impl Row {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Person {
     pub id: String,
-    pub name: String,
+    pub display_name: String,
 }
 
 /// Where a Moment was posted from, as its author tagged it.
@@ -226,7 +226,7 @@ pub fn moment(row: &Row, names: &BTreeMap<String, String>) -> Moment {
 /// The contact `who`, named by `names`, else `given`.
 fn person(names: &BTreeMap<String, String>, who: &str, given: Option<String>) -> Person {
     let known = names.get(who).filter(|n| !n.is_empty()).cloned();
-    Person { id: who.to_string(), name: known.or(given).unwrap_or_default() }
+    Person { id: who.to_string(), display_name: known.or(given).unwrap_or_default() }
 }
 
 /// The likes or comments in `local`'s `list` that are not deleted, each

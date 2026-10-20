@@ -144,7 +144,7 @@ pub struct Chat {
     /// The account's remark for it, else its own name, else (a group) its
     /// members' names besides the account's, as WeChat joins them; a
     /// folder's, as WeChat names it; "" for none.
-    pub name: String,
+    pub display_name: String,
     pub kind: Kind,
     /// The command that reads what it holds: its messages, or for a
     /// folder, the chats or articles in it.
@@ -351,7 +351,7 @@ fn read_with(id: &str) -> String {
 fn chat(row: Row, rooms: &Rooms) -> Chat {
     Chat {
         kind: Kind::of(&row.id),
-        name: name(&row),
+        display_name: name(&row),
         read_with: read_with(&row.id),
         last_message_at: row.last_timestamp.and_then(rfc3339),
         unread: row.unread.and_then(|n| u64::try_from(n).ok()).unwrap_or(0),
@@ -434,7 +434,7 @@ mod tests {
         assert_eq!(ids(&page), ["2@chatroom", "1@chatroom"]);
         let small = &page.chats[0];
         assert_eq!(
-            (small.name.as_str(), small.members, small.last_message_at.as_deref()),
+            (small.display_name.as_str(), small.members, small.last_message_at.as_deref()),
             ("Small", Some(3), None)
         );
         assert_eq!(page.chats[1].members, Some(4));
@@ -477,7 +477,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(ids(&page), ["gh_news"]);
-        assert_eq!(page.chats[0].name, "News");
+        assert_eq!(page.chats[0].display_name, "News");
     }
 
     #[test]
@@ -538,12 +538,12 @@ mod tests {
                 nick_name: nick.map(String::from),
                 members: Vec::new(),
             });
-            chat(r, &Rooms::new()).name
+            chat(r, &Rooms::new()).display_name
         };
         assert_eq!(named(Some("Mum"), Some("Mary")), "Mum");
         assert_eq!(named(Some(""), Some("Mary")), "Mary");
         assert_eq!(named(None, None), "");
-        assert_eq!(chat(row("wxid_b", 1), &Rooms::new()).name, "");
+        assert_eq!(chat(row("wxid_b", 1), &Rooms::new()).display_name, "");
     }
 
     #[test]
@@ -555,7 +555,7 @@ mod tests {
                 nick_name: Some(nick.into()),
                 members: vec!["孙凤君".into(), "秦俊斌 @qinjunbin".into()],
             });
-            chat(r, &Rooms::new()).name
+            chat(r, &Rooms::new()).display_name
         };
         assert_eq!(named("", ""), "孙凤君、秦俊斌 @qinjunbin");
         assert_eq!(named("", "Hiking"), "Hiking");
@@ -647,15 +647,18 @@ mod tests {
         r.contact = contact("", "", &[]);
         let c = chat(r, &Rooms::new());
         assert_eq!(
-            (c.kind, c.name.as_str(), c.members, c.read_with.as_str()),
+            (c.kind, c.display_name.as_str(), c.members, c.read_with.as_str()),
             (Kind::Folder(Folder::Subscriptions), "订阅号消息", None, "wxread articles")
         );
         assert_eq!(c.kind.name(), "folder");
         let c = chat(row("@placeholder_foldgroup", 2), &Rooms::new());
-        assert_eq!((c.kind, c.name.as_str()), (Kind::Folder(Folder::FoldedGroups), "折叠的群聊"));
+        assert_eq!(
+            (c.kind, c.display_name.as_str()),
+            (Kind::Folder(Folder::FoldedGroups), "折叠的群聊")
+        );
         assert_eq!(c.read_with, "wxread chats");
         let c = chat(row("brandservicesessionholder", 1), &Rooms::new());
-        assert_eq!((c.kind, c.name.as_str()), (Kind::Folder(Folder::Services), "服务号"));
+        assert_eq!((c.kind, c.display_name.as_str()), (Kind::Folder(Folder::Services), "服务号"));
         assert_eq!(c.read_with, "wxread articles");
         for f in Folder::ALL {
             assert_eq!(Folder::of(f.id()), Some(f));

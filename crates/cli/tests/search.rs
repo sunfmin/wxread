@@ -156,8 +156,12 @@ fn a_text_a_link_title_and_a_file_name_are_found_across_chats_through_wechats_in
     // From the index: what WeChat indexed of it is what matched.
     let topo = by_id("9002");
     assert_eq!(
-        (&topo["chat"], &topo["chat_name"], &topo["sender"], &topo["sender_name"], &topo["kind"]),
-        (&json!("wxid_amy"), &json!("Amy W"), &json!("wxid_me"), &json!("Me"), &json!("link"))
+        (&topo["chat"], &topo["sender"], &topo["kind"]),
+        (
+            &json!({"id": "wxid_amy", "display_name": "Amy W"}),
+            &json!({"id": "wxid_me", "display_name": "Me"}),
+            &json!("link")
+        )
     );
     assert_eq!(topo["matched"], "Crag topo for Saturday");
     assert_eq!(topo["link"]["title"], "Crag topo");
@@ -165,8 +169,12 @@ fn a_text_a_link_title_and_a_file_name_are_found_across_chats_through_wechats_in
     // Read message by message: the text of its kind is what matched.
     let rope = by_id("9006");
     assert_eq!(
-        (&rope["chat"], &rope["chat_name"], &rope["sender_name"], &rope["matched"]),
-        (&json!(GROUP), &json!("Hiking"), &json!("Bobby"), &json!("Rope guide\nfor the CRAG"))
+        (&rope["chat"], &rope["sender"]["display_name"], &rope["matched"]),
+        (
+            &json!({"id": GROUP, "display_name": "Hiking"}),
+            &json!("Bobby"),
+            &json!("Rope guide\nfor the CRAG")
+        )
     );
     assert_eq!(
         (&by_id("9007")["kind"], &by_id("9007")["matched"]),

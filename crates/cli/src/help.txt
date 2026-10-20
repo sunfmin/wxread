@@ -93,9 +93,16 @@ RULES
     group's <n>@chatroom, an official account's gh_.... `wxread contacts
     --query <text>` finds an id by a name, a remark or a WeChat ID;
     `wxread chats --query <text>` finds a chat by its name.
-  - A name is shown as WeChat shows it, as display_name: the account's
-    remark, else the name in the group, else the contact's own name; a
-    group with no name of its own by its members' names, joined by "、".
+  - Every person, group, official account and chat an answer names (a
+    chat listed, a message's sender, a Moment's author, an article's
+    official account, a group's owner, a favorite's source, who joined,
+    who was nudged …) is {id, display_name}, the same shape everywhere:
+    id as `wxread contacts` answers it (null when WeChat gives only a
+    name); display_name as WeChat shows them, as `wxread contacts`
+    answers it: the account's remark, else (in a group) their name in it,
+    else their own name, else the name the message or post gives; a
+    group with no name of its own by its members' names, joined by "、";
+    "" for none. A remarked contact is shown by the remark everywhere.
   - A list answers a page, and `next`: pass it as --cursor for the page
     after; null on the last.
   - A finding doctor makes is an answer, exit 0: read its `ok` and

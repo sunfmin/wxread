@@ -3,7 +3,6 @@
 //! contact's avatar in the head image database, and write it at `--out` as
 //! the file it is.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::anyhow;
@@ -99,11 +98,7 @@ fn moment(world: &World, asked: &Asked, id: MediaId) -> anyhow::Result<Value> {
         return Err(no_moment());
     }
     let row = crate::moments::one(&account.database(SNS_DB)?, id.tid())?.ok_or_else(no_moment)?;
-    let contacts = account.database(CONTACT_DB)?;
-    let names: BTreeMap<String, String> = crate::moments::name_of(&contacts, &row.author)?
-        .map(|n| (row.author.clone(), n))
-        .into_iter()
-        .collect();
+    let names = crate::contacts::display_names(&account)?;
     let moment = wxread_moments::moment(&row, &names);
     let medium = moment
         .media
@@ -113,8 +108,9 @@ fn moment(world: &World, asked: &Asked, id: MediaId) -> anyhow::Result<Value> {
         .file
         .as_ref()
         .ok_or_else(|| anyhow!(wxread_moments::not_a_file(&asked.id, &moment.id)))?;
-    let author =
-        Some(moment.author.name.as_str()).filter(|n| !n.is_empty()).unwrap_or(&moment.author.id);
+    let author = Some(moment.author.display_name.as_str())
+        .filter(|n| !n.is_empty())
+        .unwrap_or(&moment.author.id);
     let at = moment.at.as_deref().unwrap_or("an unknown time");
     let source = format!("{author}'s Moment of {at} (in WeChat's Moments)");
     let mut key = None;

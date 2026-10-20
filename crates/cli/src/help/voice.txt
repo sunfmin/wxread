@@ -10,10 +10,11 @@ WHEN TO RUN IT
 
 WHAT IT READS
   The chat's message databases (message/message_<n>.db, and message/
-  biz_message_<n>.db for official accounts), for the message itself, and
-  the account's media databases (message/media_<n>.db), where WeChat keeps
-  each voice message's sound by its chat and its id; each with the WAL
-  beside it, with their keys: the file --keys names, else the contents of
+  biz_message_<n>.db for official accounts), for the message itself, its
+  contact/contact.db, for the chat's name, and the account's media
+  databases (message/media_<n>.db), where WeChat keeps each voice
+  message's sound by its chat and its id; each with the WAL beside it,
+  with their keys: the file --keys names, else the contents of
   WXREAD_KEYS. Each is decrypted into memory and read there.
 
 WHAT IT WRITES
@@ -35,7 +36,8 @@ ARGUMENTS AND OPTIONS
 
 WHAT IT ANSWERS
     account        the account read: its directory's name, as doctor's id
-    chat           the chat read: its id
+    chat           the chat read: {id, display_name}, as `wxread chats`
+                   names it
     id             the message's id, a string
     path           the file written, its absolute path
     format         "wav", or "silk" with --raw
@@ -58,7 +60,8 @@ TRIPS YOU UP
     it once in WeChat on this Mac, then run this again.
   - wxread does not transcribe: transcription is WeChat's own, made only
     where the account chose 转文字 on the message in WeChat.
-  - The keys must open every message database and every media database.
+  - The keys must open contact/contact.db, every message database and
+    every media database.
     One missing, or one that no longer opens its database, is an error
     naming the database; its fix is `sudo wxread keys`, then supplying the
     keys again.

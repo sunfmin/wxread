@@ -48,16 +48,14 @@ WHAT IT ANSWERS
               it has not indexed yet was read message by message;
               "messages" when the account has no index and every message
               was read
-    messages  [{chat, chat_name, matched, id, at, sender, sender_name,
-              kind, <kind>, type, subtype, content}], newest first across
-              every chat:
-              chat         the chat it was said in: its id
-              chat_name    what WeChat shows the chat as: the account's
-                           remark for it, else its name; null for none
+    messages  [{chat, matched, id, at, sender, kind, <kind>, type,
+              subtype, content}], newest first across every chat:
+              chat         the chat it was said in: {id, display_name},
+                           as `wxread chats` names it
               matched      the text it was found in: what WeChat's index
                            holds of it, or the same text taken from its
                            kind
-              id, at, sender, sender_name, kind, <kind>, type, subtype,
+              id, at, sender, kind, <kind>, type, subtype,
               content      as `wxread messages --help` says
     next      pass it as --cursor for the next page; null on the last one
 
@@ -67,7 +65,7 @@ WHAT A MESSAGE IS SEARCHED BY
   link           its title and summary
   file           its name
   location       its name and address
-  card           the name of the contact it shares
+  card           the name the card gives the contact it shares
   forward        its title and what each message in it says
   transfer, red_packet
                  its memo

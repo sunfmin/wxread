@@ -13,6 +13,7 @@ mod file;
 mod help;
 mod messages;
 mod moments;
+mod people;
 mod release;
 mod resign;
 mod search;

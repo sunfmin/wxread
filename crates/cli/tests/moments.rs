@@ -94,8 +94,8 @@ fn it_lists_each_moment_with_its_text_media_likes_and_comments_newest_first() {
     assert_eq!(ids(&json), [id(tid(AMY_AT, 1)), id(tid(BOB_AT, 2)), id(tid(OLD_AT, 3))]);
     assert_eq!(json["next"], Value::Null);
     let amy_id = id(tid(AMY_AT, 1));
-    let auntie = json!({"id": "wxid_amy", "name": "Auntie"});
-    let bob = json!({"id": "wxid_bob", "name": "Bob"});
+    let auntie = json!({"id": "wxid_amy", "display_name": "Auntie"});
+    let bob = json!({"id": "wxid_bob", "display_name": "Bob"});
     let at = "2025-10-09T09:01:00Z";
     assert_eq!(
         json["moments"][0],
@@ -136,7 +136,7 @@ fn it_lists_each_moment_with_its_text_media_likes_and_comments_newest_first() {
             ],
             "likes": [
                 {"by": bob, "at": at},
-                {"by": {"id": "wxid_stranger", "name": "Stranger"}, "at": at},
+                {"by": {"id": "wxid_stranger", "display_name": "Stranger"}, "at": at},
             ],
             "comments": [
                 {"by": bob, "at": at, "text": "Wow & wow", "reply_to": null},

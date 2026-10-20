@@ -12,6 +12,7 @@ use roxmltree::{Document, Node};
 use serde_json::{Map, Value, json};
 
 use crate::Kind;
+use crate::names::person;
 
 /// WeChat's types: text, an image, a voice message, a contact's card, a
 /// video, a sticker, a place, an app message, a voice or video call, and
@@ -276,7 +277,7 @@ pub fn attr(node: Node, name: &str) -> Option<String> {
 fn card(root: Node) -> Option<Parsed> {
     Some(Parsed::of(
         Kind::Card,
-        json!({ "contact": attr(root, "username")?, "name": attr(root, "nickname") }),
+        json!({ "contact": person(Some(&attr(root, "username")?), attr(root, "nickname").as_deref()) }),
     ))
 }
 
@@ -362,8 +363,10 @@ fn app(root: Node, sub: i64) -> Option<Parsed> {
                     "text": text(a, "title").unwrap_or_default(),
                     "quoted": {
                         "id": quoted("svrid").filter(|id| id != "0"),
-                        "sender": quoted("chatusr").or_else(|| quoted("fromusr")),
-                        "name": quoted("displayname"),
+                        "sender": person(
+                            quoted("chatusr").or_else(|| quoted("fromusr")).as_deref(),
+                            quoted("displayname").as_deref(),
+                        ),
                         "excerpt": excerpt,
                     },
                 }),
@@ -386,8 +389,8 @@ fn app(root: Node, sub: i64) -> Option<Parsed> {
             Some(Parsed::of(
                 Kind::Nudge,
                 json!({
-                    "from": text(p, "fromusername")?,
-                    "to": text(p, "pattedusername")?,
+                    "from": person(Some(&text(p, "fromusername")?), None),
+                    "to": person(Some(&text(p, "pattedusername")?), None),
                     "text": text(a, "title").unwrap_or_default(),
                 }),
             ))
@@ -487,7 +490,7 @@ fn group_notice(root: Node, a: Node) -> Parsed {
         Kind::GroupNotice,
         json!({
             "text": text(a, "textannouncement").or(item.text).unwrap_or_default(),
-            "by": by.map(|id| json!({ "id": id, "display_name": null })),
+            "by": person(by.as_deref(), None),
             "at": item.at.and_then(wxread_answer::rfc3339),
         }),
     )
@@ -534,8 +537,10 @@ fn flatten(record: Node, inside: Option<usize>, out: &mut Vec<Value>) {
         };
         let position = out.len();
         out.push(json!({
-            "sender": source.and_then(|s| text(s, "realchatname").or_else(|| text(s, "fromusr"))),
-            "name": text(item, "sourcename"),
+            "sender": person(
+                source.and_then(|s| text(s, "realchatname").or_else(|| text(s, "fromusr"))).as_deref(),
+                text(item, "sourcename").as_deref(),
+            ),
             "at": text(item, "srcMsgCreateTime")
                 .and_then(|s| s.parse::<i64>().ok())
                 .and_then(wxread_answer::rfc3339),
@@ -611,10 +616,11 @@ fn recall(account: &str, notice: &str, by: &str, recalled: Option<String>) -> Pa
     }
 }
 
-/// A link of a template: its name, its members' ids and what it shows.
+/// A link of a template: its name, its members (each their id and the
+/// name it shows them by) and what it shows.
 struct Slot {
     name: String,
-    members: Vec<String>,
+    members: Vec<(String, String)>,
     shown: String,
 }
 
@@ -638,11 +644,7 @@ impl Slot {
         } else {
             members.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join(&separator)
         };
-        Some(Slot {
-            name: attr(link, "name")?,
-            members: members.into_iter().map(|(u, _)| u).collect(),
-            shown,
-        })
+        Some(Slot { name: attr(link, "name")?, members, shown })
     }
 }
 
@@ -662,9 +664,10 @@ fn template(account: &str, t: Node) -> Option<Parsed> {
     let by_account = template.starts_with('你');
     let by = |name: &str| {
         if by_account {
-            Some(account.to_string())
+            person(Some(account), None)
         } else {
-            slot(name).and_then(|s| s.members.first().cloned())
+            let first = slot(name).and_then(|s| s.members.first());
+            first.map_or(Value::Null, |(id, shown)| person(Some(id), Some(shown)))
         }
     };
     if template.contains("修改群名") {
@@ -683,13 +686,13 @@ fn template(account: &str, t: Node) -> Option<Parsed> {
     } else {
         return Some(Parsed::of(Kind::System, json!({ "text": notice })));
     };
-    let mut contacts: Vec<String> = Vec::new();
+    let mut contacts: Vec<Value> = Vec::new();
     for s in slots.iter().filter(|s| by_account || s.name != by_slot) {
-        contacts.extend_from_slice(&s.members);
+        contacts.extend(s.members.iter().map(|(id, shown)| person(Some(id), Some(shown))));
     }
     // "…邀请你和…加入了群聊": the account joined too.
     if template.contains("邀请你") {
-        contacts.insert(0, account.to_string());
+        contacts.insert(0, person(Some(account), None));
     }
     if contacts.is_empty() {
         return Some(Parsed::of(Kind::System, json!({ "text": notice })));

@@ -8,8 +8,8 @@ WHEN TO RUN IT
 WHAT IT READS
   The account's message databases under its db_storage (message/
   message_<n>.db, and message/biz_message_<n>.db for official accounts)
-  and contact/contact.db (and message/media_<n>.db, for whether WeChat
-  holds a voice message's sound), each with the WAL beside it (what
+  and contact/contact.db, for names (and message/media_<n>.db, for
+  whether WeChat holds a voice message's sound), each with the WAL beside it (what
   WeChat wrote last), with their keys: the file --keys names, else the
   contents of WXREAD_KEYS. Each is decrypted into memory and read there, after its key
   is checked against its first page; whether a media message's file and
@@ -37,19 +37,20 @@ OPTIONS
 
 WHAT IT ANSWERS
     account   the account read: its directory's name, as doctor's id
-    chat      the chat read: its id
-    messages  [{id, at, sender, sender_name, kind, <kind>, type, subtype,
+    chat      the chat read: {id, display_name}, as `wxread chats` names it
+    messages  [{id, at, sender, kind, <kind>, type, subtype,
               content}], newest first (oldest first with
               --oldest-first), those sent in one second in the order
               WeChat shows them:
               id           WeChat's server id of it, a string; null for one
                            the server never saw (some notices)
               at           when it was sent, RFC 3339 in UTC
-              sender       who said it: a wxid; a recall's, who recalled
+              sender       who said it, {id, display_name}: id a wxid;
+                           display_name what WeChat shows them as: the
+                           account's remark for them, else their name in
+                           the group, else their own name; "" when
+                           nothing names them. A recall's is who recalled
                            it; null for WeChat's other notices
-              sender_name  what WeChat shows them as: the account's remark
-                           for them, else their name in the group, else
-                           their own name; null when nothing names them
               kind         what it is, one of the kinds below
               <kind>       an object named by its kind, of the fields
                            below: "kind": "quote" comes with "quote": {…}
@@ -64,7 +65,11 @@ WHAT IT ANSWERS
     next      pass it as --cursor for the next page; null on the last one
 
 THE KINDS AND THEIR FIELDS
-  Every field is null when the message does not say it.
+  Every field is null when the message does not say it. Every person a
+      kind names (a quote's sender, a card's contact, who nudged, joined,
+      left, renamed or posted) is {id, display_name}, as sender is: shown
+      as WeChat shows their contact, else by the name the message gives
+      them; its id null when the message names them only by a name.
   Each media kind (image, video, file, sticker, voice) says whether
       WeChat on this Mac holds what `wxread file get <id>` writes:
       file_present its file, true or false (a sticker's, whether it
@@ -79,12 +84,11 @@ THE KINDS AND THEIR FIELDS
               author's nickname when it has none) and summary its
               author's nickname: WeChat's own title and description of it
               are a placeholder for clients too old to show it
-  quote       {text, quoted: {id, sender, name, excerpt}}: the reply, and
-              the quoted message's id, sender, name and, for a text, its
-              words
+  quote       {text, quoted: {id, sender, excerpt}}: the reply, and the
+              quoted message's id, sender and, for a text, its words
   location    {latitude, longitude, name, address}
-  card        {contact, name}: the contact the card shares
-  forward     {title, messages: [{sender, name, at, kind, content, type,
+  card        {contact}: the contact the card shares
+  forward     {title, messages: [{sender, at, kind, content, type,
               inside}]}: each message forwarded, in order; one forwarded
               inside another follows it, its inside the position in this
               list of the forward it sits in (null at the top)
@@ -96,9 +100,10 @@ THE KINDS AND THEIR FIELDS
               other; recalled the id of the message recalled, when
               WeChat's notice holds it (most do not: null)
   nudge       {from, to, text}: who nudged whom
-  join        {contacts, by, text}: who joined the group, and who brought
-              them in
-  leave       {contacts, by, text}: who left or was removed, and by whom
+  join        {contacts, by, text}: who joined the group (a list), and who
+              brought them in
+  leave       {contacts, by, text}: who left or was removed (a list), and
+              by whom
   renamed     {name, by, text}: the group's new name, and who gave it
   transfer    {amount_fen, state, memo}: the amount in fen (1/100 yuan)
               when shown, state "sent", "received" or "returned"
@@ -111,10 +116,9 @@ THE KINDS AND THEIR FIELDS
               connected one lasted (通话时长 01:04:50 is 3890), null for
               the rest; text what WeChat shows of it
   group_notice
-              {text, by: {id, display_name}, at}: the group's notice
-              (群公告) posted into its chat: its text; who posted it, by
-              id and shown as the sender is; when it was posted (RFC 3339,
-              UTC). `wxread group <id>` answers the notice it has now
+              {text, by, at}: the group's notice (群公告) posted into its
+              chat: its text; who posted it; when it was posted (RFC
+              3339, UTC). `wxread group <id>` answers the notice it has now
   image       {name, md5, file_present, thumbnail_present}: name finds
               its file, msg/attach/<md5 of the chat id>/<YYYY-MM>/Img/
               <name>.dat under the account's directory, sealed

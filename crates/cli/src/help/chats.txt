@@ -28,7 +28,7 @@ OPTIONS
                     with them first; then every group they are all members
                     of, the smallest first, newest first among the same
                     size, whether or not the group has a chat in the list
-  --query <text>    only the chats whose id, name (as answered below: the
+  --query <text>    only the chats whose id, display_name (as answered: the
                     remark first, and an unnamed group's members' names)
                     or own name (what a contact or group calls itself,
                     remarked or not) holds it, whatever its case; with
@@ -39,12 +39,12 @@ OPTIONS
 
 WHAT IT ANSWERS
     account   the account read: its directory's name, as doctor's id
-    chats     [{id, name, kind, read_with, last_message_at, unread,
+    chats     [{id, display_name, kind, read_with, last_message_at, unread,
               members}], newest first (with --with, the smallest first):
               id               its contact's id: a wxid, or a group's
                                <n>@chatroom; a folder's id in WeChat's
                                list (see kind)
-              name             as WeChat shows the chat: the account's
+              display_name     as WeChat shows the chat: the account's
                                remark for it, else its own name; a group
                                with neither is named as WeChat names it,
                                by its members' display names, the

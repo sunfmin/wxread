@@ -362,7 +362,7 @@ fn articles_answers_exactly_the_keys_its_help_and_the_guide_name() {
         );
     }
     for field in json["articles"][0]["official_account"].as_object().unwrap().keys() {
-        assert!(help.contains("{id, name}") && help.contains(field), "{field}");
+        assert!(help.contains("{id, display_name}") && help.contains(field), "{field}");
     }
 }
 

@@ -129,6 +129,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     }
     let page = wxread_search::page(found, range, cursor.as_ref(), limit);
     let mut names: BTreeMap<String, Names> = BTreeMap::new();
+    let shown_chats = crate::contacts::display_names(&account)?;
     // A voice message has no text to be found by, so no voice is on the
     // page and the media databases are not read.
     let (dir, voices) = (account.dir(), BTreeSet::new());
@@ -138,13 +139,11 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
             let in_group = in_group(&contacts_db, &f.chat)?;
             names.insert(f.chat.clone(), Names { contacts: contacts.clone(), in_group });
         }
-        let chat_name = contacts.get(&f.chat).map(|c| {
-            wxread_contacts::display_name(c.remark.as_deref(), None, c.nick_name.as_deref())
-        });
         let chat_dir = wxread_media::chat_dir(&f.chat);
         let held = |m: &Media, r: &Row| media::held(&dir, m, &chat_dir, r.server_id, &voices);
         let shown = &names[&f.chat];
-        messages.push(wxread_search::answer(f, &own, shown, chat_name.as_deref(), &held));
+        let chat_name = shown_chats.get(&f.chat).map(String::as_str);
+        messages.push(wxread_search::answer(f, &own, shown, chat_name, &held));
     }
     Ok(json!({
         "account": account.id(),

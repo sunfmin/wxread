@@ -86,7 +86,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let page = wxread_messages::page(&chat, &names, rows, range, start, limit, held);
     Ok(json!({
         "account": account.id(),
-        "chat": chat.id,
+        "chat": crate::contacts::chat(&account, &chat.id)?,
         "messages": page.messages,
         "next": page.next.map(|n| n.text()),
     }))

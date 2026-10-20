@@ -77,7 +77,7 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
                 "<msg><appmsg><title>yes, 9am</title><type>57</type><refermsg><type>1</type><svrid>9001</svrid><chatusr>wxid_bob</chatusr><displayname>Bobby</displayname><content>Saturday?</content></refermsg></appmsg></msg>",
             ),
             "quote",
-            json!({ "text": "yes, 9am", "quoted": { "id": "9001", "sender": "wxid_bob", "name": "Bobby", "excerpt": "Saturday?" } }),
+            json!({ "text": "yes, 9am", "quoted": { "id": "9001", "sender": { "id": "wxid_bob", "display_name": "Bobby" }, "excerpt": "Saturday?" } }),
         ),
         (
             group(
@@ -91,7 +91,7 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
         (
             group(6, 42, r#"<msg username="wxid_dan" nickname="Dan"/>"#),
             "card",
-            json!({ "contact": "wxid_dan", "name": "Dan" }),
+            json!({ "contact": { "id": "wxid_dan", "display_name": "Dan" } }),
         ),
         (
             group(
@@ -103,9 +103,9 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
             ),
             "forward",
             json!({ "title": "Chat history", "messages": [
-                { "sender": "wxid_amy", "name": "Amy", "at": "2025-10-09T08:53:20Z", "kind": "text", "content": "Saturday?", "type": 1, "inside": null },
-                { "sender": null, "name": "Bob", "at": null, "kind": "forward", "content": "Older", "type": 17, "inside": null },
-                { "sender": null, "name": "Cat", "at": null, "kind": "image", "content": "[Photo]", "type": 2, "inside": 1 },
+                { "sender": { "id": "wxid_amy", "display_name": "Amy W" }, "at": "2025-10-09T08:53:20Z", "kind": "text", "content": "Saturday?", "type": 1, "inside": null },
+                { "sender": { "id": null, "display_name": "Bob" }, "at": null, "kind": "forward", "content": "Older", "type": 17, "inside": null },
+                { "sender": { "id": null, "display_name": "Cat" }, "at": null, "kind": "image", "content": "[Photo]", "type": 2, "inside": 1 },
             ] }),
         ),
         (
@@ -124,7 +124,7 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
                 "<msg><appmsg><title>\"Bobby\" 拍了拍 我</title><type>62</type><patinfo><fromusername>wxid_bob</fromusername><pattedusername>wxid_me</pattedusername></patinfo></appmsg></msg>",
             ),
             "nudge",
-            json!({ "from": "wxid_bob", "to": "wxid_me", "text": "\"Bobby\" 拍了拍 我" }),
+            json!({ "from": { "id": "wxid_bob", "display_name": "Bobby" }, "to": { "id": "wxid_me", "display_name": "Me" }, "text": "\"Bobby\" 拍了拍 我" }),
         ),
         (
             group(
@@ -137,7 +137,7 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
                 ),
             ),
             "join",
-            json!({ "contacts": ["wxid_dan"], "by": "wxid_bob", "text": "\"Bobby\"邀请\"Dan\"加入了群聊" }),
+            json!({ "contacts": [{ "id": "wxid_dan", "display_name": "Dan" }], "by": { "id": "wxid_bob", "display_name": "Bobby" }, "text": "\"Bobby\"邀请\"Dan\"加入了群聊" }),
         ),
         (
             group(
@@ -149,7 +149,7 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
                 ),
             ),
             "leave",
-            json!({ "contacts": ["wxid_dan"], "by": "wxid_me", "text": "你将\"Dan\"移出了群聊" }),
+            json!({ "contacts": [{ "id": "wxid_dan", "display_name": "Dan" }], "by": { "id": "wxid_me", "display_name": "Me" }, "text": "你将\"Dan\"移出了群聊" }),
         ),
         (
             group(
@@ -162,7 +162,7 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
                 ),
             ),
             "renamed",
-            json!({ "name": "Crag Rats", "by": "wxid_bob", "text": "\"Bobby\"修改群名为“Crag Rats”" }),
+            json!({ "name": "Crag Rats", "by": { "id": "wxid_bob", "display_name": "Bobby" }, "text": "\"Bobby\"修改群名为“Crag Rats”" }),
         ),
         (
             group(
@@ -301,7 +301,7 @@ fn each_kind_is_read_as_its_kind_with_its_fields() {
         world.run(&["messages", "--chat", GROUP], &[("WXREAD_KEYS", &account.all_keys())]).ok();
     assert_eq!(
         (&json["account"], &json["chat"], &json["next"]),
-        (&json!("wxid_me_1a2b"), &json!(GROUP), &Value::Null)
+        (&json!("wxid_me_1a2b"), &json!({ "id": GROUP, "display_name": "Hiking" }), &Value::Null)
     );
     let messages = json["messages"].as_array().unwrap();
     let expected = every_kind();
@@ -329,24 +329,12 @@ fn each_kind_is_read_as_its_kind_with_its_fields() {
     // the account's, and each sender is shown as WeChat shows them.
     assert_eq!(messages[0]["id"], "9022");
     let by_id = |id: &str| messages.iter().find(|m| m["id"] == id).unwrap();
-    assert_eq!(
-        (&by_id("9001")["sender"], &by_id("9001")["sender_name"]),
-        (&json!("wxid_bob"), &json!("Bobby"))
-    );
-    assert_eq!(
-        (&by_id("9002")["sender"], &by_id("9002")["sender_name"]),
-        (&json!("wxid_dan"), &json!("Dan"))
-    );
+    assert_eq!(by_id("9001")["sender"], json!({ "id": "wxid_bob", "display_name": "Bobby" }));
+    assert_eq!(by_id("9002")["sender"], json!({ "id": "wxid_dan", "display_name": "Dan" }));
     assert_eq!(by_id("9002")["content"], "hi");
     // A recall is its recaller's, by the name its notice shows them by.
-    assert_eq!(
-        (&by_id("9008")["sender"], &by_id("9008")["sender_name"]),
-        (&json!("wxid_bob"), &json!("Bobby"))
-    );
-    assert_eq!(
-        (&by_id("9012")["sender"], &by_id("9012")["sender_name"]),
-        (&Value::Null, &Value::Null)
-    );
+    assert_eq!(by_id("9008")["sender"], json!({ "id": "wxid_bob", "display_name": "Bobby" }));
+    assert_eq!(by_id("9012")["sender"], Value::Null);
 }
 
 #[test]
@@ -360,7 +348,7 @@ fn a_message_whose_xml_does_not_read_is_unknown_with_its_content_and_type() {
     assert_eq!(
         m,
         json!({
-            "id": "9021", "at": "2025-10-09T08:53:41Z", "sender": "wxid_bob", "sender_name": "Bobby",
+            "id": "9021", "at": "2025-10-09T08:53:41Z", "sender": { "id": "wxid_bob", "display_name": "Bobby" },
             "kind": "unknown", "unknown": {}, "type": 49, "subtype": 5, "content": "<msg><appmsg><title>broken",
         })
     );
@@ -376,10 +364,10 @@ fn messages_of_one_second_are_in_order_and_paging_returns_each_once() {
     assert_eq!(ids(&whole), ["110", "102", "103", "100", "104", "101", "99"]);
     let mine = &whole["messages"][6];
     assert_eq!(
-        (&mine["sender"], &mine["sender_name"], &mine["content"]),
-        (&json!("wxid_me"), &json!("Me"), &json!("earlier"))
+        (&mine["sender"], &mine["content"]),
+        (&json!({ "id": "wxid_me", "display_name": "Me" }), &json!("earlier"))
     );
-    assert_eq!(whole["messages"][0]["sender_name"], "Amy W");
+    assert_eq!(whole["messages"][0]["sender"]["display_name"], "Amy W");
     for limit in ["1", "2", "3"] {
         let mut paged = Vec::new();
         let mut args = vec!["messages", "--chat", "wxid_amy", "--limit", limit];

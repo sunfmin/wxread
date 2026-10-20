@@ -3,7 +3,7 @@
 //! database, and prints the page of articles the articles crate makes of
 //! them.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use anyhow::anyhow;
 use rusqlite::Connection;
@@ -39,14 +39,14 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
             sent.extend(messages(&account.database(&path)?, &path, only)?);
         }
     }
-    let names = names(&account.database(CONTACT_DB)?)?;
+    let names = crate::contacts::display_names(&account)?;
     let page = wxread_articles::page(&sent, &names, cursor.as_ref(), limit);
     let articles: Vec<Value> = page
         .articles
         .iter()
         .map(|a| {
             json!({
-                "official_account": {"id": a.official_account, "name": a.name},
+                "official_account": {"id": a.official_account, "display_name": a.display_name},
                 "sent_at": a.sent_at,
                 "title": a.title,
                 "digest": a.digest,
@@ -108,24 +108,4 @@ fn messages(db: &Connection, path: &str, only: Option<&str>) -> anyhow::Result<V
         sent.extend(rows);
     }
     Ok(sent)
-}
-
-/// What the account calls each official account it has a contact of, by
-/// its id, as WeChat shows it.
-fn names(db: &Connection) -> anyhow::Result<BTreeMap<String, String>> {
-    let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(CONTACT_DB, &e.to_string()));
-    let mut query = db
-        .prepare("SELECT username, remark, nick_name FROM contact WHERE username LIKE 'gh\\_%' ESCAPE '\\'")
-        .map_err(sql)?;
-    let rows = query
-        .query_map([], |r| {
-            let (remark, name): (Option<String>, Option<String>) = (r.get(1)?, r.get(2)?);
-            Ok((
-                r.get::<_, String>(0)?,
-                wxread_contacts::display_name(remark.as_deref(), None, name.as_deref()),
-            ))
-        })
-        .and_then(Iterator::collect)
-        .map_err(sql)?;
-    Ok(rows)
 }

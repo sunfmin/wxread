@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 
+use serde_json::{Value, json};
 use wxread_contacts::display_name;
 
 use crate::Chat;
@@ -36,6 +37,25 @@ impl Names {
         (!shown.is_empty()).then_some(shown)
     }
 
+    /// `id` as an answer names them ([`person`]): shown as [`Names::of`]
+    /// says, else by `given`, the name the message itself gives them.
+    pub fn person(&self, id: Option<&str>, given: Option<&str>) -> Value {
+        let shown = id.and_then(|id| self.of(id));
+        person(id, shown.as_deref().or(given.filter(|g| !g.is_empty())))
+    }
+
+    /// `found`, a person a message's kind names (`{id, display_name}`, its
+    /// `display_name` the name the message gives them), named in place as
+    /// [`Names::person`] names them.
+    pub fn name(&self, found: &mut Value) {
+        if found.is_null() {
+            return;
+        }
+        let id = found["id"].as_str().map(str::to_string);
+        let given = found["display_name"].as_str().map(str::to_string);
+        *found = self.person(id.as_deref(), given.as_deref());
+    }
+
     /// Who other than the account goes by `name` in `chat`: in a direct
     /// chat, the contact it is with; in a group, the one member whose
     /// remark, name in the group or own name it is. None when no member
@@ -59,6 +79,16 @@ impl Names {
             _ => None,
         }
     }
+}
+
+/// A person or account as every answer names one: `{id, display_name}`,
+/// `display_name` "" when nothing names them; null when there is neither
+/// an id nor a name. An id is null for one named only by a name.
+pub fn person(id: Option<&str>, display_name: Option<&str>) -> Value {
+    if id.is_none() && display_name.is_none() {
+        return Value::Null;
+    }
+    json!({ "id": id, "display_name": display_name.unwrap_or_default() })
 }
 
 /// The account's own id, out of its directory's name `dir` (WeChat names

@@ -48,10 +48,10 @@ fn it_lists_every_chat_newest_first_the_wals_included() {
         json!({
             "account": "wxid_me_1a2b",
             "chats": [
-                {"id": "wxid_bob", "name": "Bob", "kind": "direct", "read_with": "wxread messages --chat wxid_bob", "last_message_at": "2025-10-09T09:00:00Z", "unread": 1, "members": 2},
-                {"id": "wxid_amy", "name": "Amy W", "kind": "direct", "read_with": "wxread messages --chat wxid_amy", "last_message_at": "2025-10-09T08:58:20Z", "unread": 2, "members": 2},
-                {"id": "123@chatroom", "name": "Hiking", "kind": "group", "read_with": "wxread messages --chat 123@chatroom", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null},
-                {"id": "wxid_stranger", "name": "", "kind": "direct", "read_with": "wxread messages --chat wxid_stranger", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2},
+                {"id": "wxid_bob", "display_name": "Bob", "kind": "direct", "read_with": "wxread messages --chat wxid_bob", "last_message_at": "2025-10-09T09:00:00Z", "unread": 1, "members": 2},
+                {"id": "wxid_amy", "display_name": "Amy W", "kind": "direct", "read_with": "wxread messages --chat wxid_amy", "last_message_at": "2025-10-09T08:58:20Z", "unread": 2, "members": 2},
+                {"id": "123@chatroom", "display_name": "Hiking", "kind": "group", "read_with": "wxread messages --chat 123@chatroom", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null},
+                {"id": "wxid_stranger", "display_name": "", "kind": "direct", "read_with": "wxread messages --chat wxid_stranger", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2},
             ],
             "next": null,
         })
@@ -105,8 +105,8 @@ fn with_two_contacts_it_answers_only_the_groups_holding_both_smallest_first() {
         json!({
             "account": "wxid_me_1a2b",
             "chats": [
-                {"id": "2@chatroom", "name": "Small", "kind": "group", "read_with": "wxread messages --chat 2@chatroom", "last_message_at": null, "unread": 0, "members": 3},
-                {"id": "1@chatroom", "name": "Big", "kind": "group", "read_with": "wxread messages --chat 1@chatroom", "last_message_at": "2025-10-09T09:00:00Z", "unread": 5, "members": 4},
+                {"id": "2@chatroom", "display_name": "Small", "kind": "group", "read_with": "wxread messages --chat 2@chatroom", "last_message_at": null, "unread": 0, "members": 3},
+                {"id": "1@chatroom", "display_name": "Big", "kind": "group", "read_with": "wxread messages --chat 1@chatroom", "last_message_at": "2025-10-09T09:00:00Z", "unread": 5, "members": 4},
             ],
             "next": null,
         })
@@ -173,10 +173,10 @@ fn a_folder_is_listed_as_a_folder_named_as_wechat_names_it_with_what_reads_it() 
     assert_eq!(
         json["chats"],
         json!([
-            {"id": "@placeholder_foldgroup", "name": "折叠的群聊", "kind": "folder", "read_with": "wxread chats", "last_message_at": "2025-10-09T09:00:00Z", "unread": 0, "members": null},
-            {"id": "brandsessionholder", "name": "订阅号消息", "kind": "folder", "read_with": "wxread articles", "last_message_at": "2025-10-09T08:58:20Z", "unread": 3, "members": null},
-            {"id": "brandservicesessionholder", "name": "服务号", "kind": "folder", "read_with": "wxread articles", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null},
-            {"id": "wxid_amy", "name": "Amy", "kind": "direct", "read_with": "wxread messages --chat wxid_amy", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2},
+            {"id": "@placeholder_foldgroup", "display_name": "折叠的群聊", "kind": "folder", "read_with": "wxread chats", "last_message_at": "2025-10-09T09:00:00Z", "unread": 0, "members": null},
+            {"id": "brandsessionholder", "display_name": "订阅号消息", "kind": "folder", "read_with": "wxread articles", "last_message_at": "2025-10-09T08:58:20Z", "unread": 3, "members": null},
+            {"id": "brandservicesessionholder", "display_name": "服务号", "kind": "folder", "read_with": "wxread articles", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null},
+            {"id": "wxid_amy", "display_name": "Amy", "kind": "direct", "read_with": "wxread messages --chat wxid_amy", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2},
         ])
     );
     let found = world
@@ -376,8 +376,12 @@ fn an_unnamed_group_is_named_by_its_members_as_wechat_shows_it() {
     ];
     account.write();
     let json = world.run(&["chats"], &[("WXREAD_KEYS", &account.keys(&DATABASES))]).ok();
-    let names: Vec<&str> =
-        json["chats"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = json["chats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["display_name"].as_str().unwrap())
+        .collect();
     assert_eq!(names, ["孙凤君、秦俊斌 @qinjunbin", "Hiking", "Ours"]);
 }
 

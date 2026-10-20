@@ -3,10 +3,10 @@
 //! or commented out of its contacts, and prints the page the moments crate
 //! makes of them, each medium with whether WeChat holds it.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use anyhow::anyhow;
-use rusqlite::{Connection, OptionalExtension as _};
+use rusqlite::Connection;
 use serde_json::{Value, json};
 use wxread_answer::Limit;
 use wxread_moments::{Cursor, Moment, Person, Row, Said};
@@ -35,7 +35,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     } else {
         Vec::new()
     };
-    let names = names(&account.database(CONTACT_DB)?)?;
+    let names = crate::contacts::display_names(&account)?;
     let page = wxread_moments::page(&rows, &names, cursor.as_ref(), limit);
     let dir = account.dir();
     let moments: Vec<Value> = page.moments.iter().map(|m| answer(m, &dir)).collect();
@@ -49,7 +49,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
 /// `moment` as the answer has it, each medium with whether WeChat holds it
 /// under the account directory `dir`.
 fn answer(moment: &Moment, dir: &std::path::Path) -> Value {
-    let person = |p: &Person| json!({"id": p.id, "name": p.name});
+    let person = |p: &Person| json!({"id": p.id, "display_name": p.display_name});
     let said = |all: &[Said]| -> Vec<Value> {
         all.iter()
             .map(|s| {
@@ -131,36 +131,4 @@ pub fn rows(db: &Connection, only: Option<&str>, tid: Option<i64>) -> anyhow::Re
 /// The Moment of `tid`, if `sns/sns.db` holds it.
 pub fn one(db: &Connection, tid: i64) -> anyhow::Result<Option<Row>> {
     Ok(rows(db, None, Some(tid))?.into_iter().next())
-}
-
-/// What WeChat shows for each contact, by id: the account's remark, else
-/// their own name.
-pub fn names(db: &Connection) -> anyhow::Result<BTreeMap<String, String>> {
-    let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(CONTACT_DB, &e.to_string()));
-    let mut query = db.prepare("SELECT username, remark, nick_name FROM contact").map_err(sql)?;
-    let rows = query
-        .query_map([], |r| {
-            let (remark, name): (Option<String>, Option<String>) = (r.get(1)?, r.get(2)?);
-            Ok((
-                r.get::<_, Option<String>>(0)?.unwrap_or_default(),
-                wxread_contacts::display_name(remark.as_deref(), None, name.as_deref()),
-            ))
-        })
-        .and_then(Iterator::collect)
-        .map_err(sql)?;
-    Ok(rows)
-}
-
-/// The name WeChat shows for `id`, when the account has a contact of them.
-pub fn name_of(db: &Connection, id: &str) -> anyhow::Result<Option<String>> {
-    let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(CONTACT_DB, &e.to_string()));
-    let found: Option<(Option<String>, Option<String>)> = db
-        .query_row("SELECT remark, nick_name FROM contact WHERE username = ?1", [id], |r| {
-            Ok((r.get(0)?, r.get(1)?))
-        })
-        .optional()
-        .map_err(sql)?;
-    Ok(found.map(|(remark, name)| {
-        wxread_contacts::display_name(remark.as_deref(), None, name.as_deref())
-    }))
 }

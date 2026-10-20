@@ -134,12 +134,12 @@ fn a_quote_has_the_reply_and_the_quoted_messages_id_sender_and_excerpt() {
     let quote = r#"<msg><appmsg><title>yes, 9am</title><type>57</type><refermsg><type>1</type><svrid>7001</svrid><fromusr>1@chatroom</fromusr><chatusr>wxid_ann</chatusr><displayname>Ann</displayname><content>Saturday?</content></refermsg></appmsg></msg>"#;
     assert_eq!(
         read(app(57), quote),
-        json!({ "kind": "quote", "quote": { "text": "yes, 9am", "quoted": { "id": "7001", "sender": "wxid_ann", "name": "Ann", "excerpt": "Saturday?" } } })
+        json!({ "kind": "quote", "quote": { "text": "yes, 9am", "quoted": { "id": "7001", "sender": { "id": "wxid_ann", "display_name": "Ann" }, "excerpt": "Saturday?" } } })
     );
     let of_image = r#"<msg><appmsg><title>nice</title><refermsg><type>3</type><svrid>7002</svrid><fromusr>wxid_bob</fromusr><content>&lt;msg&gt;&lt;img/&gt;&lt;/msg&gt;</content></refermsg></appmsg></msg>"#;
     assert_eq!(
         read(app(57), of_image)["quote"]["quoted"],
-        json!({ "id": "7002", "sender": "wxid_bob", "name": null, "excerpt": null })
+        json!({ "id": "7002", "sender": { "id": "wxid_bob", "display_name": "" }, "excerpt": null })
     );
     let of_nothing = r#"<msg><appmsg><title>hm</title></appmsg></msg>"#;
     assert_eq!(read(app(57), of_nothing)["quote"]["quoted"]["id"], Value::Null);
@@ -154,7 +154,7 @@ fn a_location_has_its_place_and_a_card_its_contact() {
     );
     assert_eq!(
         read(CARD, r#"<msg username="wxid_dan" nickname="Dan" bigheadimgurl=""/>"#),
-        json!({ "kind": "card", "card": { "contact": "wxid_dan", "name": "Dan" } })
+        json!({ "kind": "card", "card": { "contact": { "id": "wxid_dan", "display_name": "Dan" } } })
     );
 }
 
@@ -179,12 +179,12 @@ pub const ITEMS: &str = r#"<dataitem datatype="1" dataid="a"><datadesc>Saturday?
 #[test]
 fn a_forward_has_each_message_in_order_nested_ones_flattened_with_where_they_sit() {
     let expected = json!({ "kind": "forward", "forward": { "title": "Ann and Ben's chat", "messages": [
-        { "sender": "wxid_ann", "name": "Ann", "at": "2026-10-19T09:30:00Z", "kind": "text", "content": "Saturday?", "type": 1, "inside": null },
-        { "sender": null, "name": "Ben", "at": null, "kind": "forward", "content": "Older", "type": 17, "inside": null },
-        { "sender": "wxid_cat", "name": "Cat", "at": null, "kind": "text", "content": "inside", "type": 1, "inside": 1 },
-        { "sender": null, "name": "Cat", "at": null, "kind": "image", "content": "[Photo]", "type": 2, "inside": 1 },
-        { "sender": null, "name": "Ben", "at": null, "kind": "link", "content": "Route topo", "type": 5, "inside": null },
-        { "sender": null, "name": null, "at": null, "kind": "unknown", "content": "?", "type": 99, "inside": null },
+        { "sender": { "id": "wxid_ann", "display_name": "Ann" }, "at": "2026-10-19T09:30:00Z", "kind": "text", "content": "Saturday?", "type": 1, "inside": null },
+        { "sender": { "id": null, "display_name": "Ben" }, "at": null, "kind": "forward", "content": "Older", "type": 17, "inside": null },
+        { "sender": { "id": "wxid_cat", "display_name": "Cat" }, "at": null, "kind": "text", "content": "inside", "type": 1, "inside": 1 },
+        { "sender": { "id": null, "display_name": "Cat" }, "at": null, "kind": "image", "content": "[Photo]", "type": 2, "inside": 1 },
+        { "sender": { "id": null, "display_name": "Ben" }, "at": null, "kind": "link", "content": "Route topo", "type": 5, "inside": null },
+        { "sender": null, "at": null, "kind": "unknown", "content": "?", "type": 99, "inside": null },
     ] } });
     assert_eq!(read(app(19), &forward(ITEMS, true)), expected);
     assert_eq!(read(app(19), &forward(ITEMS, false)), expected);
@@ -288,7 +288,7 @@ fn a_recall_is_its_recallers_by_the_name_its_notice_shows_them_by() {
     let said = |chat_id: &str, text: &str| {
         let m = message(&chat(chat_id), &names, &recall(text), &none);
         assert_eq!(m["kind"], "recall", "{m}");
-        (m["sender"].clone(), m["sender_name"].clone())
+        (m["sender"]["id"].clone(), m["sender"]["display_name"].clone())
     };
     // By the remark, the name in the group or the own name of a member.
     assert_eq!(
@@ -313,7 +313,7 @@ fn a_nudge_has_who_nudged_whom() {
     let pat = r#"<msg><appmsg><title>"Ann" 拍了拍 我</title><type>62</type><patinfo><fromusername>wxid_ann</fromusername><chatusername>wxid_ann</chatusername><pattedusername>wxid_me</pattedusername></patinfo></appmsg></msg>"#;
     assert_eq!(
         read(app(62), pat),
-        json!({ "kind": "nudge", "nudge": { "from": "wxid_ann", "to": "wxid_me", "text": "\"Ann\" 拍了拍 我" } })
+        json!({ "kind": "nudge", "nudge": { "from": { "id": "wxid_ann", "display_name": "" }, "to": { "id": "wxid_me", "display_name": "" }, "text": "\"Ann\" 拍了拍 我" } })
     );
 }
 
@@ -344,21 +344,25 @@ fn a_join_has_who_joined_and_by_whom() {
     );
     assert_eq!(
         read(SYSTEM_XML, &invited),
-        json!({ "kind": "join", "join": { "contacts": ["wxid_ben", "wxid_cat"], "by": "wxid_ann", "text": "\"Ann\"邀请\"Ben、Cat\"加入了群聊" } })
+        json!({ "kind": "join", "join": { "contacts": [{ "id": "wxid_ben", "display_name": "Ben" }, { "id": "wxid_cat", "display_name": "Cat" }], "by": { "id": "wxid_ann", "display_name": "Ann" }, "text": "\"Ann\"邀请\"Ben、Cat\"加入了群聊" } })
     );
     let by_qr = notice(
         r#""$adder$"通过扫描"$from$"分享的二维码加入群聊"#,
         &(members("adder", &[("wxid_dan", "Dan")]) + &members("from", &[("wxid_ann", "Ann")])),
     );
-    assert_eq!(read(SYSTEM, &by_qr)["join"]["contacts"], json!(["wxid_dan"]));
-    assert_eq!(read(SYSTEM, &by_qr)["join"]["by"], "wxid_ann");
+    assert_eq!(read(SYSTEM, &by_qr)["join"]["contacts"][0]["id"], "wxid_dan");
+    assert_eq!(read(SYSTEM, &by_qr)["join"]["by"]["id"], "wxid_ann");
     let me_too = notice(
         r#""$username$"邀请你和"$others$"加入了群聊"#,
         &(members("username", &[("wxid_ann", "Ann")]) + &members("others", &[("wxid_ben", "Ben")])),
     );
-    assert_eq!(read(SYSTEM, &me_too)["join"]["contacts"], json!(["wxid_me", "wxid_ben"]));
+    let joined = read(SYSTEM, &me_too)["join"]["contacts"].clone();
+    assert_eq!(
+        joined,
+        json!([{ "id": "wxid_me", "display_name": "" }, { "id": "wxid_ben", "display_name": "Ben" }])
+    );
     let by_me = notice(r#"你邀请"$names$"加入了群聊"#, &members("names", &[("wxid_ben", "Ben")]));
-    assert_eq!(read(SYSTEM, &by_me)["join"]["by"], "wxid_me");
+    assert_eq!(read(SYSTEM, &by_me)["join"]["by"]["id"], "wxid_me");
 }
 
 #[test]
@@ -367,7 +371,7 @@ fn a_removal_is_a_leave_and_a_rename_has_the_new_name() {
         notice(r#"你将"$kickoutname$"移出了群聊"#, &members("kickoutname", &[("wxid_ben", "Ben")]));
     assert_eq!(
         read(SYSTEM, &removed),
-        json!({ "kind": "leave", "leave": { "contacts": ["wxid_ben"], "by": "wxid_me", "text": "你将\"Ben\"移出了群聊" } })
+        json!({ "kind": "leave", "leave": { "contacts": [{ "id": "wxid_ben", "display_name": "Ben" }], "by": { "id": "wxid_me", "display_name": "" }, "text": "你将\"Ben\"移出了群聊" } })
     );
     let renamed = notice(
         r#""$username$"修改群名为“$remark$”"#,
@@ -376,7 +380,7 @@ fn a_removal_is_a_leave_and_a_rename_has_the_new_name() {
     );
     assert_eq!(
         read(SYSTEM, &renamed),
-        json!({ "kind": "renamed", "renamed": { "name": "Crag Rats", "by": "wxid_ann", "text": "\"Ann\"修改群名为“Crag Rats”" } })
+        json!({ "kind": "renamed", "renamed": { "name": "Crag Rats", "by": { "id": "wxid_ann", "display_name": "Ann" }, "text": "\"Ann\"修改群名为“Crag Rats”" } })
     );
 }
 
@@ -518,7 +522,7 @@ fn a_group_notice_has_its_text_its_poster_and_its_time() {
         read(app(87), GROUP_NOTICE),
         json!({ "kind": "group_notice", "group_notice": {
             "text": text,
-            "by": { "id": "wxid_steward", "display_name": null },
+            "by": { "id": "wxid_steward", "display_name": "" },
             "at": "2026-10-16T06:55:31Z",
         } })
     );
@@ -536,14 +540,14 @@ fn a_group_notice_without_its_text_or_its_poster_reads_what_it_holds() {
     );
     assert_eq!(
         read(app(87), &notice)["group_notice"],
-        json!({ "text": "Ride at 9.\nBring water.", "by": { "id": "wxid_ann", "display_name": null }, "at": "2026-10-17T07:16:08Z" })
+        json!({ "text": "Ride at 9.\nBring water.", "by": { "id": "wxid_ann", "display_name": "" }, "at": "2026-10-17T07:16:08Z" })
     );
     // An announcement that does not read: its text alone, posted by who
     // the message says sent it, at no time it says.
     let bare = "<msg><appmsg><type>87</type><announcement><![CDATA[<group_notice_item>]]></announcement><textannouncement><![CDATA[Ride at 9.]]></textannouncement></appmsg><fromusername>wxid_bob</fromusername></msg>";
     assert_eq!(
         read(app(87), bare)["group_notice"],
-        json!({ "text": "Ride at 9.", "by": { "id": "wxid_bob", "display_name": null }, "at": null })
+        json!({ "text": "Ride at 9.", "by": { "id": "wxid_bob", "display_name": "" }, "at": null })
     );
     // One that says nothing is still a notice, its text empty.
     assert_eq!(
@@ -565,8 +569,8 @@ fn a_group_notices_poster_is_shown_as_wechat_shows_them() {
     r.content = format!("wxid_steward:\n{GROUP_NOTICE}").into_bytes();
     let m = message(&chat("12345678901@chatroom"), &names, &r, &none);
     assert_eq!(
-        (&m["kind"], &m["sender"], &m["sender_name"]),
-        (&json!("group_notice"), &json!("wxid_steward"), &json!("物业管家"))
+        (&m["kind"], &m["sender"]),
+        (&json!("group_notice"), &json!({ "id": "wxid_steward", "display_name": "物业管家" }))
     );
     assert_eq!(
         m["group_notice"],
@@ -676,7 +680,7 @@ fn a_message_carries_its_id_time_sender_kind_content_and_type() {
     assert_eq!(
         m,
         json!({
-            "id": "1001", "at": "2025-10-09T08:53:20Z", "sender": "wxid_ann", "sender_name": "Ann",
+            "id": "1001", "at": "2025-10-09T08:53:20Z", "sender": { "id": "wxid_ann", "display_name": "Ann" },
             "kind": "text", "text": { "text": "m1" }, "type": 1, "subtype": 0, "content": "m1",
         })
     );
@@ -684,10 +688,7 @@ fn a_message_carries_its_id_time_sender_kind_content_and_type() {
     local.server_id = 0;
     local.sender = None;
     let m = message(&chat("wxid_ann"), &names, &local, &none);
-    assert_eq!(
-        (&m["id"], &m["at"], &m["sender"], &m["sender_name"]),
-        (&Value::Null, &Value::Null, &Value::Null, &Value::Null)
-    );
+    assert_eq!((&m["id"], &m["at"], &m["sender"]), (&Value::Null, &Value::Null, &Value::Null));
 }
 
 #[test]
@@ -696,10 +697,10 @@ fn a_group_message_drops_its_sender_prefix() {
     let mut r = row("message_0", 1, 1, 0);
     r.content = b"wxid_ann:\nhello:\nthere".to_vec();
     let m = message(&chat("1@chatroom"), &names, &r, &none);
-    assert_eq!((&m["sender"], &m["content"]), (&json!("wxid_ann"), &json!("hello:\nthere")));
+    assert_eq!((&m["sender"]["id"], &m["content"]), (&json!("wxid_ann"), &json!("hello:\nthere")));
     r.sender = None;
     let m = message(&chat("1@chatroom"), &names, &r, &none);
-    assert_eq!((&m["sender"], &m["content"]), (&json!("wxid_ann"), &json!("hello:\nthere")));
+    assert_eq!((&m["sender"]["id"], &m["content"]), (&json!("wxid_ann"), &json!("hello:\nthere")));
     // A direct chat's content is its own, whatever it starts with.
     r.sender = Some("wxid_ann".into());
     let m = message(&chat("wxid_ann"), &names, &r, &none);
@@ -708,7 +709,7 @@ fn a_group_message_drops_its_sender_prefix() {
     r.sender = Some("wxid_me".into());
     r.content = b"hi all".to_vec();
     let m = message(&chat("1@chatroom"), &names, &r, &none);
-    assert_eq!((&m["sender"], &m["content"]), (&json!("wxid_me"), &json!("hi all")));
+    assert_eq!((&m["sender"]["id"], &m["content"]), (&json!("wxid_me"), &json!("hi all")));
 }
 
 #[test]
@@ -945,4 +946,43 @@ fn a_folder_asked_for_as_a_chat_is_refused_naming_what_reads_it() {
         assert_eq!(why, folder.not_a_chat());
         assert!(why.contains(&format!("`{}`", folder.read_with())), "{why}");
     }
+}
+
+#[test]
+fn every_person_a_message_names_is_shown_by_the_remark_first() {
+    let mut names = Names::default();
+    let ann = Contact { remark: Some("Auntie".into()), nick_name: Some("Ann".into()) };
+    names.contacts.insert("wxid_ann".into(), ann);
+    names.in_group.insert("wxid_ann".into(), "Ann G".into());
+    let auntie = json!({ "id": "wxid_ann", "display_name": "Auntie" });
+    let said = |local_type: i64, content: &str| {
+        let mut r = row("message_0", 1, 1, 0);
+        r.local_type = local_type;
+        r.content = format!("wxid_bob:\n{content}").into_bytes();
+        r.sender = Some("wxid_bob".into());
+        message(&chat("1@chatroom"), &names, &r, &none)
+    };
+    let quote = r#"<msg><appmsg><title>yes</title><type>57</type><refermsg><type>1</type><svrid>7</svrid><chatusr>wxid_ann</chatusr><displayname>Ann</displayname><content>?</content></refermsg></appmsg></msg>"#;
+    assert_eq!(said(app(57), quote)["quote"]["quoted"]["sender"], auntie);
+    let card = r#"<msg username="wxid_ann" nickname="Ann"/>"#;
+    assert_eq!(said(CARD, card)["card"]["contact"], auntie);
+    let pat = r#"<msg><appmsg><title>t</title><type>62</type><patinfo><fromusername>wxid_ann</fromusername><pattedusername>wxid_ann</pattedusername></patinfo></appmsg></msg>"#;
+    let nudge = said(app(62), pat);
+    assert_eq!((&nudge["nudge"]["from"], &nudge["nudge"]["to"]), (&auntie, &auntie));
+    let joined = notice(
+        r#""$username$"邀请"$names$"加入了群聊"#,
+        &(members("username", &[("wxid_ann", "Ann")]) + &members("names", &[("wxid_ann", "Ann")])),
+    );
+    let join = said(SYSTEM_XML, &joined);
+    assert_eq!((&join["join"]["by"], &join["join"]["contacts"][0]), (&auntie, &auntie));
+    let forward = r#"<msg><appmsg><title>h</title><type>19</type><recorditem><![CDATA[<recordinfo><datalist count="1"><dataitem datatype="1"><datadesc>hi</datadesc><sourcename>Ann</sourcename><dataitemsource><realchatname>wxid_ann</realchatname></dataitemsource></dataitem></datalist></recordinfo>]]></recorditem></appmsg></msg>"#;
+    assert_eq!(said(app(19), forward)["forward"]["messages"][0]["sender"], auntie);
+    // Someone the account has no contact of is shown by the name the
+    // message gives them, else by "".
+    let stranger = r#"<msg username="wxid_zed" nickname="Zed"/>"#;
+    assert_eq!(
+        said(CARD, stranger)["card"]["contact"],
+        json!({ "id": "wxid_zed", "display_name": "Zed" })
+    );
+    assert_eq!(said(TEXT, "hi")["sender"], json!({ "id": "wxid_bob", "display_name": "" }));
 }

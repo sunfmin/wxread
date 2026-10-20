@@ -44,7 +44,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
         .map(|c| {
             json!({
                 "id": c.id,
-                "name": c.name,
+                "display_name": c.display_name,
                 "kind": c.kind.name(),
                 "read_with": c.read_with,
                 "last_message_at": c.last_message_at,

@@ -21,6 +21,7 @@ use roxmltree::Node;
 use serde_json::{Map, Value, json};
 use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
 use wxread_messages::kinds::{attr, child, named, text, xml};
+use wxread_messages::names::person;
 
 /// Where a favorite's files lie, under the account's directory.
 pub const SHELF: &str = "business/favorite";
@@ -200,6 +201,15 @@ pub struct Seen<'a> {
     pub own: &'a str,
     pub names: &'a BTreeMap<String, String>,
     pub held: &'a BTreeSet<String>,
+}
+
+impl Seen<'_> {
+    /// `id` as an answer names a person ([`person`]): shown as WeChat
+    /// shows their contact, else by `given`, the name the favorite gives.
+    fn person(&self, id: Option<&str>, given: Option<&str>) -> Value {
+        let shown = id.and_then(|id| self.names.get(id)).filter(|n| !n.is_empty());
+        person(id, shown.map(String::as_str).or(given.filter(|g| !g.is_empty())))
+    }
 }
 
 /// One page of the favorites: their rows, newest first, each answered as
@@ -514,8 +524,9 @@ impl At<'_, '_> {
                 kind.name().into(),
                 Value::Object(self.fields(kind, item, Some(item), false)),
             );
-            one.insert("sender".into(), json!(from("realchatname").or_else(|| from("fromusr"))));
-            one.insert("sender_name".into(), json!(text(item, "datasrcname")));
+            let sender = from("realchatname").or_else(|| from("fromusr"));
+            let given = text(item, "datasrcname");
+            one.insert("sender".into(), self.seen.person(sender.as_deref(), given.as_deref()));
             let at = text(item, "srcMsgCreateTime").and_then(|s| s.parse::<i64>().ok());
             one.insert("at".into(), json!(at.and_then(rfc3339)));
             one.insert("type".into(), json!(t));
@@ -546,13 +557,10 @@ fn source_of(row: &Row, s: Option<Option<Node>>, seen: &Seen) -> Value {
     let own = from.as_deref().is_some_and(|f| f == seen.own);
     let group = from.as_deref().is_some_and(|f| f.ends_with("@chatroom"));
     let chat = if own && !group && to.is_some() { to } else { from.clone() };
-    let name = |id: &Option<String>| id.as_ref().and_then(|i| seen.names.get(i)).cloned();
     let said_at = at("createtime").and_then(|t| t.parse::<i64>().ok()).and_then(rfc3339);
     json!({
-        "from": said_by,
-        "from_name": name(&said_by),
-        "chat": chat,
-        "chat_name": name(&chat),
+        "from": seen.person(said_by.as_deref(), None),
+        "chat": seen.person(chat.as_deref(), None),
         "at": said_at,
         "message_id": at("msgid").filter(|m| m != "0"),
         "link": at("link"),

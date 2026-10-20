@@ -26,7 +26,7 @@ fn names() -> BTreeMap<String, String> {
 }
 
 fn person(id: &str, name: &str) -> Person {
-    Person { id: id.into(), name: name.into() }
+    Person { id: id.into(), display_name: name.into() }
 }
 
 #[test]
