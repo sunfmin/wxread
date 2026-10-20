@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use wxread_schema::{CONTACT_DB, SESSION_DB};
 
 use crate::common::{World, snapshot};
-use crate::synthetic::{Account, Contact, DATABASES, Group, Session};
+use crate::synthetic::{Account, Contact, DATABASES, Group, Said, Session};
 
 /// An account with a friend, a group and a chat with someone it has no
 /// contact of; one more chat only in its WAL, and one in frames no commit
@@ -48,10 +48,10 @@ fn it_lists_every_chat_newest_first_the_wals_included() {
         json!({
             "account": "wxid_me_1a2b",
             "chats": [
-                {"id": "wxid_bob", "display_name": "Bob", "kind": "direct", "read_with": "wxread messages --chat wxid_bob", "last_message_at": "2025-10-09T09:00:00Z", "unread": 1, "members": 2},
-                {"id": "wxid_amy", "display_name": "Amy W", "kind": "direct", "read_with": "wxread messages --chat wxid_amy", "last_message_at": "2025-10-09T08:58:20Z", "unread": 2, "members": 2},
-                {"id": "123@chatroom", "display_name": "Hiking", "kind": "group", "read_with": "wxread messages --chat 123@chatroom", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null},
-                {"id": "wxid_stranger", "display_name": "", "kind": "direct", "read_with": "wxread messages --chat wxid_stranger", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2},
+                {"id": "wxid_bob", "display_name": "Bob", "kind": "direct", "read_with": "wxread messages --chat wxid_bob", "last_message_at": "2025-10-09T09:00:00Z", "unread": 1, "members": 2, "recent": null, "account_spoke": null},
+                {"id": "wxid_amy", "display_name": "Amy W", "kind": "direct", "read_with": "wxread messages --chat wxid_amy", "last_message_at": "2025-10-09T08:58:20Z", "unread": 2, "members": 2, "recent": null, "account_spoke": null},
+                {"id": "123@chatroom", "display_name": "Hiking", "kind": "group", "read_with": "wxread messages --chat 123@chatroom", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null, "recent": null, "account_spoke": false},
+                {"id": "wxid_stranger", "display_name": "", "kind": "direct", "read_with": "wxread messages --chat wxid_stranger", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2, "recent": null, "account_spoke": null},
             ],
             "next": null,
         })
@@ -105,8 +105,8 @@ fn with_two_contacts_it_answers_only_the_groups_holding_both_smallest_first() {
         json!({
             "account": "wxid_me_1a2b",
             "chats": [
-                {"id": "2@chatroom", "display_name": "Small", "kind": "group", "read_with": "wxread messages --chat 2@chatroom", "last_message_at": null, "unread": 0, "members": 3},
-                {"id": "1@chatroom", "display_name": "Big", "kind": "group", "read_with": "wxread messages --chat 1@chatroom", "last_message_at": "2025-10-09T09:00:00Z", "unread": 5, "members": 4},
+                {"id": "2@chatroom", "display_name": "Small", "kind": "group", "read_with": "wxread messages --chat 2@chatroom", "last_message_at": null, "unread": 0, "members": 3, "recent": null, "account_spoke": false},
+                {"id": "1@chatroom", "display_name": "Big", "kind": "group", "read_with": "wxread messages --chat 1@chatroom", "last_message_at": "2025-10-09T09:00:00Z", "unread": 5, "members": 4, "recent": null, "account_spoke": false},
             ],
             "next": null,
         })
@@ -173,10 +173,10 @@ fn a_folder_is_listed_as_a_folder_named_as_wechat_names_it_with_what_reads_it() 
     assert_eq!(
         json["chats"],
         json!([
-            {"id": "@placeholder_foldgroup", "display_name": "折叠的群聊", "kind": "folder", "read_with": "wxread chats", "last_message_at": "2025-10-09T09:00:00Z", "unread": 0, "members": null},
-            {"id": "brandsessionholder", "display_name": "订阅号消息", "kind": "folder", "read_with": "wxread articles", "last_message_at": "2025-10-09T08:58:20Z", "unread": 3, "members": null},
-            {"id": "brandservicesessionholder", "display_name": "服务号", "kind": "folder", "read_with": "wxread articles", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null},
-            {"id": "wxid_amy", "display_name": "Amy", "kind": "direct", "read_with": "wxread messages --chat wxid_amy", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2},
+            {"id": "@placeholder_foldgroup", "display_name": "折叠的群聊", "kind": "folder", "read_with": "wxread chats", "last_message_at": "2025-10-09T09:00:00Z", "unread": 0, "members": null, "recent": null, "account_spoke": null},
+            {"id": "brandsessionholder", "display_name": "订阅号消息", "kind": "folder", "read_with": "wxread articles", "last_message_at": "2025-10-09T08:58:20Z", "unread": 3, "members": null, "recent": null, "account_spoke": null},
+            {"id": "brandservicesessionholder", "display_name": "服务号", "kind": "folder", "read_with": "wxread articles", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null, "recent": null, "account_spoke": null},
+            {"id": "wxid_amy", "display_name": "Amy", "kind": "direct", "read_with": "wxread messages --chat wxid_amy", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2, "recent": null, "account_spoke": null},
         ])
     );
     let found = world
@@ -444,4 +444,82 @@ fn query_finds_the_chats_whose_id_or_name_holds_it() {
 
     let json = world.run(&["chats", "--with", "wxid_qin", "--query", "孙凤君"], &env).ok();
     assert_eq!(ids(&json), ["1@chatroom", "2@chatroom"]);
+}
+
+/// The account in "Ads", where one sender posts nearly everything and
+/// the account never spoke, and in "Hiking", where it did; a system
+/// message in "Ads" names no sender.
+fn with_ads(world: &World) -> Account {
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.contacts = vec![
+        Contact("wxid_me", "Me", ""),
+        Contact("wxid_amy", "Amy", "Amy W"),
+        Contact("wxid_ads", "Flats", ""),
+        Contact("1@chatroom", "Ads", ""),
+        Contact("2@chatroom", "Hiking", ""),
+    ];
+    account.groups = vec![
+        group("1@chatroom", &["wxid_me", "wxid_amy", "wxid_ads"]),
+        group("2@chatroom", &["wxid_me", "wxid_amy"]),
+    ];
+    account.sessions = vec![
+        Session("1@chatroom", 1_760_000_300, 4),
+        Session("2@chatroom", 1_760_000_200, 0),
+        Session("wxid_amy", 1_760_000_100, 0),
+    ];
+    let at = 1_760_000_000;
+    account.messages = vec![
+        Said::text("1@chatroom", 1, at, "wxid_ads", "cheap flats"),
+        Said::text("1@chatroom", 2, at + 1, "wxid_amy", "stop it"),
+        Said::text("1@chatroom", 3, at + 2, "wxid_ads", "cheaper flats"),
+        Said::text("1@chatroom", 4, at + 3, "wxid_ads", "cheapest flats"),
+        Said {
+            local_type: 10000,
+            sender: None,
+            ..Said::text("1@chatroom", 5, at + 4, "", "Amy joined")
+        },
+        Said::text("2@chatroom", 6, at, "wxid_me", "shall we walk?"),
+        Said::text("2@chatroom", 7, at + 1, "wxid_amy", "yes"),
+        Said::text("wxid_amy", 8, at, "wxid_me", "hi"),
+    ];
+    account.write();
+    account
+}
+
+#[test]
+fn each_group_answers_who_sent_most_of_its_newest_messages_and_whether_the_account_spoke() {
+    let world = World::new();
+    let account = with_ads(&world);
+    let json = world.run(&["chats"], &[("WXREAD_KEYS", &account.all_keys())]).ok();
+    let chat = |id: &str| {
+        json["chats"].as_array().unwrap().iter().find(|c| c["id"] == id).unwrap().clone()
+    };
+    let ads = chat("1@chatroom");
+    assert_eq!(
+        ads["recent"],
+        json!({"messages": 4, "top_sender": {"id": "wxid_ads", "display_name": "Flats"}, "from_top_sender": 3})
+    );
+    assert_eq!(ads["account_spoke"], false);
+    let hiking = chat("2@chatroom");
+    assert_eq!(hiking["recent"]["messages"], 2);
+    assert_eq!(hiking["account_spoke"], true);
+    let amy = chat("wxid_amy");
+    assert_eq!(
+        (&amy["recent"], &amy["account_spoke"]),
+        (&Value::Null, &Value::Null),
+        "only a group's"
+    );
+}
+
+#[test]
+fn its_help_says_how_many_of_a_groups_newest_messages_recent_reads() {
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_wxread"))
+        .args(["chats", "--help"])
+        .output()
+        .unwrap();
+    let words =
+        String::from_utf8(out.stdout).unwrap().split_whitespace().collect::<Vec<_>>().join(" ");
+    let recent = wxread_messages::RECENT;
+    assert!(words.contains(&format!("the most of its {recent} newest messages")), "{words}");
+    assert!(words.contains(&format!("how many of the {recent} name their sender")), "{words}");
 }

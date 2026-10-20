@@ -168,7 +168,7 @@ impl Default for Tally {
 
 /// What macOS must allow the app running wxread (a terminal, an agent's
 /// host) for `wxread group leave` to drive WeChat's window
-/// (docs/adr/0011-a-group-is-left-by-driving-wechats-window-only-with-yes.md).
+/// (docs/adr/0015-a-group-is-left-by-driving-wechats-window-only-with-yes.md).
 /// Reading needs neither.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Permission {

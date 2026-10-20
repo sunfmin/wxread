@@ -2,7 +2,7 @@
 //! what stops the run before WeChat's window is touched, the steps through
 //! the window, how each screen is told by the text macOS recognizes on it,
 //! and every refusal with its fix
-//! (docs/adr/0011-a-group-is-left-by-driving-wechats-window-only-with-yes.md,
+//! (docs/adr/0015-a-group-is-left-by-driving-wechats-window-only-with-yes.md,
 //! docs/leave-group.md). The effect crate reads the group and the host,
 //! takes each screenshot and sends each key and click a [`Move`] names;
 //! nothing here touches anything.
@@ -28,13 +28,136 @@ pub const MAX_MATCHES: u32 = 4;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refusal(pub String);
 
-/// The command line that leaves `id`, with the `--account` it was given:
-/// what a fix says to run, and what the plan says would leave it.
-pub fn line(id: &str, account: Option<&str>) -> String {
+/// The command line that leaves `ids`, in order, with the `--account` it
+/// was given: what a fix says to run, and what the plan says would leave
+/// them.
+pub fn line(ids: &[&str], account: Option<&str>) -> String {
+    let ids = ids.join(" ");
     match account {
-        Some(account) => format!("wxread group leave {id} --account {account} --yes"),
-        None => format!("wxread group leave {id} --yes"),
+        Some(account) => format!("wxread group leave {ids} --account {account} --yes"),
+        None => format!("wxread group leave {ids} --yes"),
     }
+}
+
+/// What became of one group of a run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// Without --yes: the account is in it, and --yes would leave it.
+    Planned,
+    /// The account is not among its members: nothing to leave, whether it
+    /// never was or a run before left it.
+    NotMember,
+    /// This run left it, the databases confirming it this many seconds
+    /// after OK.
+    Left(u64),
+    /// Leaving it failed, which ended the run.
+    Stopped,
+    /// A group before it stopped the run, so it was not touched.
+    NotTried,
+}
+
+impl Outcome {
+    /// What the answer calls it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Outcome::Planned => "planned",
+            Outcome::NotMember => "not_member",
+            Outcome::Left(_) => "left",
+            Outcome::Stopped => "stopped",
+            Outcome::NotTried => "not_tried",
+        }
+    }
+
+    /// The seconds the databases took to confirm a group left.
+    pub fn confirmed_in(self) -> Option<u64> {
+        match self {
+            Outcome::Left(seconds) => Some(seconds),
+            _ => None,
+        }
+    }
+
+    /// Whether the account is still to leave the group after this run:
+    /// what a run again is to do.
+    fn remains(self) -> bool {
+        matches!(self, Outcome::Planned | Outcome::Stopped | Outcome::NotTried)
+    }
+}
+
+/// The run of `groups`, in order, each its target when the account is
+/// among its members, else None: without `yes` each is planned and none
+/// touched; with it each is left in turn by `leave`, which answers the
+/// seconds the databases took to confirm it, or why it failed. The first
+/// failure ends the run: it is answered beside the outcomes, and every
+/// group after it is not tried. A group the account is not in is passed
+/// over, so a run again of the same groups leaves only the rest.
+pub fn run<E>(
+    groups: &[Option<Target>],
+    yes: bool,
+    mut leave: impl FnMut(&Target) -> Result<u64, E>,
+) -> (Vec<Outcome>, Option<E>) {
+    let mut outcomes = Vec::new();
+    let mut stop = None;
+    for group in groups {
+        let outcome = match group {
+            None => Outcome::NotMember,
+            Some(_) if !yes => Outcome::Planned,
+            Some(_) if stop.is_some() => Outcome::NotTried,
+            Some(target) => match leave(target) {
+                Ok(seconds) => Outcome::Left(seconds),
+                Err(why) => {
+                    stop = Some(why);
+                    Outcome::Stopped
+                }
+            },
+        };
+        outcomes.push(outcome);
+    }
+    (outcomes, stop)
+}
+
+/// The groups of `ids` whose `outcomes` leave them still to leave, in
+/// order.
+pub fn rest<'a>(ids: &[&'a str], outcomes: &[Outcome]) -> Vec<&'a str> {
+    let mut rest = Vec::new();
+    for (at, id) in ids.iter().enumerate() {
+        if outcomes.get(at).is_some_and(|o| o.remains()) {
+            rest.push(*id);
+        }
+    }
+    rest
+}
+
+/// What to do once a run of `ids` ended in `outcomes`, asked with
+/// `--account` `account`; `blocked` when blockers stop --yes.
+pub fn next(ids: &[&str], outcomes: &[Outcome], account: Option<&str>, blocked: bool) -> String {
+    let rest = rest(ids, outcomes);
+    let retry = line(&rest, account);
+    if outcomes.contains(&Outcome::Stopped) {
+        return format!(
+            "fix what error names, then run `{retry}` to leave the rest; or the same command again: the groups the account has left are passed over"
+        );
+    }
+    if outcomes.contains(&Outcome::Planned) {
+        if blocked {
+            return "nothing was changed: fix each of blockers, then run it again with --yes"
+                .to_string();
+        }
+        return format!("nothing was changed: run `{retry}` to leave them; it cannot be undone");
+    }
+    let mut left = Vec::new();
+    for (at, id) in ids.iter().enumerate() {
+        if outcomes.get(at).is_some_and(|o| o.confirmed_in().is_some()) {
+            left.push(format!("`wxread group {id}`"));
+        }
+    }
+    if left.is_empty() {
+        return "nothing to leave: the account is in none of them; `wxread group <id>` answers who is"
+            .to_string();
+    }
+    format!(
+        "the account is in none of them now: {} answers its members, the account no longer among them; to rejoin one, a member must invite the account back",
+        left.join(", ")
+    )
 }
 
 /// The group to leave, as the databases answer it.

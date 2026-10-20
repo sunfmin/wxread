@@ -2,7 +2,7 @@
 
 An agent CLI that reads WeChat for Mac 4.x directly: chats, contacts, every
 message kind, favorites, files and voice, and the Moments WeChat has
-loaded; and, only when told to, leaves a group through WeChat's own window.
+loaded; and, only when told to, leaves groups through WeChat's own window.
 Each command prints one JSON object, and every failure names its fix.
 `wxread --help` is the manual.
 
@@ -23,8 +23,8 @@ wxread --keys <file> file get <id> --out <path>  # a message's, a note's, a favo
 wxread --keys <file> avatar <id> --out <path>    # a contact's avatar
 wxread --keys <file> voice <id> --chat <id> --out v.wav
                                             # a voice message that plays
-wxread --keys <file> group leave <n>@chatroom [--yes]
-                                            # leave a group, checked before and after; only with --yes
+wxread --keys <file> group leave <n>@chatroom... [--yes]
+                                            # leave groups, one after another, each checked before and after; only with --yes
 wxread --help                               # the guide
 ```
 

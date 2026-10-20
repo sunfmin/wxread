@@ -8,13 +8,19 @@ WHEN TO RUN IT
     wxread chats --query <name>
   To find the chat with someone, or the group of you, A and B:
     wxread chats --with <A's id> --with <B's id>
+  To find the groups that are only ads, to suggest to the account's owner
+  which to leave: a group whose recent.from_top_sender is nearly all of
+  its recent.messages, and whose account_spoke is false. Read a few of
+  its messages (`wxread messages --chat <id>`) before suggesting it;
+  only the owner decides, and `wxread group leave` leaves them.
   `wxread contacts --query <name>` finds each one's id.
   Run by you or an agent, once the keys are supplied; it changes nothing.
 
 WHAT IT READS
   The account's session/session.db and contact/contact.db under its
-  db_storage, each with the WAL beside it (what WeChat wrote last), with
-  their keys: the file --keys names, else the contents of WXREAD_KEYS.
+  db_storage, and, when the page holds a group, its message databases
+  (message/message_<n>.db), each with the WAL beside it (what WeChat
+  wrote last), with their keys: the file --keys names, else the contents of WXREAD_KEYS.
   Each is decrypted into memory and read there, after its key is checked
   against its first page. It writes nothing, anywhere: no decrypted byte
   reaches the disk.
@@ -40,7 +46,8 @@ OPTIONS
 WHAT IT ANSWERS
     account   the account read: its directory's name, as doctor's id
     chats     [{id, display_name, kind, read_with, last_message_at, unread,
-              members}], newest first (with --with, the smallest first):
+              members, recent, account_spoke}], newest first (with
+              --with, the smallest first):
               id               its contact's id: a wxid, or a group's
                                <n>@chatroom; a folder's id in WeChat's
                                list (see kind)
@@ -76,6 +83,21 @@ WHAT IT ANSWERS
                                2 for a direct chat; null for a group
                                WeChat keeps no record of the members of,
                                and for a folder
+              recent           of a group, who sent the most of its 50
+                               newest messages this Mac holds:
+                               {messages, top_sender, from_top_sender}:
+                               messages, how many of the 50 name their
+                               sender (a system message names none);
+                               top_sender, who sent the most of those,
+                               {id, display_name} (of two who sent as
+                               many, the one who sent the newer);
+                               from_top_sender, how many they sent.
+                               null for a group with no such message,
+                               a direct chat and a folder
+              account_spoke    of a group, whether the account sent any
+                               of its messages this Mac holds: true or
+                               false; null for a direct chat and a
+                               folder
     next      pass it as --cursor for the next page; null on the last one
 
 TRIPS YOU UP
@@ -95,7 +117,10 @@ TRIPS YOU UP
   - A group --with answers that has no chat in the list (it was deleted
     from WeChat's list, or never had a message) has last_message_at null
     and unread 0; `wxread messages --chat <id>` reads what it holds.
-  - The keys must open both databases. One missing, or one that no longer
+  - recent and account_spoke count only what WeChat on this Mac holds:
+    a group whose messages were never synced to it has recent null and
+    account_spoke false, whatever was said in it elsewhere.
+  - The keys must open every database it reads. One missing, or one that no longer
     opens its database (WeChat created its databases again: logging out
     and in, some updates), is an error naming the database; its fix is
     `sudo wxread keys`, then supplying the keys again.

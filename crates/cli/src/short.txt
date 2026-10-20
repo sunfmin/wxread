@@ -10,7 +10,7 @@ Commands:
   doctor    run first: find WeChat's accounts and the keys; name each fix
   favorites what the account saved (收藏), each as its kind
   file      file get <id>: write a message's, note's, favorite's or Moment's file
-  group     a group's notice, owner, members; group leave leaves it (--yes)
+  group     a group's notice, owner, members; group leave leaves groups (--yes)
   keys      read every database key from the running WeChat (sudo)
   messages  a chat's messages, each as its kind, a page at a time
   moments   the Moments WeChat loaded: text, media, likes, comments

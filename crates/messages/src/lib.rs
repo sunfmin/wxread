@@ -503,6 +503,47 @@ pub fn read(chat: &Chat, row: &Row) -> Read {
     Read { sender, content, parsed }
 }
 
+/// How many of a group's newest messages [`recent`] reads.
+pub const RECENT: usize = 50;
+
+/// Who sent most of a group's newest messages: what tells a group only
+/// one sender posts into (ads) from one people talk in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Recent {
+    /// How many of its [`RECENT`] newest messages name their sender: a
+    /// system message names none.
+    pub messages: usize,
+    /// Who sent the most of those: of two who sent as many, the one who
+    /// sent the newer.
+    pub top_sender: String,
+    /// How many of those they sent.
+    pub from_top_sender: usize,
+}
+
+/// Of `rows`, `chat`'s messages newest first, the [`RECENT`] newest, as
+/// [`Recent`] counts them; None when none of them names its sender.
+pub fn recent(chat: &Chat, rows: &[Row]) -> Option<Recent> {
+    let mut counted: Vec<(String, usize)> = Vec::new();
+    let mut messages: usize = 0;
+    for row in rows.iter().take(RECENT) {
+        let Some(sender) = read(chat, row).sender else { continue };
+        messages = messages.saturating_add(1);
+        match counted.iter_mut().find(|(s, _)| *s == sender) {
+            Some((_, n)) => *n = n.saturating_add(1),
+            None => counted.push((sender, 1)),
+        }
+    }
+    // `counted` is in the order each first sent, newest first: of two who
+    // sent as many, the first found is kept.
+    let mut top: Option<(String, usize)> = None;
+    for (sender, n) in counted {
+        if top.as_ref().is_none_or(|(_, most)| n > *most) {
+            top = Some((sender, n));
+        }
+    }
+    top.map(|(top_sender, from_top_sender)| Recent { messages, top_sender, from_top_sender })
+}
+
 /// What finds the file of `row`, a message of `chat`; or, for one that
 /// carries none, its kind.
 pub fn media_of(chat: &Chat, row: &Row) -> Result<Media, Kind> {

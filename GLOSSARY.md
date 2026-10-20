@@ -37,6 +37,10 @@ _Avoid_: participant, user
 The account ceasing to be a member of a group (退出群聊), by its own choice; it cannot rejoin unless a member invites it back. The group's chat stays, and WeChat writes a notice into it.
 _Avoid_: quit, exit, unsubscribe
 
+**Top sender**:
+Of a group, who sent the most of its newest messages WeChat on this Mac holds; `wxread chats` answers them with how many of those they sent, beside whether the account ever spoke in it: what tells a group only one sender posts into (ads) from one people talk in.
+_Avoid_: spammer, owner
+
 **Notice**:
 What a group pins for its members (群公告): its text, who posted it and when. Posted into the group's chat, it is a message of the kind `group_notice`.
 _Avoid_: announcement, bulletin

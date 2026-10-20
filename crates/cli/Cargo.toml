@@ -42,7 +42,7 @@ rusqlite = { version = "0.32", features = ["bundled", "serialize"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 mach2 = "0.4.3"
 # Vision, AppKit and NSWorkspace, which `group leave` drives WeChat's
-# window with (docs/adr/0011-a-group-is-left-by-driving-wechats-window-only-with-yes.md).
+# window with (docs/adr/0015-a-group-is-left-by-driving-wechats-window-only-with-yes.md).
 objc2 = "0.6.5"
 
 [dev-dependencies]
