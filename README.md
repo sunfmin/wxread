@@ -45,8 +45,9 @@ silk-decoder-rs (MIT), vendored in [crates/silk](crates/silk)
 ## Developing
 
 `./gate.sh` decides whether a change may land, run where the change is made: `cargo fmt
---check`, `./verify.sh` (Flux over the pure crates, which must report `0
-trusted; 0 ignored`), `cargo clippy -D warnings` and `cargo nextest run`. It
+--check`, `./verify.sh` (Flux over the pure crates, each of which must report `0
+trusted; 0 ignored`, as `./flux-summary.sh` reads it; `./flux-summary-test.sh`
+tests that reading), `cargo clippy -D warnings` and `cargo nextest run`. It
 runs on rustup's `nightly-2026-09-25` and needs the checker Cargo.toml pins:
 
 - cargo-flux, built from the Flux revision pinned there:
