@@ -11,6 +11,7 @@ wxread-chats = { path = "../chats" }
 wxread-answer = { path = "../answer" }
 wxread-contacts = { path = "../contacts" }
 wxread-media = { path = "../media" }
+wxread-xml = { path = "../xml" }
 wxread-schema = { path = "../schema" }
 serde_json.workspace = true
 # The XML WeChat keeps every kind but text in.

@@ -9,9 +9,9 @@ publish = false
 [dependencies]
 wxread-answer = { path = "../answer" }
 wxread-media = { path = "../media" }
+wxread-xml = { path = "../xml" }
 # The XML WeChat keeps a Moment in.
 roxmltree = "0.21"
-wxread-messages = { path = "../messages" }
 
 [dev-dependencies]
 proptest.workspace = true

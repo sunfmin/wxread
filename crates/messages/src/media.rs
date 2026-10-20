@@ -18,9 +18,9 @@
 
 use serde_json::{Map, Value, json};
 use wxread_media::Media;
+use wxread_xml::{attr, child, text, xml};
 
 use crate::Kind;
-use crate::kinds::{attr, child, text, xml};
 use crate::proto;
 
 /// What a message of the media kind `kind`, saying `content` with `packed`

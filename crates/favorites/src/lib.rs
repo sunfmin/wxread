@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use roxmltree::Node;
 use serde_json::{Map, Value, json};
 use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
-use wxread_messages::kinds::{attr, child, named, text, xml};
+use wxread_xml::{attr, child, named, text, xml};
 
 /// Where a favorite's files lie, under the account's directory.
 pub const SHELF: &str = "business/favorite";

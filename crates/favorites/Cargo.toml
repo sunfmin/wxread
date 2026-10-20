@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 wxread-answer = { path = "../answer" }
-wxread-messages = { path = "../messages" }
+wxread-xml = { path = "../xml" }
 serde_json.workspace = true
 # The XML WeChat keeps a favorite in.
 roxmltree = "0.21"

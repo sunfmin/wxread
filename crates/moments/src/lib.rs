@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use roxmltree::Node;
 use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
 use wxread_media::Media;
-use wxread_messages::kinds::{attr, child, named, text, xml};
+use wxread_xml::{attr, child, named, text, xml};
 
 /// The option that picks one author's Moments.
 pub const CONTACT_FLAG: &str = "--contact";
