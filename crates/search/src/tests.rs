@@ -33,12 +33,20 @@ fn matched(local_type: i64, content: &str) -> Option<String> {
 fn a_query_finds_its_text_whatever_the_case() {
     let q = query("  Topo ");
     assert!(q.finds("the route TOPO is here"));
-    assert!(!q.finds("top o"));
     assert!(query("攀岩").finds("周六去攀岩吗"));
     for blank in ["", "  "] {
         let why = Query::parse(blank).unwrap_err();
         assert!(why.contains("`wxread search <text>`"), "{why}");
     }
+}
+
+#[test]
+fn a_query_finds_its_text_whatever_the_spaces_between_its_words() {
+    assert!(query("15万行").finds("这两天 claude 写了 15 万行代码"));
+    assert!(query("15 万行").finds("又写了15万行"));
+    assert!(query("Claude 写了").finds("这两天 CLAUDE\t写了\n15 万行"));
+    assert!(query("topo").finds("top o"));
+    assert!(!query("15 万行").finds("15 千行"));
 }
 
 #[test]
@@ -229,6 +237,30 @@ fn an_answer_is_the_message_with_its_chat_and_what_matched() {
 }
 
 proptest! {
+    #[test]
+    fn whitespace_in_the_query_or_the_text_never_decides_a_match(
+        text in "[a-zA-Z0-9万行 ]{0,12}",
+        cut in 0usize..13,
+        len in 1usize..6,
+        spaces in prop::collection::vec((0usize..20, prop::sample::select(vec![" ", "\t", "\n", "\u{3000}"])), 0..6),
+    ) {
+        let chars: Vec<char> = text.chars().collect();
+        let start = cut.min(chars.len());
+        let picked: String = chars[start..(start + len).min(chars.len())].iter().collect();
+        prop_assume!(!picked.trim().is_empty());
+        let mut spaced: Vec<String> = picked.chars().map(String::from).collect();
+        for (at, space) in spaces {
+            let at = at % (spaced.len() + 1);
+            spaced.insert(at, space.to_string());
+        }
+        let spaced: String = spaced.concat();
+        // Any piece of the text, spaced anyhow, finds it, and finds it
+        // spaced anyhow too.
+        prop_assert!(query(&spaced).finds(&text));
+        prop_assert!(query(&picked).finds(&text.replace(' ', "  \t")));
+        prop_assert!(query(&spaced.to_uppercase()).finds(&text));
+    }
+
     #[test]
     fn paging_returns_each_message_once(limit in 1usize..7, picks in prop::collection::vec((0usize..3, 0usize..2, 1i64..4, 1i64..4), 0..24)) {
         let chats = ["wxid_amy", "wxid_bob", "9@chatroom"];
