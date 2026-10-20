@@ -13,9 +13,10 @@ use wxread_schema::{CONTACT_DB, SESSION_DB};
 use crate::account::Account;
 use crate::world::World;
 
-/// What `--account`, `--limit` and `--cursor` said.
+/// What `--account`, `--query`, `--limit` and `--cursor` said.
 pub struct Asked {
     pub account: Option<String>,
+    pub query: Option<String>,
     pub limit: Option<String>,
     pub cursor: Option<String>,
 }
@@ -27,7 +28,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let account = Account::open(world, asked.account.as_deref(), &[SESSION_DB, CONTACT_DB])?;
     let sessions = account.database(SESSION_DB)?;
     let rows = rows(&sessions, &contacts(&account)?)?;
-    let page = wxread_chats::page(rows, cursor.as_ref(), limit);
+    let page = wxread_chats::page(rows, asked.query.as_deref(), cursor.as_ref(), limit);
     let chats: Vec<Value> = page
         .chats
         .iter()

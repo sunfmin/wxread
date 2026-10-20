@@ -171,6 +171,15 @@ fn chats_answers_exactly_the_keys_its_help_and_the_guide_name() {
 }
 
 #[test]
+fn chats_help_says_what_query_matches() {
+    let help = asked(&["chats", "--help"]);
+    for words in ["--query <text>", "id", "remark", "own name", "members' names", "case"] {
+        assert!(help.contains(words), "chats --help says {words:?}");
+    }
+    assert!(asked(&["--help"]).contains("chats --query"), "the guide names chats --query");
+}
+
+#[test]
 fn voice_answers_exactly_the_keys_its_help_and_the_guide_name() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");

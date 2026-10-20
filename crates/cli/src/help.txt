@@ -86,7 +86,8 @@ RULES
     which: --account <id>, as doctor names it.
   - A contact, a group and a chat are named by their id: a wxid, a
     group's <n>@chatroom, an official account's gh_.... `wxread contacts
-    --query <text>` finds an id by a name, a remark or a WeChat ID.
+    --query <text>` finds an id by a name, a remark or a WeChat ID;
+    `wxread chats --query <text>` finds a chat by its name.
   - A name is shown as WeChat shows it, as display_name: the account's
     remark, else the name in the group, else the contact's own name; a
     group with no name of its own by its members' names, joined by "、".

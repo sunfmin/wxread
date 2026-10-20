@@ -82,6 +82,9 @@ enum Command {
         /// The account to read, by its id, when several are logged in
         #[arg(long, value_name = "ID")]
         account: Option<String>,
+        /// Only the chats whose id, name or own name holds it, whatever its case
+        #[arg(long, value_name = "TEXT")]
+        query: Option<String>,
         /// How many chats a page holds, 1 to 1000 (100 unless given)
         #[arg(long, value_name = "N")]
         limit: Option<String>,
@@ -346,8 +349,10 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
                 world::World::from_env(cli.data_dir, cli.keys)
                     .and_then(|w| file::get(&w, &file::Asked { id, thumbnail, out, account }))
             }),
-        Command::Chats { account, limit, cursor } => world::World::from_env(cli.data_dir, cli.keys)
-            .and_then(|w| chats::run(&w, &chats::Asked { account, limit, cursor })),
+        Command::Chats { account, query, limit, cursor } => {
+            world::World::from_env(cli.data_dir, cli.keys)
+                .and_then(|w| chats::run(&w, &chats::Asked { account, query, limit, cursor }))
+        }
         Command::Contact { id, account } => world::World::from_env(cli.data_dir, cli.keys)
             .and_then(|w| contacts::one(&w, account.as_deref(), &id)),
         Command::Contacts { account, query, limit, cursor } => {

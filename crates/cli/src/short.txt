@@ -4,7 +4,7 @@ Usage: wxread [--data-dir <dir>] [--keys <file>] <command>
 Commands:
   articles  official accounts' articles, newest first; one account's alone
   avatar    write a contact's avatar, as the image it is (--out)
-  chats     the account's chats, newest first, a page at a time
+  chats     the account's chats, newest first; --query finds one
   contact   one contact in full, by its id
   contacts  the account's contacts by id; --query finds one
   doctor    run first: find WeChat's accounts and the keys; name each fix
