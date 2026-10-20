@@ -444,6 +444,9 @@ pub enum Look {
 }
 
 impl Look {
+    /// Every screen a step expects, in the order of the path.
+    pub const ALL: [Look; 4] = [Look::Search, Look::Chat, Look::Info, Look::Confirmation];
+
     pub fn name(self) -> &'static str {
         match self {
             Look::Search => "the search's matches",

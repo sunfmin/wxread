@@ -419,13 +419,10 @@ fn a_screen_after_the_path_ended_is_refused() {
 
 #[test]
 fn every_look_waits_a_few_seconds_at_most() {
-    for look in [Look::Search, Look::Chat, Look::Info, Look::Confirmation] {
+    for look in Look::ALL {
         assert!(look.patience() <= 4000, "{look:?}");
     }
-    assert_eq!(
-        [Look::Search, Look::Chat, Look::Info, Look::Confirmation].map(Look::step),
-        ["search", "identify", "leave", "leave"]
-    );
+    assert_eq!(Look::ALL.map(Look::step), ["search", "identify", "leave", "leave"]);
 }
 
 #[test]

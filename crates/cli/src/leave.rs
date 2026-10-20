@@ -307,35 +307,30 @@ fn seconds(took: Duration) -> f64 {
 }
 
 /// How long each step of one group took: the search, telling its chat is
-/// the group, leaving it (its chat info and the confirmation), and the
-/// databases confirming it.
+/// the group, leaving it (its chat info and the confirmation), each by the
+/// name [`Look::step`] gives it, and the databases confirming it.
 #[derive(Default)]
 struct Spent {
-    search: Duration,
-    identify: Duration,
-    leave: Duration,
+    steps: BTreeMap<&'static str, Duration>,
     confirm: Duration,
     total: Duration,
 }
 
 impl Spent {
     fn add(&mut self, look: Look, took: Duration) {
-        let step = match look.step() {
-            "search" => &mut self.search,
-            "identify" => &mut self.identify,
-            _ => &mut self.leave,
-        };
-        *step += took;
+        *self.steps.entry(look.step()).or_default() += took;
     }
 
     fn json(&self) -> Value {
-        json!({
-            "search": seconds(self.search),
-            "identify": seconds(self.identify),
-            "leave": seconds(self.leave),
+        let mut json = json!({
             "confirm": seconds(self.confirm),
             "total": seconds(self.total),
-        })
+        });
+        for look in Look::ALL {
+            let took = self.steps.get(look.step()).copied().unwrap_or_default();
+            json[look.step()] = json!(seconds(took));
+        }
+        json
     }
 }
 
