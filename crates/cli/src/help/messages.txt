@@ -92,6 +92,19 @@ THE KINDS AND THEIR FIELDS
               inside}]}: each message forwarded, in order; one forwarded
               inside another follows it, its inside the position in this
               list of the forward it sits in (null at the top)
+  solitaire   {id, title, example, starter: {id, display_name},
+              entries: [{number, member: {id, display_name}, text, at}],
+              text}: a 接龙 (a sign-up list in a group), as this
+              message shows it, each who adds or changes an entry
+              sending it again; id WeChat's solitaire id, the same in
+              every message of one 接龙, so the newest of them is its
+              list now (null when WeChat's record holds none, as some
+              do); title what it is for, without WeChat's "#接龙";
+              example the line it gives entries to follow; starter who
+              started it; entries in order: number its place (1 first),
+              member who added it, text what it says, at when it was
+              added (RFC 3339, UTC); each person by id and shown as the
+              sender is; text all it shows, as WeChat shows it
   recall      {text, recalled}: a message its sender recalled, which
               WeChat rewrites into this notice in its place; its sender
               is who recalled it: the account for its own, else the

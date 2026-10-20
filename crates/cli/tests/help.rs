@@ -469,6 +469,15 @@ fn favorites_answers_exactly_the_keys_its_help_and_the_guide_name() {
 }
 
 #[test]
+fn search_help_says_whitespace_does_not_decide_a_match() {
+    let help = asked(&["search", "--help"]);
+    let trips = between(&help, "TRIPS YOU UP", "\u{0}").join("\n");
+    assert!(trips.contains("Whitespace does not decide a match"), "{help}");
+    assert!(trips.contains("\"15万行\" and \"15 万行\" both find"), "{help}");
+    assert!(help.contains("with or without spaces"), "{help}");
+}
+
+#[test]
 fn search_answers_exactly_the_keys_its_help_and_the_guide_name() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
@@ -506,6 +515,22 @@ fn search_answers_exactly_the_keys_its_help_and_the_guide_name() {
             }
         }
     }
+}
+
+#[test]
+fn messages_and_search_help_say_what_a_solitaire_is() {
+    let messages = asked(&["messages", "--help"]);
+    let kinds = between(&messages, "THE KINDS AND THEIR FIELDS", "TRIPS YOU UP").join(" ");
+    let words = kinds.split_whitespace().collect::<Vec<_>>().join(" ");
+    for said in ["solitaire {id, title,", "a 接龙", "the same in every message of one 接龙"] {
+        assert!(words.contains(said), "messages --help says {said}");
+    }
+    let search = asked(&["search", "--help"]);
+    let searched = between(&search, "WHAT A MESSAGE IS SEARCHED BY", "  The rest are not searched");
+    assert!(
+        searched.iter().any(|l| l.trim_start().starts_with("solitaire ")),
+        "search --help says a solitaire is searched"
+    );
 }
 
 #[test]

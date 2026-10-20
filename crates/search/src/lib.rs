@@ -26,36 +26,44 @@ use wxread_messages::{CHAT_FLAG, Chat, FROM_FLAG, Kind, Names, Range, Row, TO_FL
 pub const BY_INDEX: &str = "wechat_index";
 pub const BY_MESSAGE: &str = "messages";
 
-/// The text searched for: found in a message's text whatever its case.
+/// The text searched for: found in a message's text whatever its case and
+/// whatever the whitespace between its words, so "15万行" finds
+/// "15 万行" and "15 万行" finds "15万行".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Query {
-    lower: String,
+    folded: String,
+}
+
+/// `text` as a match reads it: lower case, with no whitespace.
+fn folded(text: &str) -> String {
+    text.split_whitespace().collect::<String>().to_lowercase()
 }
 
 impl Query {
     /// The query `text` is, or what fixes it.
     pub fn parse(text: &str) -> Result<Query, String> {
-        let lower = text.trim().to_lowercase();
-        if lower.is_empty() {
+        let folded = folded(text);
+        if folded.is_empty() {
             return Err(
                 "no text was given to search for: pass it, `wxread search <text>`, quoted when it holds a space"
                     .into(),
             );
         }
-        Ok(Query { lower })
+        Ok(Query { folded })
     }
 
-    /// Whether `text` holds the query, ignoring case.
+    /// Whether `text` holds the query, ignoring case and whitespace.
     pub fn finds(&self, text: &str) -> bool {
-        text.to_lowercase().contains(&self.lower)
+        folded(text).contains(&self.folded)
     }
 }
 
 /// The text a message is searched by, as WeChat's index has it: a text's
 /// or a quote's words, a link's title and summary, a file's name, a
 /// place's name and address, a card's name, a forward's title and what it
-/// holds, a transfer's or a red packet's memo, a group notice's text. None
-/// for the kinds WeChat does not index: media and WeChat's own notices.
+/// holds, all a 接龙 shows, a transfer's or a red packet's memo, a group
+/// notice's text. None for the kinds WeChat does not index: media and
+/// WeChat's own notices.
 pub fn searchable(parsed: &wxread_messages::kinds::Parsed) -> Option<String> {
     let field = |name: &str| parsed.fields.get(name).and_then(Value::as_str);
     let parts: Vec<&str> = match parsed.kind {
@@ -70,6 +78,7 @@ pub fn searchable(parsed: &wxread_messages::kinds::Parsed) -> Option<String> {
             given.into_iter().collect()
         }
         Kind::Location => [field("name"), field("address")].into_iter().flatten().collect(),
+        Kind::Solitaire => vec![field("text")].into_iter().flatten().collect(),
         Kind::Transfer | Kind::RedPacket => [field("memo")].into_iter().flatten().collect(),
         Kind::Forward => {
             let held = parsed.fields.get("messages").and_then(Value::as_array);

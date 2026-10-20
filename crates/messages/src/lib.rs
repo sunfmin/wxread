@@ -61,6 +61,7 @@ pub enum Kind {
     Location,
     Card,
     Forward,
+    Solitaire,
     Recall,
     Nudge,
     Join,
@@ -81,13 +82,14 @@ pub enum Kind {
 
 impl Kind {
     /// Every kind, as the answer names them.
-    pub const ALL: [Kind; 22] = [
+    pub const ALL: [Kind; 23] = [
         Kind::Text,
         Kind::Link,
         Kind::Quote,
         Kind::Location,
         Kind::Card,
         Kind::Forward,
+        Kind::Solitaire,
         Kind::Recall,
         Kind::Nudge,
         Kind::Join,
@@ -114,6 +116,7 @@ impl Kind {
             Kind::Location => "location",
             Kind::Card => "card",
             Kind::Forward => "forward",
+            Kind::Solitaire => "solitaire",
             Kind::Recall => "recall",
             Kind::Nudge => "nudge",
             Kind::Join => "join",
@@ -408,6 +411,9 @@ pub fn message(
         parsed.fields.insert("file_present".into(), json!(h.file));
         parsed.fields.insert("thumbnail_present".into(), json!(h.thumbnail));
     }
+    if parsed.kind == Kind::Solitaire {
+        members_named(&mut parsed.fields, names);
+    }
     if parsed.kind == Kind::GroupNotice {
         posted(&mut parsed.fields, sender.as_deref(), row.create_time);
     }
@@ -423,6 +429,28 @@ pub fn message(
     out.insert("subtype".into(), json!(sub));
     out.insert("content".into(), json!(content));
     Value::Object(out)
+}
+
+/// A 接龙's `fields` with who started it and each entry's member shown
+/// as `names` shows them: each one's `display_name`.
+fn members_named(fields: &mut Map<String, Value>, names: &Names) {
+    if let Some(starter) = fields.get_mut("starter") {
+        shown(starter, names);
+    }
+    if let Some(Value::Array(entries)) = fields.get_mut("entries") {
+        for member in entries.iter_mut().filter_map(|e| e.get_mut("member")) {
+            shown(member, names);
+        }
+    }
+}
+
+/// `person`, `{id, display_name}`, with its `display_name` as `names`
+/// shows its id; null stays null.
+fn shown(person: &mut Value, names: &Names) {
+    if let Value::Object(person) = person {
+        let name = person.get("id").and_then(Value::as_str).and_then(|id| names.of(id));
+        person.insert("display_name".into(), json!(name));
+    }
 }
 
 /// A group notice's `fields`, posted by whom and when its XML says, else

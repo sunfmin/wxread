@@ -24,9 +24,9 @@ WHAT IT READS
   every message is read.
 
 OPTIONS
-  <text>            what to find, in any case: a message is found when the
-                    text it is searched by holds it; quote it when it holds
-                    a space
+  <text>            what to find, in any case and with or without spaces
+                    between its words: a message is found when the text it
+                    is searched by holds it; quote it when it holds a space
   --chat <id>       only this chat's messages, its id as `wxread chats`
                     lists it (a wxid, or a group's <n>@chatroom)
   --from <time>     the first time read, itself included
@@ -67,6 +67,7 @@ WHAT A MESSAGE IS SEARCHED BY
   location       its name and address
   card           the name the card gives the contact it shares
   forward        its title and what each message in it says
+  solitaire      all a 接龙 shows: its title and each entry, numbered
   transfer, red_packet
                  its memo
   group_notice   its text: a group's notice posted into its chat
@@ -82,6 +83,10 @@ WHAT A MESSAGE IS SEARCHED BY
 TRIPS YOU UP
   - The text is found inside words, ignoring case: "crag" finds "Crags"
     and "CRAG". It is one text, not words to find apart.
+  - Whitespace does not decide a match, in the text or in the message:
+    "15万行" and "15 万行" both find "写了 15 万行" and "写了15万行".
+    Spaces between Chinese and Latin text or digits are put in
+    inconsistently, so none is needed and none is in the way.
   - A query that finds nothing is an empty list, exit 0, not an error.
   - The chat id is exact: a group's ends in @chatroom. A chat none of the
     account's message databases holds is an error pointing at
