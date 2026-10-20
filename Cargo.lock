@@ -772,6 +772,7 @@ dependencies = [
  "wxread-doctor",
  "wxread-keys",
  "wxread-messages",
+ "wxread-resign",
  "wxread-schema",
  "wxread-sqlcipher",
 ]
@@ -860,6 +861,15 @@ dependencies = [
  "wxread-chats",
  "wxread-contacts",
  "wxread-schema",
+]
+
+[[package]]
+name = "wxread-resign"
+version = "0.1.0"
+dependencies = [
+ "flux-rs",
+ "proptest",
+ "serde_json",
 ]
 
 [[package]]

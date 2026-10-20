@@ -1,0 +1,22 @@
+[package]
+name = "wxread-resign"
+description = "Re-signing WeChat so its memory can be read: its entitlements with get-task-allow added, the answer and every failure's fix, as pure functions checked by Flux (docs/adr/0005-wxread-resign-re-signs-wechat-when-asked.md)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+flux-rs.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+# `cargo flux` (through ../../verify.sh) checks every refinement in this crate.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }
