@@ -113,6 +113,15 @@ fn each_command_has_its_own_guide_whatever_else_its_line_holds() {
 }
 
 #[test]
+fn the_guide_says_how_to_find_a_chat_with_someone() {
+    let run_first = between(wxread::GUIDE, "RUN FIRST", "WHAT A COMMAND ANSWERS").join("\n");
+    assert!(run_first.contains("wxread chats --with <id>"), "{run_first}");
+    assert!(run_first.contains("--query <name>"), "{run_first}");
+    let chats = asked(&["chats", "--help"]);
+    assert!(chats.contains("--with <id>") && chats.contains("smallest first"), "{chats}");
+}
+
+#[test]
 fn the_help_names_the_options_and_variables_wxread_reads() {
     for text in [asked(&["--help"]), asked(&["-h"]), asked(&["doctor", "--help"])] {
         for name in [DATA_DIR_FLAG, DATA_DIR_VAR, KEYS_FLAG, KEYS_VAR] {

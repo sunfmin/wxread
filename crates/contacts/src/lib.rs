@@ -4,7 +4,7 @@
 //! with their name in it. The effect crate reads the rows out of the
 //! contact and head image databases; nothing here reads or writes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
 
@@ -271,15 +271,12 @@ pub fn group(
         ));
     }
     let mut in_group: BTreeMap<String, Option<String>> =
-        room.members.iter().map(|m| (m.clone(), None)).collect();
+        members(&room).into_iter().map(|m| (m, None)).collect();
     for (member, name) in names_in_group(room.ext_buffer.as_deref().unwrap_or_default()) {
-        let name = Some(name).filter(|n| !n.is_empty());
-        let slot = in_group.entry(member).or_default();
-        if name.is_some() {
-            *slot = name;
+        if !name.is_empty() {
+            in_group.insert(member, Some(name));
         }
     }
-    in_group.remove("");
     let person = |who: &str| Person {
         id: who.to_string(),
         display_name: shown(contacts, who, in_group.get(who).cloned().flatten().as_deref()),
@@ -314,6 +311,14 @@ pub fn group(
         notice,
         members,
     })
+}
+
+/// The id of every member of the group `room` is: those `chatroom_member`
+/// lists and those its `ext_buffer` does, each once, by id.
+pub fn members(room: &Room) -> BTreeSet<String> {
+    let listed = room.members.iter().cloned();
+    let buffered = names_in_group(room.ext_buffer.as_deref().unwrap_or_default());
+    listed.chain(buffered.into_iter().map(|(id, _)| id)).filter(|id| !id.is_empty()).collect()
 }
 
 /// How a group shows `id`, whose name in it is `in_group`.
@@ -539,6 +544,20 @@ mod tests {
         );
         assert_eq!(g.members[0].remark.as_deref(), Some("Auntie"));
         assert_eq!(g.members[3].name, "");
+    }
+
+    #[test]
+    fn a_groups_members_are_those_listed_and_those_its_buffer_holds_each_once() {
+        let room = Room {
+            owner: None,
+            ext_buffer: Some([member("wxid_b", "B"), member("wxid_c", "")].concat()),
+            members: vec!["wxid_a".into(), "wxid_b".into(), String::new()],
+        };
+        assert_eq!(
+            members(&room),
+            BTreeSet::from(["wxid_a".into(), "wxid_b".into(), "wxid_c".into()])
+        );
+        assert_eq!(members(&Room::default()), BTreeSet::new());
     }
 
     #[test]
