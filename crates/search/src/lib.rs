@@ -53,12 +53,14 @@ impl Query {
 /// The text a message is searched by, as WeChat's index has it: a text's
 /// or a quote's words, a link's title and summary, a file's name, a
 /// place's name and address, a card's name, a forward's title and what it
-/// holds, a transfer's or a red packet's memo. None for the kinds WeChat
-/// does not index: media and notices.
+/// holds, a transfer's or a red packet's memo, a group notice's text. None
+/// for the kinds WeChat does not index: media and WeChat's own notices.
 pub fn searchable(parsed: &wxread_messages::kinds::Parsed) -> Option<String> {
     let field = |name: &str| parsed.fields.get(name).and_then(Value::as_str);
     let parts: Vec<&str> = match parsed.kind {
-        Kind::Text | Kind::Quote => vec![field("text")].into_iter().flatten().collect(),
+        Kind::Text | Kind::Quote | Kind::GroupNotice => {
+            vec![field("text")].into_iter().flatten().collect()
+        }
         Kind::Link => [field("title"), field("summary")].into_iter().flatten().collect(),
         Kind::File | Kind::Card => [field("name")].into_iter().flatten().collect(),
         Kind::Location => [field("name"), field("address")].into_iter().flatten().collect(),

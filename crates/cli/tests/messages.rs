@@ -227,6 +227,15 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
             "call",
             json!({ "medium": "voice", "state": "connected", "seconds": 3890, "text": "通话时长 01:04:50" }),
         ),
+        (
+            group(
+                -1,
+                app(87),
+                "<msg><appmsg><type>87</type><announcement><![CDATA[<group_notice_item><datalist count=\"1\"><dataitem datatype=\"1\"><datadesc>Ride at 9</datadesc></dataitem></datalist><source><fromusr>wxid_bob</fromusr></source><edittime>1759999000</edittime></group_notice_item>]]></announcement><textannouncement><![CDATA[Ride at 9]]></textannouncement></appmsg><fromusername>wxid_bob</fromusername></msg>",
+            ),
+            "group_notice",
+            json!({ "text": "Ride at 9", "by": { "id": "wxid_bob", "display_name": "Bobby" }, "at": "2025-10-09T08:36:40Z" }),
+        ),
     ]
 }
 

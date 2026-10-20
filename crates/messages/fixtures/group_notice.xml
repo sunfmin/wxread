@@ -1,0 +1,105 @@
+<?xml version="1.0"?>
+<msg>
+	<appmsg appid="" sdkver="0">
+		<type>87</type>
+		<url>https://support.weixin.qq.com/cgi-bin/mmsupport-bin/readtemplate?t=page/common_page__upgrade&amp;btn_text=btn_text_0&amp;text=text008</url>
+		<announcement><![CDATA[<group_notice_item type="18">
+	<edittime>1792133731</edittime>
+	<ctrlflag>127</ctrlflag>
+	<version>1</version>
+	<deviceid>A0000000000000a1</deviceid>
+	<source sourcetype="6" sourceid="00000000000000000000000000000001">
+		<fromusr>wxid_steward</fromusr>
+		<tousr>12345678901@chatroom</tousr>
+		<sourceid>00000000000000000000000000000001</sourceid>
+	</source>
+	<datalist count="2">
+		<dataitem datatype="8" dataid="00000000000000000000000000000001" htmlid="WeNoteHtmlFile">
+			<datafmt>.htm</datafmt>
+			<cdn_dataurl>http://wxapp.tc.qq.com/264/20303/stodownload?m=00000000000000000000000000000001&amp;filekey=3034&amp;hy=SH&amp;storeid=26&amp;bizid=1023</cdn_dataurl>
+			<cdn_thumbkey>00000000000000000000000000000001</cdn_thumbkey>
+			<cdn_datakey>00000000000000000000000000000001</cdn_datakey>
+			<fullmd5>00000000000000000000000000000001</fullmd5>
+			<head256md5>00000000000000000000000000000001</head256md5>
+			<fullsize>732</fullsize>
+		</dataitem>
+		<dataitem datatype="1" dataid="00000000000000000000000000000001" htmlid="-1">
+			<datadesc>🍃【枫林苑・秋日便民活动通知】🍃
+秋意渐浓，风扇收纳前清洁安排起来～为帮您清理积尘，干净收纳，枫林苑物业将开展免费清洗电风扇便民服务活动🔧✨
+🧼活动内容：免费清洗家用台式 / 落地电风扇
+📅活动时间：本周六（10 月 17 日）
+⏰上午 9:00-11:00，下午 13:30-16:00
+📍活动地点：7 幢背后空地
+届时请您将风扇带到现场，我们会贴心为您拆洗、擦拭、组装，清洁完毕方便收纳💨
+💡温馨提示：如遇雨天，活动将另行通知时间地点。
+秋日清风至，洁净伴您行 —— 枫林苑物业愿您秋日常安，舒心每一天。🌿</datadesc>
+			<dataitemsource sourcetype="6" />
+		</dataitem>
+	</datalist>
+	<weburlitem>
+		<clean_url />
+		<pagedesc />
+		<pagethumb_url />
+		<pagetitle />
+		<opencache>0</opencache>
+		<contentattr>0</contentattr>
+		<canvasPageXml>null</canvasPageXml>
+		<extraparam />
+		<wsVideoFlowXml />
+		<forwardflag>0</forwardflag>
+		<appmsgshareitem>
+			<vid />
+			<srcusername />
+			<srcdisplayname />
+			<cover />
+			<itemshowtype>-1</itemshowtype>
+			<ispaysubscribe>-1</ispaysubscribe>
+			<nativepage>0</nativepage>
+			<width>0</width>
+			<height>0</height>
+			<pubtime>0</pubtime>
+			<duration>0</duration>
+			<funcflag>0</funcflag>
+		</appmsgshareitem>
+	</weburlitem>
+	<productitem type="0">
+		<producttitle />
+		<productdesc />
+		<productthumb_url />
+		<productinfo />
+	</productitem>
+	<liteappitem>
+		<fallbackurl />
+		<subtype>-1</subtype>
+		<nickname />
+		<des />
+		<title />
+		<jumptype>-1</jumptype>
+		<mediatype>-1</mediatype>
+		<query />
+		<pagepath />
+		<appid />
+		<istransparent>0</istransparent>
+		<forbidforward>0</forbidforward>
+	</liteappitem>
+	<announcement_id>wxid_steward_12345678901@chatroom_1792133731_1673092894</announcement_id>
+</group_notice_item>
+]]></announcement>
+		<textannouncement><![CDATA[🍃【枫林苑・秋日便民活动通知】🍃
+秋意渐浓，风扇收纳前清洁安排起来～为帮您清理积尘，干净收纳，枫林苑物业将开展免费清洗电风扇便民服务活动🔧✨
+🧼活动内容：免费清洗家用台式 / 落地电风扇
+📅活动时间：本周六（10 月 17 日）
+⏰上午 9:00-11:00，下午 13:30-16:00
+📍活动地点：7 幢背后空地
+届时请您将风扇带到现场，我们会贴心为您拆洗、擦拭、组装，清洁完毕方便收纳💨
+💡温馨提示：如遇雨天，活动将另行通知时间地点。
+秋日清风至，洁净伴您行 —— 枫林苑物业愿您秋日常安，舒心每一天。🌿]]></textannouncement>
+		<xmlpuretext><![CDATA[1]]></xmlpuretext>
+		<announcement_id><![CDATA[wxid_steward_12345678901@chatroom_1792133731_1673092894]]></announcement_id>
+	</appmsg>
+	<fromusername><![CDATA[wxid_steward]]></fromusername>
+	<appinfo>
+		<version>1</version>
+		<appname />
+	</appinfo>
+</msg>

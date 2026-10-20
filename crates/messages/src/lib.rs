@@ -69,6 +69,7 @@ pub enum Kind {
     Transfer,
     RedPacket,
     Call,
+    GroupNotice,
     Image,
     Video,
     File,
@@ -80,7 +81,7 @@ pub enum Kind {
 
 impl Kind {
     /// Every kind, as the answer names them.
-    pub const ALL: [Kind; 21] = [
+    pub const ALL: [Kind; 22] = [
         Kind::Text,
         Kind::Link,
         Kind::Quote,
@@ -95,6 +96,7 @@ impl Kind {
         Kind::Transfer,
         Kind::RedPacket,
         Kind::Call,
+        Kind::GroupNotice,
         Kind::Image,
         Kind::Video,
         Kind::File,
@@ -120,6 +122,7 @@ impl Kind {
             Kind::Transfer => "transfer",
             Kind::RedPacket => "red_packet",
             Kind::Call => "call",
+            Kind::GroupNotice => "group_notice",
             Kind::Image => "image",
             Kind::Video => "video",
             Kind::File => "file",
@@ -405,6 +408,9 @@ pub fn message(
         parsed.fields.insert("file_present".into(), json!(h.file));
         parsed.fields.insert("thumbnail_present".into(), json!(h.thumbnail));
     }
+    if parsed.kind == Kind::GroupNotice {
+        posted(&mut parsed.fields, sender.as_deref(), row.create_time, names);
+    }
     let (t, sub) = kinds::split(row.local_type);
     let mut out = Map::new();
     out.insert("id".into(), json!((row.server_id != 0).then(|| row.server_id.to_string())));
@@ -417,6 +423,17 @@ pub fn message(
     out.insert("subtype".into(), json!(sub));
     out.insert("content".into(), json!(content));
     Value::Object(out)
+}
+
+/// A group notice's `fields`, posted by whom and when its XML says, else
+/// by `sender` at `sent`: its poster shown as `names` shows them.
+fn posted(fields: &mut Map<String, Value>, sender: Option<&str>, sent: i64, names: &Names) {
+    let id = fields.get("by").and_then(|by| by["id"].as_str()).or(sender).map(str::to_string);
+    let by = id.map(|id| json!({ "display_name": names.of(&id), "id": id }));
+    fields.insert("by".into(), json!(by));
+    if fields.get("at").is_none_or(Value::is_null) {
+        fields.insert("at".into(), json!(rfc3339(sent)));
+    }
 }
 
 /// A row of a chat, read: who said it, its content as the answer has it,

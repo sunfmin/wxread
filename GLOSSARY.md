@@ -34,7 +34,7 @@ A person in a group, whether or not the account has them as a contact, with the 
 _Avoid_: participant, user
 
 **Notice**:
-What a group pins for its members (群公告): its text, who posted it and when.
+What a group pins for its members (群公告): its text, who posted it and when. Posted into the group's chat, it is a message of the kind `group_notice`.
 _Avoid_: announcement, bulletin
 
 **Remark**:

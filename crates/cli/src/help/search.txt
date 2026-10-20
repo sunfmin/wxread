@@ -71,6 +71,7 @@ WHAT A MESSAGE IS SEARCHED BY
   forward        its title and what each message in it says
   transfer, red_packet
                  its memo
+  group_notice   its text: a group's notice posted into its chat
   The rest are not searched: find them with `wxread messages`:
   image, video, voice, sticker
                  media, whose words WeChat does not index

@@ -61,6 +61,9 @@ fn each_kind_is_searched_by_the_text_wechat_indexes() {
         Some("Gym\n1 x Rd".into())
     );
     assert_eq!(matched(42, r#"<msg username="wxid_x" nickname="Rex"/>"#), Some("Rex".into()));
+    // A group's notice posted in its chat, by its text, as WeChat indexes it.
+    let notice = "<msg><appmsg><type>87</type><textannouncement><![CDATA[Ride x at 9]]></textannouncement></appmsg></msg>";
+    assert_eq!(matched(app(87), notice), Some("Ride x at 9".into()));
     // Media and notices are not searched, whatever their XML holds.
     assert_eq!(matched(3, r#"<msg><img md5="x"/></msg>"#), None);
     assert_eq!(matched(10000, "x joined"), None);
