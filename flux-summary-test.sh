@@ -26,6 +26,7 @@ unit() {
   local dir="$work/target/flux/build/$1/$hash"
   mkdir -p "$dir/out" "$dir/fingerprint"
   : >"$dir/out/lib$name-$hash.rmeta"
+  rm -f "$dir/fingerprint/output-lib-$name"
   if [ -n "$2" ]; then
     printf '{"$message_type":"unused_extern","lint_level":"force-warn","unused_extern_names":["flux_rs"]}\n\033[1msummary.\033[0m %s\033[0m\n' "$2" >"$dir/fingerprint/output-lib-$name"
   fi
