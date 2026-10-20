@@ -192,12 +192,14 @@ pub fn page(contacts: Contacts, query: Option<&str>, after: Option<&Cursor>, lim
 /// their own, which WeChat shows by their members' names: those whose
 /// [`Row::members`] are to be read.
 pub fn unnamed_groups(contacts: &Contacts) -> Vec<String> {
-    contacts
-        .values()
-        .filter(|r| Kind::of(&r.id) == Kind::Group)
-        .filter(|r| display_name(r.remark.as_deref(), None, r.name.as_deref()).is_empty())
-        .map(|r| r.id.clone())
-        .collect()
+    let mut unnamed = Vec::new();
+    for r in contacts.values() {
+        let named = !display_name(r.remark.as_deref(), None, r.name.as_deref()).is_empty();
+        if Kind::of(&r.id) == Kind::Group && !named {
+            unnamed.push(r.id.clone());
+        }
+    }
+    unnamed
 }
 
 /// What fixes asking for `id`, which is no contact of the account.
@@ -364,12 +366,14 @@ pub fn listed(room: &Room) -> Vec<(String, Option<String>)> {
 /// names a group with no name of its own by. A member it shows by no
 /// name is left out.
 pub fn others(contacts: &Contacts, room: &Room, account: &str) -> Vec<String> {
-    listed(room)
-        .into_iter()
-        .filter(|(member, _)| member != account)
-        .map(|(member, name)| shown(contacts, &member, name.as_deref()))
-        .filter(|name| !name.is_empty())
-        .collect()
+    let mut names = Vec::new();
+    for (member, name) in listed(room) {
+        let name = shown(contacts, &member, name.as_deref());
+        if member != account && !name.is_empty() {
+            names.push(name);
+        }
+    }
+    names
 }
 
 /// How a group shows `id`, whose name in it is `in_group`.
