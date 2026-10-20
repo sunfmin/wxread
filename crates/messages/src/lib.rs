@@ -511,10 +511,15 @@ pub fn db_path(name: &str) -> String {
     format!("message/{name}.db")
 }
 
-/// What fixes a chat none of the account's message databases has.
+/// What fixes a chat none of the account's message databases has: one of
+/// WeChat's folders is refused naming what reads it; any other is no chat
+/// of the account's, or one WeChat on this Mac holds no message of.
 pub fn no_such_chat(chat: &str, account: &str) -> String {
+    if let Some(folder) = wxread_chats::Folder::of(chat) {
+        return folder.not_a_chat();
+    }
     format!(
-        "account {account} has no messages of chat {chat}: pass {CHAT_FLAG} an id `wxread chats` lists (a wxid, or a group's <n>@chatroom)"
+        "account {account} has no messages of chat {chat}: it is no chat of the account's, or WeChat on this Mac holds none of its messages (they were never synced to this Mac, or were deleted); `wxread chats` lists the chats, and `wxread chats --query {chat}` answers whether it is one"
     )
 }
 

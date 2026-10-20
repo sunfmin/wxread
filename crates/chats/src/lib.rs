@@ -45,16 +45,83 @@ pub struct Contact {
     pub members: Vec<String>,
 }
 
-/// Whether a chat is with one contact or in a group.
+/// One of WeChat's folders: an entry of its chat list that holds chats,
+/// or official accounts' messages, rather than being a chat; no message
+/// is ever its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Folder {
+    /// The groups the account folded (折叠的群聊), each a chat of its own.
+    FoldedGroups,
+    /// What subscription accounts sent (订阅号消息).
+    Subscriptions,
+    /// The service accounts (服务号).
+    Services,
+}
+
+impl Folder {
+    pub const ALL: [Folder; 3] = [Folder::FoldedGroups, Folder::Subscriptions, Folder::Services];
+
+    /// The folder whose id in the chat list is `id`, when it is one.
+    pub fn of(id: &str) -> Option<Folder> {
+        Folder::ALL.into_iter().find(|f| f.id() == id)
+    }
+
+    /// Its id in WeChat's chat list (`SessionTable`).
+    pub fn id(self) -> &'static str {
+        match self {
+            Folder::FoldedGroups => "@placeholder_foldgroup",
+            Folder::Subscriptions => "brandsessionholder",
+            Folder::Services => "brandservicesessionholder",
+        }
+    }
+
+    /// What WeChat names it in its chat list.
+    pub fn name(self) -> &'static str {
+        match self {
+            Folder::FoldedGroups => "折叠的群聊",
+            Folder::Subscriptions => "订阅号消息",
+            Folder::Services => "服务号",
+        }
+    }
+
+    /// The command that reads what it holds.
+    pub fn read_with(self) -> &'static str {
+        match self {
+            Folder::FoldedGroups => "wxread chats",
+            Folder::Subscriptions | Folder::Services => "wxread articles",
+        }
+    }
+
+    /// What fixes asking for its messages, as though it were a chat.
+    pub fn not_a_chat(self) -> String {
+        let (id, name, with) = (self.id(), self.name(), self.read_with());
+        match self {
+            Folder::FoldedGroups => format!(
+                "{id} is WeChat's folder {name}, not a chat, and has no messages of its own: `{with}` lists each group folded into it as a chat of its own, and `wxread messages --chat <its id>` reads one"
+            ),
+            Folder::Subscriptions | Folder::Services => format!(
+                "{id} is WeChat's folder {name}, not a chat, and has no messages of its own: `{with}` reads what its official accounts sent, `--official-account <gh_... id>` one account's"
+            ),
+        }
+    }
+}
+
+/// Whether a chat is with one contact, in a group, or one of WeChat's
+/// folders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Direct,
     Group,
+    Folder(Folder),
 }
 
 impl Kind {
-    /// The kind of the chat `id`: in a group when its contact is one.
+    /// The kind of the chat `id`: a folder when it is one's, in a group
+    /// when its contact is one.
     pub fn of(id: &str) -> Kind {
+        if let Some(folder) = Folder::of(id) {
+            return Kind::Folder(folder);
+        }
         match wxread_contacts::Kind::of(id) {
             wxread_contacts::Kind::Group => Kind::Group,
             wxread_contacts::Kind::Person | wxread_contacts::Kind::OfficialAccount => Kind::Direct,
@@ -65,6 +132,7 @@ impl Kind {
         match self {
             Kind::Direct => "direct",
             Kind::Group => "group",
+            Kind::Folder(_) => "folder",
         }
     }
 }
@@ -74,15 +142,19 @@ impl Kind {
 pub struct Chat {
     pub id: String,
     /// The account's remark for it, else its own name, else (a group) its
-    /// members' names besides the account's, as WeChat joins them; "" for
-    /// none.
+    /// members' names besides the account's, as WeChat joins them; a
+    /// folder's, as WeChat names it; "" for none.
     pub name: String,
     pub kind: Kind,
+    /// The command that reads what it holds: its messages, or for a
+    /// folder, the chats or articles in it.
+    pub read_with: String,
     /// When its last message was (RFC 3339, UTC), or None for none.
     pub last_message_at: Option<String>,
     pub unread: u64,
     /// How many are in it, the account included: [`DIRECT_MEMBERS`] for a
-    /// direct chat; None for a group WeChat keeps no record of.
+    /// direct chat; None for a group WeChat keeps no record of, and for a
+    /// folder.
     pub members: Option<usize>,
 }
 
@@ -210,6 +282,7 @@ fn members(rooms: &Rooms, id: &str) -> Option<usize> {
     match Kind::of(id) {
         Kind::Direct => Some(DIRECT_MEMBERS),
         Kind::Group => rooms.get(id).map(BTreeSet::len),
+        Kind::Folder(_) => None,
     }
 }
 
@@ -244,28 +317,42 @@ fn paged(
 }
 
 /// Whether `row` is found by `query`: its id, the name WeChat shows it by
-/// (an unnamed group's, its members' names, included) or its own name
-/// holds it, whatever their case. Every chat is found by "".
+/// (an unnamed group's, its members' names, and a folder's included) or
+/// its own name holds it, whatever their case. Every chat is found by "".
 pub fn matches(row: &Row, query: &str) -> bool {
     let query = query.to_lowercase();
-    let shown = row
-        .contact
-        .as_ref()
-        .map(|c| shown_name(c.remark.as_deref(), c.nick_name.as_deref(), &c.members));
+    let shown = name(row);
     let own = row.contact.as_ref().and_then(|c| c.nick_name.as_deref());
-    [Some(row.id.as_str()), shown.as_deref(), own]
+    [Some(row.id.as_str()), Some(shown.as_str()), own]
         .into_iter()
         .flatten()
         .any(|text| text.to_lowercase().contains(&query))
 }
 
+/// The name WeChat shows the chat of `row` by: a folder's own, else its
+/// contact's shown name; "" for no contact.
+fn name(row: &Row) -> String {
+    match Folder::of(&row.id) {
+        Some(folder) => folder.name().to_string(),
+        None => row.contact.as_ref().map_or_else(String::new, |c| {
+            shown_name(c.remark.as_deref(), c.nick_name.as_deref(), &c.members)
+        }),
+    }
+}
+
+/// The command that reads what the chat `id` holds.
+fn read_with(id: &str) -> String {
+    match Folder::of(id) {
+        Some(folder) => folder.read_with().to_string(),
+        None => format!("wxread messages --chat {id}"),
+    }
+}
+
 fn chat(row: Row, rooms: &Rooms) -> Chat {
-    let name = row.contact.map_or_else(String::new, |c| {
-        shown_name(c.remark.as_deref(), c.nick_name.as_deref(), &c.members)
-    });
     Chat {
         kind: Kind::of(&row.id),
-        name,
+        name: name(&row),
+        read_with: read_with(&row.id),
         last_message_at: row.last_timestamp.and_then(rfc3339),
         unread: row.unread.and_then(|n| u64::try_from(n).ok()).unwrap_or(0),
         members: members(rooms, &row.id),
@@ -552,6 +639,56 @@ mod tests {
             let why = Cursor::parse(text).unwrap_err();
             assert!(why.contains("leave --cursor out"), "{why}");
         }
+    }
+
+
+    #[test]
+    fn a_folder_is_its_own_kind_named_as_wechat_names_it_saying_what_reads_it() {
+        let mut r = row("brandsessionholder", 3);
+        r.contact = contact("", "", &[]);
+        let c = chat(r, &Rooms::new());
+        assert_eq!(
+            (c.kind, c.name.as_str(), c.members, c.read_with.as_str()),
+            (Kind::Folder(Folder::Subscriptions), "订阅号消息", None, "wxread articles")
+        );
+        assert_eq!(c.kind.name(), "folder");
+        let c = chat(row("@placeholder_foldgroup", 2), &Rooms::new());
+        assert_eq!((c.kind, c.name.as_str()), (Kind::Folder(Folder::FoldedGroups), "折叠的群聊"));
+        assert_eq!(c.read_with, "wxread chats");
+        let c = chat(row("brandservicesessionholder", 1), &Rooms::new());
+        assert_eq!((c.kind, c.name.as_str()), (Kind::Folder(Folder::Services), "服务号"));
+        assert_eq!(c.read_with, "wxread articles");
+        for f in Folder::ALL {
+            assert_eq!(Folder::of(f.id()), Some(f));
+            assert_eq!(Kind::of(f.id()), Kind::Folder(f));
+        }
+        assert_eq!(Folder::of("wxid_amy"), None);
+    }
+
+    #[test]
+    fn a_chat_says_the_command_that_reads_its_messages() {
+        assert_eq!(chat(row("wxid_b", 1), &Rooms::new()).read_with, "wxread messages --chat wxid_b");
+        assert_eq!(
+            chat(row("9@chatroom", 1), &Rooms::new()).read_with,
+            "wxread messages --chat 9@chatroom"
+        );
+    }
+
+    #[test]
+    fn a_query_finds_a_folder_by_wechats_name_for_it() {
+        let rows = vec![row("brandsessionholder", 2), row("@placeholder_foldgroup", 1)];
+        let p = page(rows, &Rooms::new(), Some("订阅号"), None, Limit::default_limit());
+        assert_eq!(ids(&p), ["brandsessionholder"]);
+    }
+
+    #[test]
+    fn a_folder_is_no_chat_and_its_refusal_names_what_reads_it() {
+        let why = Folder::Subscriptions.not_a_chat();
+        assert!(why.contains("brandsessionholder") && why.contains("订阅号消息"), "{why}");
+        assert!(why.contains("`wxread articles`") && !why.contains("chats` lists"), "{why}");
+        let why = Folder::FoldedGroups.not_a_chat();
+        assert!(why.contains("`wxread chats`") && why.contains("--chat <its id>"), "{why}");
+        assert!(Folder::Services.not_a_chat().contains("`wxread articles`"));
     }
 
     proptest! {
