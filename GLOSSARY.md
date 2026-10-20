@@ -45,6 +45,14 @@ _Avoid_: msg, record, entry
 What a message is (text, image, voice, file, link, and so on), whatever number WeChat stores it under.
 _Avoid_: type, msg type
 
+**Sender**:
+The contact who said a message, by id, and shown as WeChat shows them: the account's remark for them, else their name in the group, else their own name. WeChat's own notices have none.
+_Avoid_: author, from, user
+
+**Notice**:
+A message WeChat itself writes into a chat: a recall, a join or leave, a rename, and the like.
+_Avoid_: system message, event
+
 **Media**:
 A file a message carries rather than holds: an image, a video, a voice message, a file.
 _Avoid_: attachment, resource

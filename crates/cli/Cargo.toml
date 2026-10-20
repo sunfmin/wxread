@@ -13,6 +13,7 @@ wxread-account = { path = "../account" }
 wxread-chats = { path = "../chats" }
 wxread-doctor = { path = "../doctor" }
 wxread-keys = { path = "../keys" }
+wxread-messages = { path = "../messages" }
 wxread-page = { path = "../page" }
 wxread-schema = { path = "../schema" }
 wxread-sqlcipher = { path = "../sqlcipher" }
@@ -24,6 +25,8 @@ rusqlite = { version = "0.32", features = ["bundled", "serialize"] }
 
 [dev-dependencies]
 tempfile = "3"
+# Content compressed as WeChat compresses it, in the synthetic accounts.
+ruzstd = "0.8"
 
 [[test]]
 name = "cli"

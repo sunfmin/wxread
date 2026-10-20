@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, DatabaseName, params};
 use wxread_doctor::DB_STORAGE;
-use wxread_schema::{CONTACT, CONTACT_DB, SESSION, SESSION_DB};
+use wxread_schema::{CHAT_ROOM, CONTACT, CONTACT_DB, NAME2ID, SESSION, SESSION_DB, ZSTD};
 use wxread_sqlcipher::{PAGE, RESERVE};
 
 /// A contact of the account: its id, its own name, the account's remark.
@@ -20,17 +20,68 @@ pub struct Contact(pub &'static str, pub &'static str, pub &'static str);
 /// where WeChat sorts it, in seconds), and its unread messages.
 pub struct Session(pub &'static str, pub i64, pub i64);
 
+/// A group's members, each by their id and the name they gave themselves
+/// in it.
+pub struct Members(pub &'static str, pub Vec<(&'static str, &'static str)>);
+
+/// A message of chat `chat`, in message database `db` (`message_0`): its
+/// server id, type, when it was sent, its order in that second, its
+/// sender, its content as WeChat keeps it (zstd-compressed when `zstd`
+/// says), and its `packed_info_data`.
+#[derive(Clone)]
+pub struct Said {
+    pub db: &'static str,
+    pub chat: &'static str,
+    pub server_id: i64,
+    pub local_type: i64,
+    pub create_time: i64,
+    pub sort_seq: i64,
+    pub sender: Option<&'static str>,
+    pub content: String,
+    pub zstd: bool,
+    pub packed: Vec<u8>,
+}
+
+impl Said {
+    /// A text `content` said by `sender` in `chat` at `create_time`, in
+    /// message_0.
+    pub fn text(
+        chat: &'static str,
+        server_id: i64,
+        create_time: i64,
+        sender: &'static str,
+        content: &str,
+    ) -> Said {
+        Said {
+            db: "message_0",
+            chat,
+            server_id,
+            local_type: 1,
+            create_time,
+            sort_seq: create_time * 1000,
+            sender: Some(sender),
+            content: content.to_string(),
+            zstd: false,
+            packed: Vec::new(),
+        }
+    }
+}
+
 /// One account's directory under a data directory, and what its databases
-/// hold: `contacts` and `sessions` in the databases themselves, `recent`
-/// sessions only in committed frames of the session database's WAL, and
-/// `uncommitted` in frames after them that no commit ended.
+/// hold: `contacts`, `members`, `sessions` and `messages` in the databases
+/// themselves, `recent` sessions and `recent_messages` only in committed
+/// frames of their database's WAL, and `uncommitted` sessions in frames
+/// after them that no commit ended.
 pub struct Account {
     pub id: &'static str,
     pub storage: PathBuf,
     pub contacts: Vec<Contact>,
+    pub members: Vec<Members>,
     pub sessions: Vec<Session>,
     pub recent: Vec<Session>,
     pub uncommitted: Vec<Session>,
+    pub messages: Vec<Said>,
+    pub recent_messages: Vec<Said>,
 }
 
 /// The databases a synthetic account has.
@@ -42,9 +93,12 @@ impl Account {
             id,
             storage: data_dir.join(id).join(DB_STORAGE),
             contacts: Vec::new(),
+            members: Vec::new(),
             sessions: Vec::new(),
             recent: Vec::new(),
             uncommitted: Vec::new(),
+            messages: Vec::new(),
+            recent_messages: Vec::new(),
         }
     }
 
@@ -86,9 +140,29 @@ impl Account {
         format!("{{\"_db_dir\": \"{}\", {}}}", self.storage.display(), entries.join(", "))
     }
 
-    /// Writes every database, encrypted, and the session database's WAL.
+    /// Every database it has: the contact and session databases, and each
+    /// message database its messages are in.
+    pub fn databases(&self) -> Vec<String> {
+        let mut all: Vec<String> = DATABASES.iter().map(|d| d.to_string()).collect();
+        for said in self.messages.iter().chain(&self.recent_messages) {
+            let path = format!("message/{}.db", said.db);
+            if !all.contains(&path) {
+                all.push(path);
+            }
+        }
+        all
+    }
+
+    /// The keys of every database it has.
+    pub fn all_keys(&self) -> String {
+        let all = self.databases();
+        self.keys(&all.iter().map(String::as_str).collect::<Vec<_>>())
+    }
+
+    /// Writes every database, encrypted, and the WAL of the session
+    /// database and of each message database.
     pub fn write(&self) {
-        let contacts = plain(CONTACT);
+        let contacts = plain(&format!("{CONTACT}; {CHAT_ROOM}"));
         for (i, Contact(id, name, remark)) in self.contacts.iter().enumerate() {
             contacts
                 .execute(
@@ -97,7 +171,35 @@ impl Account {
                 )
                 .unwrap();
         }
+        for (i, Members(group, members)) in self.members.iter().enumerate() {
+            let buffer: Vec<u8> = members
+                .iter()
+                .flat_map(|(id, name)| {
+                    field(1, &[field(1, id.as_bytes()), field(2, name.as_bytes())].concat())
+                })
+                .collect();
+            contacts
+                .execute(
+                    "INSERT INTO chat_room(id, username, owner, ext_buffer) VALUES (?1, ?2, '', ?3)",
+                    params![i as i64 + 1, group, buffer],
+                )
+                .unwrap();
+        }
         self.seal(CONTACT_DB, &bytes(&contacts), &[]);
+        let mut dbs: Vec<&str> =
+            self.messages.iter().chain(&self.recent_messages).map(|s| s.db).collect();
+        dbs.sort();
+        dbs.dedup();
+        for db in dbs {
+            let conn = plain(NAME2ID);
+            let of = |all: &[Said]| all.iter().filter(|s| s.db == db).cloned().collect::<Vec<_>>();
+            said(&conn, &of(&self.messages));
+            let before = bytes(&conn);
+            said(&conn, &of(&self.recent_messages));
+            let after = bytes(&conn);
+            let path = format!("message/{db}.db");
+            self.seal(&path, &before, &[(&before, &after, true)]);
+        }
         let sessions = plain(SESSION);
         insert(&sessions, &self.sessions);
         let before = bytes(&sessions);
@@ -152,6 +254,56 @@ fn insert(db: &Connection, sessions: &[Session]) {
         )
         .unwrap();
     }
+}
+
+/// Writes `messages` into the message database `db`: each chat's table,
+/// made the first time one of its messages is written, and each sender in
+/// `Name2Id`.
+fn said(db: &Connection, messages: &[Said]) {
+    for m in messages {
+        let table = wxread_schema::messages_table(m.chat);
+        db.execute_batch(
+            &wxread_schema::messages(&table).replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"),
+        )
+        .unwrap();
+        let sender: Option<i64> = m.sender.map(|s| {
+            db.execute("INSERT OR IGNORE INTO Name2Id(user_name, is_session) VALUES (?1, 0)", [s])
+                .unwrap();
+            db.query_row("SELECT rowid FROM Name2Id WHERE user_name = ?1", [s], |r| r.get(0))
+                .unwrap()
+        });
+        let content: rusqlite::types::Value = if m.zstd {
+            ruzstd::encoding::compress_to_vec(
+                m.content.as_bytes(),
+                ruzstd::encoding::CompressionLevel::Fastest,
+            )
+            .into()
+        } else {
+            m.content.clone().into()
+        };
+        db.execute(
+            &format!("INSERT INTO {table}(server_id, local_type, sort_seq, real_sender_id, create_time, message_content, packed_info_data, WCDB_CT_message_content) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"),
+            params![m.server_id, m.local_type, m.sort_seq, sender, m.create_time, content, m.packed, m.zstd.then_some(ZSTD)],
+        )
+        .unwrap();
+    }
+}
+
+/// Protobuf field `number` holding `value`, length-delimited.
+pub fn field(number: u8, value: &[u8]) -> Vec<u8> {
+    let mut out = vec![number << 3 | 2];
+    let mut len = value.len();
+    loop {
+        let b = (len & 0x7f) as u8;
+        len >>= 7;
+        if len == 0 {
+            out.push(b);
+            break;
+        }
+        out.push(b | 0x80);
+    }
+    out.extend_from_slice(value);
+    out
 }
 
 /// Page `n` of `db`, when it has one.

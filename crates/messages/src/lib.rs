@@ -248,7 +248,7 @@ pub struct Chat {
 
 impl Chat {
     fn is_group(&self) -> bool {
-        self.id.ends_with("@chatroom")
+        wxread_chats::Kind::of(&self.id) == wxread_chats::Kind::Group
     }
 }
 

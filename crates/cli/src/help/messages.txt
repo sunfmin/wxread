@@ -1,0 +1,113 @@
+wxread messages: one chat's messages, each as its kind, newest first, a
+page at a time.
+
+WHEN TO RUN IT
+  To read a conversation, once `wxread chats` has named the chat. Run by
+  you or an agent, once the keys are supplied; it changes nothing.
+
+WHAT IT READS
+  The account's message databases under its db_storage (message/
+  message_<n>.db, and message/biz_message_<n>.db for official accounts)
+  and contact/contact.db, each with the WAL beside it (what WeChat wrote
+  last), with their keys: the file --keys names, else the contents of
+  WXREAD_KEYS. Each is decrypted into memory and read there, after its key
+  is checked against its first page. It writes nothing, anywhere: no
+  decrypted byte reaches the disk.
+
+OPTIONS
+  --chat <id>       the chat to read, its id as `wxread chats` lists it (a
+                    wxid, or a group's <n>@chatroom); required
+  --from <time>     the first time read, itself included
+  --to <time>       the time reading stops before, itself left out
+                    A time is RFC 3339 with its offset
+                    (2026-10-20T09:30:00+08:00, 2026-10-20T01:30:00Z), or a
+                    date (2026-10-20), its midnight in UTC.
+  --account <id>    the account to read, as `wxread doctor` names it;
+                    with only one logged in, that one
+  --limit <n>       how many messages a page holds, 1 to 1000; 100 unless
+                    given
+  --cursor <next>   start after the page that answered this `next`, with
+                    the same --chat, --from and --to
+
+WHAT IT ANSWERS
+    account   the account read: its directory's name, as doctor's id
+    chat      the chat read: its id
+    messages  [{id, at, sender, sender_name, kind, <kind>, type, subtype,
+              content}], newest first, those sent in one second in the
+              order WeChat shows them:
+              id           WeChat's server id of it, a string; null for one
+                           the server never saw (some notices)
+              at           when it was sent, RFC 3339 in UTC
+              sender       who said it: a wxid; null for WeChat's own
+                           notices
+              sender_name  what WeChat shows them as: the account's remark
+                           for them, else their name in the group, else
+                           their own name; null when nothing names them
+              kind         what it is, one of the kinds below
+              <kind>       an object named by its kind, of the fields
+                           below: "kind": "quote" comes with "quote": {…}
+              type         WeChat's number for it (1 text, 3 image, 49 an
+                           app message, 10000 a notice, …)
+              subtype      an app message's own type (5 a web page, 57 a
+                           quote, …); 0 for none
+              content      what WeChat keeps of it, as it keeps it: a
+                           text's text, the XML of the rest; a group's
+                           without the "<sender>:\n" WeChat starts it with,
+                           decompressed when WeChat compressed it
+    next      pass it as --cursor for the next page; null on the last one
+
+THE KINDS AND THEIR FIELDS
+  Every field is null when the message does not say it.
+  text        {text}
+  link        {to, title, summary, url, source}: to is "web_page",
+              "music", "video", "mini_program", "channels_feed" or
+              "channels_live"; source the site, account or mini-program
+  quote       {text, quoted: {id, sender, name, excerpt}}: the reply, and
+              the quoted message's id, sender, name and, for a text, its
+              words
+  location    {latitude, longitude, name, address}
+  card        {contact, name}: the contact the card shares
+  forward     {title, messages: [{sender, name, at, kind, content, type,
+              inside}]}: each message forwarded, in order; one forwarded
+              inside another follows it, its inside the position in this
+              list of the forward it sits in (null at the top)
+  recall      {text}: a message its sender recalled, which WeChat rewrites
+              into this notice in its place
+  nudge       {from, to, text}: who nudged whom
+  join        {contacts, by, text}: who joined the group, and who brought
+              them in
+  leave       {contacts, by, text}: who left or was removed, and by whom
+  renamed     {name, by, text}: the group's new name, and who gave it
+  transfer    {amount_fen, state, memo}: the amount in fen (1/100 yuan)
+              when shown, state "sent", "received" or "returned"
+  red_packet  {amount_fen, state, memo}: WeChat shows no amount
+  image       {name, md5}: name finds its file, msg/attach/<md5 of the
+              chat id>/<YYYY-MM>/Img/<name>.dat under the account's
+              directory, encrypted
+  video       {name, seconds, md5}: name finds msg/video/<YYYY-MM>/
+              <name>.mp4 and <name>_thumb.jpg
+  file        {name, stored_as, size, extension}: stored_as finds
+              msg/file/<YYYY-MM>/<stored_as>; size in bytes
+  sticker     {md5, url}: url its address on WeChat's CDN, md5 that of its
+              bytes
+  voice       {length_ms}: its sound is in message/media_<n>.db, by the
+              message's id
+  system      {text}: any other notice of WeChat's
+  unknown     {}: anything else, read from content, type and subtype; a
+              message whose XML does not read is unknown, never an error
+
+TRIPS YOU UP
+  - Messages are newest first: reverse a page to read it in the order it
+    was said. A message sent since the first page is not on a later one; a
+    fresh run from the newest shows it.
+  - The chat id is exact: a group's ends in @chatroom. A chat none of the
+    account's message databases holds is an error pointing at
+    `wxread chats`.
+  - The keys must open contact/contact.db and every message database. One
+    missing, or one that no longer opens its database (WeChat created its
+    databases again: logging out and in, some updates), is an error naming
+    the database; its fix is `sudo wxread keys`, then supplying the keys
+    again.
+  - Media is named, not fetched: the fields of image, video, file, sticker
+    and voice say where each file is kept, which WeChat may have cleared.
+  - Several accounts logged in is an error naming them: pass --account.

@@ -18,6 +18,7 @@ use crate::world::World;
 pub struct Account {
     id: String,
     storage: PathBuf,
+    databases: Result<Vec<String>, String>,
     keys: Keys,
 }
 
@@ -30,12 +31,22 @@ impl Account {
         let listing = world.listing();
         let seen = wxread_account::choose(&dir, from, &listing, wanted).map_err(|e| anyhow!(e))?;
         let keys = wxread_account::keys(&world.keys(), needed).map_err(|e| anyhow!(e))?;
-        Ok(Account { id: seen.id.clone(), storage: PathBuf::from(&seen.db_storage), keys })
+        Ok(Account {
+            id: seen.id.clone(),
+            storage: PathBuf::from(&seen.db_storage),
+            databases: seen.databases.clone(),
+            keys,
+        })
     }
 
     /// The account's id: its directory's name.
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    /// Every database under its db_storage, by its path there.
+    pub fn databases(&self) -> anyhow::Result<Vec<String>> {
+        self.databases.clone().map_err(|why| anyhow!(wxread_account::unlisted(&self.id, &why)))
     }
 
     /// Database `path` (`session/session.db`), as it is on disk now with

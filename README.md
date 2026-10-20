@@ -7,6 +7,7 @@ failure names its fix. `wxread --help` is the manual.
 ```sh
 wxread doctor              # what it found, and the fix of everything missing
 wxread --keys <file> chats # the account's chats, newest first
+wxread --keys <file> messages --chat <id>  # a chat's messages, each as its kind
 wxread --help              # the guide
 ```
 

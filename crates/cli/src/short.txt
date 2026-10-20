@@ -10,6 +10,7 @@ Commands:
   chats     the account's chats, newest first, a page at a time
   doctor    find WeChat's accounts and the keys supplied; change nothing
   keys      read every database key from the running WeChat (sudo)
+  messages  a chat's messages, each as its kind, a page at a time
 
 Options:
   --data-dir <dir>   WeChat's xwechat_files (or WXREAD_DATA_DIR)
