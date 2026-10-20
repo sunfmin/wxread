@@ -4,10 +4,10 @@
 use std::collections::BTreeSet;
 use std::process::Command;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::common::World;
-use crate::synthetic::{Account, Article, Contact, DATABASES, Group, Said, Session, Voice};
+use crate::synthetic::{Account, Article, Contact, DATABASES, Group, Said, Saved, Session, Voice};
 use wxread_doctor::{DATA_DIR_FLAG, DATA_DIR_VAR, KEYS_FLAG, KEYS_VAR};
 
 /// What the binary prints for `args`, which must exit 0 and leave stderr empty.
@@ -60,8 +60,20 @@ fn run_in(text: &str) -> BTreeSet<String> {
 fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
     let existing = existing();
     let names = [
-        "articles", "avatar", "chats", "contact", "contacts", "doctor", "file", "group", "keys",
-        "messages", "resign", "search", "voice",
+        "articles",
+        "avatar",
+        "chats",
+        "contact",
+        "contacts",
+        "doctor",
+        "favorites",
+        "file",
+        "group",
+        "keys",
+        "messages",
+        "resign",
+        "search",
+        "voice",
     ];
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
@@ -322,6 +334,67 @@ fn articles_answers_exactly_the_keys_its_help_and_the_guide_name() {
     for field in json["articles"][0]["official_account"].as_object().unwrap().keys() {
         assert!(help.contains("{id, name}") && help.contains(field), "{field}");
     }
+}
+
+#[test]
+fn favorites_answers_exactly_the_keys_its_help_and_the_guide_name() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    let favitem = |t: i64, body: &str| {
+        format!(
+            "<favitem type=\"{t}\">{body}<source><fromusr>wxid_amy</fromusr><tousr>wxid_me</tousr><createtime>1760000000</createtime><msgid>7</msgid><link>https://e.com</link></source></favitem>"
+        )
+    };
+    let item = |d: i64, body: &str| {
+        format!("<datalist><dataitem datatype=\"{d}\" dataid=\"i{d}\">{body}</dataitem></datalist>")
+    };
+    let saved = |id: i64, t: i64, content: String| Saved {
+        id,
+        fav_type: t,
+        saved: 1_760_000_000 + id,
+        content,
+        from: "wxid_amy",
+        sender: "",
+    };
+    account.favorites = vec![
+        saved(1, 2, favitem(2, &item(2, "<fullsize>3</fullsize>"))),
+        saved(2, 4, favitem(4, &item(4, "<duration>3</duration>"))),
+        saved(3, 3, favitem(3, &item(3, "<duration>3</duration>"))),
+        saved(4, 8, favitem(8, &item(8, "<datatitle>a.pdf</datatitle>"))),
+        saved(
+            5,
+            14,
+            favitem(14, &item(1, "<datadesc>hi</datadesc><datasrcname>Amy</datasrcname>")),
+        ),
+    ];
+    account.write();
+    let json = world.run(&["favorites"], &[("WXREAD_KEYS", &account.all_keys())]).ok();
+    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(answered("favorites"), keys);
+    assert_eq!(guide_row("favorites"), keys);
+    let help = asked(&["favorites", "--help"]);
+    let favorite = json["favorites"][0].as_object().unwrap();
+    for field in favorite.keys().filter(|k| json!(k) != favorite["kind"]) {
+        assert!(
+            help.contains(&format!("               {field} ")),
+            "favorites --help says what {field} is"
+        );
+    }
+    // Every field of every kind answered is named in the help.
+    for field in fields(&json).iter().filter(|f| !f.contains(char::is_numeric)) {
+        assert!(help.contains(field.as_str()), "favorites --help names {field}");
+    }
+    // Every kind there is, and only those, has its line in the help.
+    let kinds: BTreeSet<String> = between(&help, "THE KINDS AND THEIR FIELDS", "TRIPS YOU UP")
+        .into_iter()
+        .filter(|line| line.len() - line.trim_start().len() == 2)
+        .filter_map(|line| line.split_whitespace().next())
+        .filter(|word| word.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+        .map(str::to_string)
+        .collect();
+    let all: BTreeSet<String> =
+        wxread_favorites::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
+    assert_eq!(kinds, all);
 }
 
 #[test]

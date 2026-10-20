@@ -230,7 +230,7 @@ pub fn not_media(id: &str, kind: &str) -> String {
 /// What fixes a message id that is not one.
 pub fn not_an_id(id: &str) -> String {
     format!(
-        "{id} is not a message's id: pass one as `wxread messages` answers it (its \"id\", WeChat's server id, digits)"
+        "{id} is not a message's id: pass one as `wxread messages` answers it (its \"id\", WeChat's server id, digits), or a favorite's file_id as `wxread favorites` answers it (fav:<favorite>:<item>)"
     )
 }
 
@@ -249,8 +249,9 @@ pub fn no_image_key(account: &str, documents: &str) -> String {
     )
 }
 
-/// What fixes an image `path` that did not decrypt for `refusal`.
-pub fn image_refused(path: &str, refusal: image::Refusal) -> String {
+/// What fixes a file `path` that did not decrypt for `refusal`, `source`
+/// what holds it in WeChat: "the message", or a favorite.
+pub fn image_refused(path: &str, refusal: image::Refusal, source: &str) -> String {
     let why = match refusal {
         image::Refusal::NotWechats => "is in none of the formats WeChat seals images in",
         image::Refusal::NoKey | image::Refusal::KeyDoesNotOpen => {
@@ -259,7 +260,7 @@ pub fn image_refused(path: &str, refusal: image::Refusal) -> String {
         image::Refusal::Short => "is cut short: its header says more bytes than it holds",
     };
     format!(
-        "{path} {why}: open the message in WeChat to have it download the image again; if it still fails, tell wxread's maintainers which WeChat version wrote it (https://github.com/sunfmin/wxread/issues)"
+        "{path} {why}: open {source} in WeChat to have it download it again; if it still fails, tell wxread's maintainers which WeChat version wrote it (https://github.com/sunfmin/wxread/issues)"
     )
 }
 
