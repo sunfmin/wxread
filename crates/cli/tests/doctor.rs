@@ -1,15 +1,12 @@
 //! `wxread doctor`: what it finds of WeChat's accounts and the keys, a fix
 //! for each finding, and nothing written.
 
-use std::collections::BTreeMap;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
 use serde_json::{Value, json};
 use wxread_doctor::{ALLOW_READING, DATA_DIR_UNDER_HOME};
 
-use crate::common::World;
+use crate::common::{World, snapshot};
 
 const DATABASES: [&str; 3] = ["contact/contact.db", "message/message_0.db", "session/session.db"];
 
@@ -171,26 +168,6 @@ fn a_directory_it_may_not_read_is_a_finding_with_the_permission_to_grant() {
         assert_eq!(json["findings"].as_array().unwrap().len(), 1, "{json}");
         assert_eq!(json["findings"][0]["fix"], ALLOW_READING);
     }
-}
-
-/// Every path under `dir`, with its bytes and when it was last changed.
-fn snapshot(dir: &Path) -> BTreeMap<PathBuf, (Vec<u8>, SystemTime)> {
-    let mut all = BTreeMap::new();
-    let mut dirs = vec![dir.to_path_buf()];
-    while let Some(d) = dirs.pop() {
-        for entry in std::fs::read_dir(&d).unwrap() {
-            let path = entry.unwrap().path();
-            let meta = std::fs::metadata(&path).unwrap();
-            let bytes = if meta.is_dir() {
-                dirs.push(path.clone());
-                Vec::new()
-            } else {
-                std::fs::read(&path).unwrap()
-            };
-            all.insert(path, (bytes, meta.modified().unwrap()));
-        }
-    }
-    all
 }
 
 #[test]

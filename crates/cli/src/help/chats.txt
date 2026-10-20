@@ -1,0 +1,43 @@
+wxread chats: the account's chats, newest first, a page at a time.
+
+WHEN TO RUN IT
+  To see which chats there are and pick one, before reading its messages.
+  Run by you or an agent, once the keys are supplied; it changes nothing.
+
+WHAT IT READS
+  The account's session/session.db and contact/contact.db under its
+  db_storage, each with the WAL beside it (what WeChat wrote last), with
+  their keys: the file --keys names, else the contents of WXREAD_KEYS.
+  Each is decrypted into memory and read there, after its key is checked
+  against its first page. It writes nothing, anywhere: no decrypted byte
+  reaches the disk.
+
+OPTIONS
+  --account <id>    the account to read, as `wxread doctor` names it;
+                    with only one logged in, that one
+  --limit <n>       how many chats a page holds, 1 to 1000; 100 unless given
+  --cursor <next>   start after the page that answered this `next`
+
+WHAT IT ANSWERS
+    account   the account read: its directory's name, as doctor's id
+    chats     [{id, name, kind, last_message_at, unread}], newest first:
+              id               its contact's id: a wxid, or a group's
+                               <n>@chatroom
+              name             the account's remark for it, else its own
+                               name; "" when the account has no contact of it
+              kind             "direct" (with one contact) or "group"
+              last_message_at  when its last message was, RFC 3339 in UTC;
+                               null for none
+              unread           its messages not yet read
+    next      pass it as --cursor for the next page; null on the last one
+
+TRIPS YOU UP
+  - Paging is by where each chat was when the page was read: a chat with
+    a new message since moves to the front, so it is not on a later page,
+    and a fresh run from the newest shows it.
+  - An official account (gh_...) is a "direct" chat.
+  - The keys must open both databases. One missing, or one that no longer
+    opens its database (WeChat created its databases again: logging out
+    and in, some updates), is an error naming the database; its fix is
+    `sudo wxread keys`, then supplying the keys again.
+  - Several accounts logged in is an error naming them: pass --account.

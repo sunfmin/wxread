@@ -5,8 +5,7 @@
 
 use flux_rs::attrs::*;
 
-/// The option that names the account, and those that page.
-pub const ACCOUNT_FLAG: &str = "--account";
+/// The options that page.
 pub const LIMIT_FLAG: &str = "--limit";
 pub const CURSOR_FLAG: &str = "--cursor";
 
