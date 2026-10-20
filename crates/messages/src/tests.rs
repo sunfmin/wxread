@@ -329,7 +329,7 @@ const SOLITAIRE_WITHOUT_ID: &str = include_str!("fixtures/solitaire_without_id.x
 
 /// Someone a 接龙 names, as the answer has them before the chat names them.
 fn person(id: &str) -> Value {
-    json!({ "id": id, "display_name": null })
+    json!({ "id": id, "display_name": "" })
 }
 
 /// An entry of a 接龙 as the answer has it before its member is named.

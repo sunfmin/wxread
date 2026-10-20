@@ -228,7 +228,7 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
                 "entries": [
                     { "number": 1, "member": { "id": "wxid_bob", "display_name": "Bobby" }, "text": "Bob", "at": "2025-10-09T08:53:20Z" },
                     { "number": 2, "member": { "id": "wxid_amy", "display_name": "Amy W" }, "text": "Amy +1", "at": "2025-10-09T08:54:20Z" },
-                    { "number": 3, "member": { "id": "wxid_zed", "display_name": null }, "text": "Zed", "at": "2025-10-09T08:55:20Z" },
+                    { "number": 3, "member": { "id": "wxid_zed", "display_name": "" }, "text": "Zed", "at": "2025-10-09T08:55:20Z" },
                 ],
                 "text": "#接龙\nSaturday hike\n\n1. Bob\n2. Amy +1\n3. Zed",
             }),
