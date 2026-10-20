@@ -26,8 +26,14 @@ WHAT IT ANSWERS
     group     {id, display_name, name, remark, owner, notice, members}:
               id            the id asked for
               display_name  as WeChat shows it: the account's remark,
-                            else its name; "" for neither
-              name          its own name; "" for none
+                            else its name; a group with neither is
+                            named as WeChat names it, by its members'
+                            display names, the account's left out, in
+                            the order WeChat lists them, joined by "、"
+                            (e.g. "孙凤君、秦俊斌"); "" for none
+              name          its own name; "" for none: a group with no
+                            name of its own answers "" here and its
+                            members' names in display_name
               remark        what the account calls it; null for none
               owner         {id, display_name}: who owns it; null when
                             WeChat does not say

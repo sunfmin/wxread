@@ -26,8 +26,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let cursor = asked.cursor.as_deref().map(Cursor::parse).transpose().map_err(|e| anyhow!(e))?;
     let account = Account::open(world, asked.account.as_deref(), &[SESSION_DB, CONTACT_DB])?;
     let sessions = account.database(SESSION_DB)?;
-    let contact_db = account.database(CONTACT_DB)?;
-    let rows = rows(&sessions, &contacts(&contact_db)?)?;
+    let rows = rows(&sessions, &contacts(&account)?)?;
     let page = wxread_chats::page(rows, cursor.as_ref(), limit);
     let chats: Vec<Value> = page
         .chats
@@ -72,18 +71,12 @@ fn rows(sessions: &Connection, contacts: &BTreeMap<String, Contact>) -> anyhow::
     Ok(rows)
 }
 
-/// What the account calls each contact, by its id.
-fn contacts(db: &Connection) -> anyhow::Result<BTreeMap<String, Contact>> {
-    let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(CONTACT_DB, &e.to_string()));
-    let mut query = db.prepare("SELECT username, remark, nick_name FROM contact").map_err(sql)?;
-    let rows = query
-        .query_map([], |r| {
-            Ok((
-                r.get::<_, Option<String>>(0)?.unwrap_or_default(),
-                Contact { remark: r.get(1)?, nick_name: r.get(2)? },
-            ))
-        })
-        .and_then(Iterator::collect)
-        .map_err(sql)?;
-    Ok(rows)
+/// What the account calls each contact, by its id: an unnamed group by
+/// its members' names.
+fn contacts(account: &Account) -> anyhow::Result<BTreeMap<String, Contact>> {
+    let rows = crate::contacts::contacts(account, false)?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, r)| (id, Contact { remark: r.remark, nick_name: r.name, members: r.members }))
+        .collect())
 }

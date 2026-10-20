@@ -53,7 +53,8 @@ pub fn group(world: &World, account: Option<&str>, id: &str) -> anyhow::Result<V
     let account = Account::open(world, account, &[CONTACT_DB])?;
     let contacts = contacts(&account, false)?;
     let db = account.database(CONTACT_DB)?;
-    let group = wxread_contacts::group(id, &contacts, room(&db, id)?, notice(&db, id)?)
+    let own = own_id(&account, &contacts);
+    let group = wxread_contacts::group(id, &contacts, room(&db, id)?, notice(&db, id)?, &own)
         .map_err(|e| anyhow!(e))?;
     Ok(json!({"account": account.id(), "group": group_json(&group)}))
 }
@@ -105,9 +106,16 @@ fn sql(e: rusqlite::Error) -> anyhow::Error {
     anyhow!(wxread_account::not_wechats(CONTACT_DB, &e.to_string()))
 }
 
-/// The rows of `contact`, by id; each with whether WeChat holds its
-/// avatar when `avatars` asks, which reads the head image database.
-fn contacts(account: &Account, avatars: bool) -> anyhow::Result<Contacts> {
+/// The account's own id, as `contacts` knows it.
+fn own_id(account: &Account, contacts: &Contacts) -> String {
+    wxread_messages::names::account_id(account.id(), |id| contacts.contains_key(id))
+}
+
+/// The rows of `contact`, by id, each group with no name of its own with
+/// the names of its members it is shown by; each with whether WeChat
+/// holds its avatar when `avatars` asks, which reads the head image
+/// database.
+pub fn contacts(account: &Account, avatars: bool) -> anyhow::Result<Contacts> {
     let held = if avatars { held(&account.database(HEAD_IMAGE_DB)?)? } else { BTreeSet::new() };
     let db = account.database(CONTACT_DB)?;
     let mut query = db
@@ -123,11 +131,20 @@ fn contacts(account: &Account, avatars: bool) -> anyhow::Result<Contacts> {
                 name: r.get(2)?,
                 remark: r.get(3)?,
                 signature: r.get(4)?,
+                members: Vec::new(),
             })
         })
         .and_then(Iterator::collect)
         .map_err(sql)?;
-    Ok(wxread_contacts::by_id(rows))
+    let mut contacts = wxread_contacts::by_id(rows);
+    let own = own_id(account, &contacts);
+    for id in wxread_contacts::unnamed_groups(&contacts) {
+        let members = wxread_contacts::others(&contacts, &room(&db, &id)?, &own);
+        if let Some(row) = contacts.get_mut(&id) {
+            row.members = members;
+        }
+    }
+    Ok(contacts)
 }
 
 /// The ids of the contacts `head_image` holds an avatar of.

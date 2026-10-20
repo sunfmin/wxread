@@ -23,8 +23,14 @@ WHAT IT ANSWERS
     chats     [{id, name, kind, last_message_at, unread}], newest first:
               id               its contact's id: a wxid, or a group's
                                <n>@chatroom
-              name             the account's remark for it, else its own
-                               name; "" when the account has no contact of it
+              name             as WeChat shows the chat: the account's
+                               remark for it, else its own name; a group
+                               with neither is named as WeChat names it,
+                               by its members' display names, the
+                               account's left out, in the order WeChat
+                               lists them, joined by "、" (e.g.
+                               "孙凤君、秦俊斌"); "" when the account has
+                               no contact of it
               kind             "direct" (with one contact) or "group"
               last_message_at  when its last message was, RFC 3339 in UTC;
                                null for none
