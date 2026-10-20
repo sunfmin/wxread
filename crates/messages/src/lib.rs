@@ -317,17 +317,23 @@ fn said(chat: &Chat, row: &Row) -> (Option<String>, String) {
     }
 }
 
-/// A row's content as text: zstd-decompressed when it says it is, bytes
-/// that are not UTF-8 replaced.
+/// A row's content as text: [`content_text`] of it.
 fn text_of(row: &Row) -> String {
+    content_text(&row.content, row.compressed)
+}
+
+/// `content`, a message's `message_content` as stored, as text:
+/// zstd-decompressed when `compressed` (its `WCDB_CT_message_content`) says
+/// it is, bytes that are not UTF-8 replaced.
+pub fn content_text(content: &[u8], compressed: Option<i64>) -> String {
     let unzstd = |bytes: &[u8]| {
         let mut out = Vec::new();
         ruzstd::decoding::StreamingDecoder::new(bytes).ok()?.read_to_end(&mut out).ok()?;
         Some(out)
     };
-    let bytes = match row.compressed {
-        Some(wxread_schema::ZSTD) => unzstd(&row.content).unwrap_or_else(|| row.content.clone()),
-        _ => row.content.clone(),
+    let bytes = match compressed {
+        Some(wxread_schema::ZSTD) => unzstd(content).unwrap_or_else(|| content.to_vec()),
+        _ => content.to_vec(),
     };
     String::from_utf8_lossy(&bytes).into_owned()
 }

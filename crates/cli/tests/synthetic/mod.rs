@@ -77,7 +77,38 @@ impl Said {
             packed: Vec::new(),
         }
     }
+
+    /// A push of `articles` from official account `from`, named `name` in
+    /// it, at `create_time`, in biz_message_0, as WeChat writes one: an app
+    /// message of a link, the first article in the appmsg itself and every
+    /// article an item of its `mmreader`, sent by the official account.
+    pub fn push(from: &'static str, name: &str, create_time: i64, articles: &[Article]) -> Said {
+        let items: String = articles
+            .iter()
+            .map(|Article(title, digest, url, cover)| {
+                format!("<item><itemshowtype>0</itemshowtype><title><![CDATA[{title}]]></title><url><![CDATA[{url}]]></url><pub_time>{create_time}</pub_time><cover><![CDATA[{cover}]]></cover><digest><![CDATA[{digest}]]></digest></item>")
+            })
+            .collect();
+        let Article(title, digest, url, cover) = &articles[0];
+        let content = format!(
+            "<msg><appmsg appid=\"\" sdkver=\"0\"><title><![CDATA[{title}]]></title><des><![CDATA[{digest}]]></des><type>5</type><url><![CDATA[{url}]]></url><thumburl><![CDATA[{cover}]]></thumburl><mmreader><category type=\"20\" count=\"{}\"><name><![CDATA[{name}]]></name>{items}</category><publisher><username><![CDATA[{from}]]></username><nickname><![CDATA[{name}]]></nickname></publisher></mmreader></appmsg><fromusername><![CDATA[{from}]]></fromusername></msg>",
+            articles.len()
+        );
+        Said {
+            db: "biz_message_0",
+            local_type: ARTICLES,
+            content,
+            ..Said::text(from, create_time * 7, create_time, from, "")
+        }
+    }
 }
+
+/// One article of a push: its title, digest, url and cover.
+pub struct Article(pub &'static str, pub &'static str, pub &'static str, pub &'static str);
+
+/// The type of an official account's push of articles: an app message
+/// (49) of a link (its appmsg type 5).
+pub const ARTICLES: i64 = 49 | 5 << 32;
 
 /// One account's directory under a data directory, and what its databases
 /// hold: `contacts`, `sessions` and `messages` in the databases

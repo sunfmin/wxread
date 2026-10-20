@@ -754,6 +754,7 @@ dependencies = [
  "tempfile",
  "wxread-account",
  "wxread-answer",
+ "wxread-articles",
  "wxread-chats",
  "wxread-contacts",
  "wxread-doctor",
@@ -778,6 +779,16 @@ version = "0.1.0"
 dependencies = [
  "flux-rs",
  "proptest",
+]
+
+[[package]]
+name = "wxread-articles"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "roxmltree",
+ "wxread-answer",
+ "wxread-messages",
 ]
 
 [[package]]

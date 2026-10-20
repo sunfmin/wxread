@@ -11,6 +11,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
 
 pub mod account;
+pub mod articles;
 pub mod chats;
 pub mod contacts;
 pub mod doctor;
@@ -43,6 +44,21 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// List the articles official accounts sent, newest first, a page at a time
+    Articles {
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+        /// Only the articles of this official account, by its gh_ id
+        #[arg(long, value_name = "ID")]
+        official_account: Option<String>,
+        /// How many articles a page holds, 1 to 1000 (100 unless given)
+        #[arg(long, value_name = "N")]
+        limit: Option<String>,
+        /// Where the page starts: the `next` of the answer before
+        #[arg(long, value_name = "NEXT")]
+        cursor: Option<String>,
+    },
     /// List the account's chats, newest first, a page at a time
     Chats {
         /// The account to read, by its id, when several are logged in
@@ -118,6 +134,7 @@ enum Command {
 /// The help file of subcommand `name`: what `wxread <name> --help` prints.
 fn help_of(name: &str) -> Option<&'static str> {
     match name {
+        "articles" => Some(include_str!("help/articles.txt")),
         "chats" => Some(include_str!("help/chats.txt")),
         "contact" => Some(include_str!("help/contact.txt")),
         "contacts" => Some(include_str!("help/contacts.txt")),
@@ -177,6 +194,11 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
         }
     };
     let result = match cli.command {
+        Command::Articles { account, official_account, limit, cursor } => {
+            world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
+                articles::run(&w, &articles::Asked { account, official_account, limit, cursor })
+            })
+        }
         Command::Chats { account, limit, cursor } => world::World::from_env(cli.data_dir, cli.keys)
             .and_then(|w| chats::run(&w, &chats::Asked { account, limit, cursor })),
         Command::Contact { id, account } => world::World::from_env(cli.data_dir, cli.keys)
