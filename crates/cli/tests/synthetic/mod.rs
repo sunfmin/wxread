@@ -12,7 +12,8 @@ use rusqlite::{Connection, DatabaseName, params};
 use wxread_doctor::DB_STORAGE;
 use wxread_schema::{
     CHAT_ROOM, CHAT_ROOM_INFO_DETAIL, CHATROOM_MEMBER, CONTACT, CONTACT_DB, HEAD_IMAGE,
-    HEAD_IMAGE_DB, MEDIA_NAME2ID, NAME2ID, SESSION, SESSION_DB, VOICE_INFO, ZSTD,
+    HEAD_IMAGE_DB, MEDIA_NAME2ID, NAME2ID, SESSION, SESSION_DB, SNS_DB, SNS_TIMELINE, VOICE_INFO,
+    ZSTD,
 };
 use wxread_sqlcipher::{PAGE, RESERVE};
 
@@ -124,6 +125,9 @@ pub struct Article(pub &'static str, pub &'static str, pub &'static str, pub &'s
 /// (49) of a link (its appmsg type 5).
 pub const ARTICLES: i64 = 49 | 5 << 32;
 
+/// A Moment in `sns/sns.db`: its `tid`, its author's id, its XML.
+pub struct Posted(pub i64, pub &'static str, pub String);
+
 /// One account's directory under a data directory, and what its databases
 /// hold: `contacts`, `sessions` and `messages` in the databases
 /// themselves, `recent` sessions and `recent_messages` only in committed
@@ -131,8 +135,10 @@ pub const ARTICLES: i64 = 49 | 5 << 32;
 /// after them that no commit ended; `profiles` more of some contacts,
 /// `avatars` the contacts WeChat holds an avatar of, and `groups` each
 /// group's record and notice; `voices` its voice messages' sound, `files`
-/// the files under its directory (each by its path there), and `kvcomm`
-/// the codes of the kvcomm files WeChat wrote beside the data directory.
+/// the files under its directory (each by its path there), `kvcomm`
+/// the codes of the kvcomm files WeChat wrote beside the data directory,
+/// and `moments` the Moments WeChat loaded, the last of them only in a
+/// committed frame of its database's WAL.
 pub struct Account {
     pub id: &'static str,
     pub storage: PathBuf,
@@ -148,6 +154,7 @@ pub struct Account {
     pub voices: Vec<Voice>,
     pub files: Vec<(String, Vec<u8>)>,
     pub kvcomm: Vec<u32>,
+    pub moments: Vec<Posted>,
 }
 
 /// The databases a synthetic account has.
@@ -170,6 +177,7 @@ impl Account {
             voices: Vec::new(),
             files: Vec::new(),
             kvcomm: Vec::new(),
+            moments: Vec::new(),
         }
     }
 
@@ -229,6 +237,9 @@ impl Account {
         }
         if !self.voices.is_empty() {
             all.push(MEDIA_DB.to_string());
+        }
+        if !self.moments.is_empty() {
+            all.push(SNS_DB.to_string());
         }
         all
     }
@@ -325,6 +336,20 @@ impl Account {
                     .unwrap();
             }
             self.seal(MEDIA_DB, &bytes(&media), &[]);
+        }
+        if let Some((last, before)) = self.moments.split_last() {
+            let sns = plain(SNS_TIMELINE);
+            let post = |Posted(tid, author, content): &Posted| {
+                sns.execute(
+                    "INSERT INTO SnsTimeLine(tid, user_name, content) VALUES (?1, ?2, ?3)",
+                    params![tid, author, content],
+                )
+                .unwrap();
+            };
+            before.iter().for_each(post);
+            let earlier = bytes(&sns);
+            post(last);
+            self.seal(SNS_DB, &earlier, &[(&earlier, &bytes(&sns), true)]);
         }
         for (path, bytes) in &self.files {
             let file = self.dir().join(path);

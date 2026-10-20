@@ -12,6 +12,7 @@ autotests = false
 wxread-account = { path = "../account" }
 wxread-answer = { path = "../answer" }
 wxread-articles = { path = "../articles" }
+wxread-moments = { path = "../moments" }
 wxread-chats = { path = "../chats" }
 wxread-contacts = { path = "../contacts" }
 wxread-doctor = { path = "../doctor" }

@@ -20,6 +20,7 @@ pub mod keys;
 pub mod media;
 mod memory;
 pub mod messages;
+pub mod moments;
 pub mod voice;
 pub mod world;
 
@@ -111,7 +112,7 @@ enum Command {
     },
     /// Find WeChat's accounts and the keys supplied; change nothing, name each fix
     Doctor,
-    /// Get a media message's file: an image, video, file, sticker or voice message
+    /// Get a media message's file (an image, video, file, sticker or voice message), or a Moment's
     File {
         #[command(subcommand)]
         action: FileAction,
@@ -148,6 +149,21 @@ enum Command {
     },
     /// Read every database key from the running WeChat
     Keys,
+    /// List the Moments WeChat has loaded, newest first, a page at a time
+    Moments {
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+        /// Only the Moments this contact posted, by their id
+        #[arg(long, value_name = "ID")]
+        contact: Option<String>,
+        /// How many Moments a page holds, 1 to 1000 (100 unless given)
+        #[arg(long, value_name = "N")]
+        limit: Option<String>,
+        /// Where the page starts: the `next` of the answer before
+        #[arg(long, value_name = "NEXT")]
+        cursor: Option<String>,
+    },
     /// Write a voice message as a file that plays, and say what WeChat heard in it
     Voice {
         /// The voice message's id, as `wxread messages` answers it
@@ -170,9 +186,9 @@ enum Command {
 
 #[derive(Subcommand)]
 enum FileAction {
-    /// Write a media message's file, or its thumbnail, as the file it is
+    /// Write a media message's or a Moment's file, or its thumbnail, as the file it is
     Get {
-        /// The message's id, as `wxread messages` answers it
+        /// The message's id, as `wxread messages` answers it, or a Moment's medium's, as `wxread moments` does
         #[arg(value_name = "ID")]
         id: String,
         /// The thumbnail WeChat keeps of an image or a video, not the file
@@ -211,6 +227,7 @@ fn help_of(name: &str) -> Option<&'static str> {
         "group" => Some(include_str!("help/group.txt")),
         "keys" => Some(include_str!("help/keys.txt")),
         "messages" => Some(include_str!("help/messages.txt")),
+        "moments" => Some(include_str!("help/moments.txt")),
         "voice" => Some(include_str!("help/voice.txt")),
         _ => None,
     }
@@ -296,6 +313,10 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
             })
         }
         Command::Keys => keys::run(cli.data_dir),
+        Command::Moments { account, contact, limit, cursor } => {
+            world::World::from_env(cli.data_dir, cli.keys)
+                .and_then(|w| moments::run(&w, &moments::Asked { account, contact, limit, cursor }))
+        }
         Command::Voice { id, account, chat, out, raw } => {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| voice::run(&w, &voice::Asked { id, account, chat, out, raw }))

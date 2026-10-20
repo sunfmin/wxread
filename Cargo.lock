@@ -783,6 +783,7 @@ dependencies = [
  "wxread-keys",
  "wxread-media",
  "wxread-messages",
+ "wxread-moments",
  "wxread-schema",
  "wxread-sqlcipher",
  "wxread-voice",

@@ -11,6 +11,7 @@ mod errors;
 mod file;
 mod help;
 mod messages;
+mod moments;
 mod release;
 mod synthetic;
 mod version;

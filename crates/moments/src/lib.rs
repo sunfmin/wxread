@@ -331,6 +331,14 @@ pub fn no_such_moment(id: &str, account: &str) -> String {
     )
 }
 
+/// What fixes naming a medium of Moment `moment` that WeChat keeps no file
+/// of.
+pub fn not_a_file(id: &str, moment: &str) -> String {
+    format!(
+        "{id} is a medium of Moment {moment} that WeChat keeps no file of (only a Moment's images and videos have one): pass the id of one whose kind is image or video"
+    )
+}
+
 /// What fixes naming a medium past a Moment's last.
 pub fn no_such_medium(id: &str, count: usize) -> String {
     format!(

@@ -7,7 +7,7 @@ use std::process::Command;
 use serde_json::Value;
 
 use crate::common::World;
-use crate::synthetic::{Account, Article, Contact, DATABASES, Group, Said, Session, Voice};
+use crate::synthetic::{Account, Article, Contact, DATABASES, Group, Posted, Said, Session, Voice};
 use wxread_doctor::{DATA_DIR_FLAG, DATA_DIR_VAR, KEYS_FLAG, KEYS_VAR};
 
 /// What the binary prints for `args`, which must exit 0 and leave stderr empty.
@@ -61,7 +61,7 @@ fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
     let existing = existing();
     let names = [
         "articles", "avatar", "chats", "contact", "contacts", "doctor", "file", "group", "keys",
-        "messages", "voice",
+        "messages", "moments", "voice",
     ];
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
@@ -315,5 +315,46 @@ fn articles_answers_exactly_the_keys_its_help_and_the_guide_name() {
     }
     for field in json["articles"][0]["official_account"].as_object().unwrap().keys() {
         assert!(help.contains("{id, name}") && help.contains(field), "{field}");
+    }
+}
+
+#[test]
+fn moments_answers_exactly_the_keys_its_help_and_the_guide_name() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    let xml = r#"<SnsDataItem><TimelineObject><id>9</id><username>wxid_amy</username><createTime>1760000000</createTime><contentDesc>hi</contentDesc><location poiName="Peak" /><ContentObject><type>3</type><title>T</title><contentUrl>https://e.com</contentUrl><mediaList><media><id>1</id><type>6</type></media></mediaList></ContentObject></TimelineObject><LocalExtraInfo><like_user_list><user_comment><username>wxid_bob</username></user_comment></like_user_list><comment_user_list><user_comment><username>wxid_bob</username><content>c</content><ref_username>wxid_amy</ref_username></user_comment></comment_user_list></LocalExtraInfo></SnsDataItem>"#;
+    account.moments = vec![Posted(9, "wxid_amy", xml.to_string())];
+    account.write();
+    let json = world.run(&["moments"], &[("WXREAD_KEYS", &account.all_keys())]).ok();
+    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(answered("moments"), keys);
+    assert_eq!(guide_row("moments"), keys);
+    let help = asked(&["moments", "--help"]);
+    let moment = &json["moments"][0];
+    for field in moment.as_object().unwrap().keys() {
+        assert!(
+            help.contains(&format!("              {field} ")),
+            "moments --help says what {field} is"
+        );
+    }
+    for field in moment["media"][0].as_object().unwrap().keys() {
+        assert!(help.contains(&format!("                {field} ")), "media's {field}");
+    }
+    // Each object a Moment holds is listed in the help as `{its keys}`.
+    let listed: Vec<BTreeSet<String>> = help
+        .split('{')
+        .skip(1)
+        .filter_map(|after| after.split_once('}'))
+        .map(|(inside, _)| {
+            inside.split([',', ' ', '\n']).filter(|w| !w.is_empty()).map(String::from).collect()
+        })
+        .collect();
+    for part in ["author", "location", "link", "likes", "comments"] {
+        let object = match &moment[part] {
+            Value::Array(all) => all[0].clone(),
+            one => one.clone(),
+        };
+        let keys: BTreeSet<String> = object.as_object().unwrap().keys().cloned().collect();
+        assert!(listed.contains(&keys), "{part}: {keys:?} listed in the help");
     }
 }

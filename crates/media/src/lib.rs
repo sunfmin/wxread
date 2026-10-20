@@ -286,7 +286,7 @@ pub fn not_media(id: &str, kind: &str) -> String {
 /// What fixes a message id that is not one.
 pub fn not_an_id(id: &str) -> String {
     format!(
-        "{id} is not a message's id: pass one as `wxread messages` answers it (its \"id\", WeChat's server id, digits)"
+        "{id} is not a message's id, nor a Moment's medium's: pass one as `wxread messages` answers it (its \"id\", WeChat's server id, digits), or as `wxread moments` answers it under media (<the Moment's id>:<its place>)"
     )
 }
 

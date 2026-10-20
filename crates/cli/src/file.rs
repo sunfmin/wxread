@@ -2,6 +2,7 @@
 //! (or its thumbnail) where WeChat keeps it, or a contact's avatar in the
 //! head image database, and write it at `--out` as the file it is.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::anyhow;
@@ -9,7 +10,8 @@ use rusqlite::{Connection, OptionalExtension as _};
 use serde_json::{Value, json};
 use wxread_media::Media;
 use wxread_messages::{Chat, Row};
-use wxread_schema::{CONTACT_DB, HEAD_IMAGE_DB};
+use wxread_moments::MediaId;
+use wxread_schema::{CONTACT_DB, HEAD_IMAGE_DB, SNS_DB};
 
 use crate::account::Account;
 use crate::media::{self, MEDIA_DB_PATHS};
@@ -35,6 +37,9 @@ struct Found {
 
 /// What `file get` answers of `world`.
 pub fn get(world: &World, asked: &Asked) -> anyhow::Result<Value> {
+    if let Some(id) = MediaId::parse(&asked.id) {
+        return moment(world, asked, id);
+    }
     let server_id: i64 = asked
         .id
         .parse()
@@ -78,6 +83,52 @@ pub fn get(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let thumbnail = if media.has_thumbnail() { bytes(true, &mut key)? } else { None };
     let written = thumbnail.map(|t| media::write(&asked.out, &t)).transpose()?;
     let fix = wxread_media::fetch_fix(media.kind(), &asked.id, &found.chat, &at, written.is_some());
+    Ok(missing(written, &fix))
+}
+
+/// What `file get` answers of `world` for `id`, one of a Moment's media.
+fn moment(world: &World, asked: &Asked, id: MediaId) -> anyhow::Result<Value> {
+    let account = Account::open(world, asked.account.as_deref(), &[CONTACT_DB, SNS_DB])?;
+    let no_moment = || anyhow!(wxread_moments::no_such_moment(&asked.id, account.id()));
+    if !account.databases()?.iter().any(|d| d == SNS_DB) {
+        return Err(no_moment());
+    }
+    let row = crate::moments::one(&account.database(SNS_DB)?, id.tid())?.ok_or_else(no_moment)?;
+    let contacts = account.database(CONTACT_DB)?;
+    let names: BTreeMap<String, String> = crate::moments::name_of(&contacts, &row.author)?
+        .map(|n| (row.author.clone(), n))
+        .into_iter()
+        .collect();
+    let moment = wxread_moments::moment(&row, &names);
+    let medium = moment
+        .media
+        .get(id.place)
+        .ok_or_else(|| anyhow!(wxread_moments::no_such_medium(&asked.id, moment.media.len())))?;
+    let media = medium
+        .file
+        .as_ref()
+        .ok_or_else(|| anyhow!(wxread_moments::not_a_file(&asked.id, &moment.id)))?;
+    if asked.thumbnail && !media.has_thumbnail() {
+        return Err(anyhow!(wxread_media::no_thumbnail(media.kind(), &asked.id)));
+    }
+    let mut key = None;
+    let dir = account.dir();
+    let mut bytes = |thumbnail: bool| -> anyhow::Result<Option<Vec<u8>>> {
+        match media::find(&dir, media, "", thumbnail) {
+            Some(path) if media.sealed() => media::decrypted(&account, &path, &mut key).map(Some),
+            Some(path) => media::read(&path).map(Some),
+            None => Ok(None),
+        }
+    };
+    if let Some(bytes) = bytes(asked.thumbnail)? {
+        return media::write(&asked.out, &bytes);
+    }
+    let author =
+        Some(moment.author.name.as_str()).filter(|n| !n.is_empty()).unwrap_or(&moment.author.id);
+    let at = moment.at.as_deref().unwrap_or("an unknown time");
+    let thumbnail = if !asked.thumbnail && media.has_thumbnail() { bytes(true)? } else { None };
+    let written = thumbnail.map(|t| media::write(&asked.out, &t)).transpose()?;
+    let fix = wxread_media::moment_fix(media.kind(), &asked.id, author, at, written.is_some());
     Ok(missing(written, &fix))
 }
 

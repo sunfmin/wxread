@@ -1,13 +1,15 @@
 wxread file get: write one media message's file (an image, a video, a
-file, a sticker or a voice message), or its thumbnail, as the file it is.
+file, a sticker or a voice message), or a Moment's image or video, or its
+thumbnail, as the file it is.
 
   wxread file get <id> --out <path> [--thumbnail]
 
 WHEN TO RUN IT
   To see or keep what a message carries, once `wxread messages` has
   answered its id and said, in its file_present and thumbnail_present,
-  that WeChat holds it. Run by you or an agent, once the keys are
-  supplied.
+  that WeChat holds it; or what a Moment shows, once `wxread moments`
+  has answered its media's ids and said, in the same two, that WeChat
+  holds it. Run by you or an agent, once the keys are supplied.
 
 WHAT IT READS
   The message, by its id, in the account's message databases (message/
@@ -28,6 +30,16 @@ WHAT IT READS
     voice    its SILK bytes in message/media_<n>.db
     sticker  fetched from WeChat's CDN at its url, with macOS's own curl,
              into memory, and checked against its md5
+  A Moment's medium, by its id (<the Moment's id>:<its place>), in the
+  account's sns/sns.db, then its file WeChat cached while Moments were
+  viewed, under the account's directory:
+    video    cache/<YYYY-MM>/Sns/Video/<k[..2]>/<k[2..]>.mp4, k the MD5 of
+             <the Moment's id>_<the medium's id>_3; its thumbnail the
+             .jpg beside it. Not sealed.
+    image    cache/<YYYY-MM>/Sns/Img/<k[..2]>/<k[2..]>, sealed as a
+             message's image is, under a name nobody has yet found how
+             WeChat derives (https://github.com/sunfmin/wxread/issues/28):
+             until it is, a Moment's image is answered missing.
   Each database is decrypted into memory, with its key: the file --keys
   names, else the contents of WXREAD_KEYS.
 
@@ -39,7 +51,8 @@ WHAT IT WRITES
 
 OPTIONS
   <id>              the message's id, its "id" as `wxread messages`
-                    answers it; required
+                    answers it; or a Moment's medium's, its "id" under
+                    media as `wxread moments` answers it; required
   --out <path>      the file to write; required. Its directory must exist.
   --thumbnail       the thumbnail WeChat keeps of an image or a video,
                     instead of its file
@@ -63,7 +76,8 @@ WHAT IT ANSWERS
                   {path, size, sha256, content_type}, when WeChat holds
                   one; else null, and nothing is written
     fix           what makes WeChat fetch it: open the message in WeChat,
-                  which downloads it, then run this again
+                  which downloads it, then run this again; for a Moment's,
+                  open the Moment in WeChat's Moments and let it load
 
 TRIPS YOU UP
   - The answer is written or missing: read its `missing` before its
@@ -71,7 +85,9 @@ TRIPS YOU UP
   - Only images and videos have thumbnails: --thumbnail on another kind
     is an error saying to leave it out.
   - A message that carries no file (a text, a link, …) is an error
-    naming its kind.
+    naming its kind; so is a Moment's medium of kind other.
+  - A Moment's image has no thumbnail (WeChat caches one copy of it); a
+    Moment's video has one.
   - Images sealed under the account's key need the kvcomm files WeChat
     for Mac writes on this Mac: with none that opens them, the error says
     to log in to WeChat for Mac here and run again.
@@ -80,5 +96,6 @@ TRIPS YOU UP
   - A voice message is SILK (audio/silk), as WeChat records it: convert
     it with a SILK decoder to play it elsewhere.
   - The keys must open every message database, and for a voice message
-    every message/media_<n>.db; one missing is an error naming it, fixed
-    by `sudo wxread keys`, then supplying the keys again.
+    every message/media_<n>.db, and for a Moment's medium sns/sns.db and
+    contact/contact.db; one missing is an error naming it, fixed by
+    `sudo wxread keys`, then supplying the keys again.

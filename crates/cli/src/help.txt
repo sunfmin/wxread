@@ -23,7 +23,8 @@ RUN FIRST
   wxread messages --chat <id>
                     one chat's messages, each as its kind, newest first
   wxread file get <id> --out <path>
-                    a media message's file, written as the file it is
+                    a media message's file, or a Moment's, written as
+                    the file it is
   wxread voice <id> --chat <id> --out <path>
                     a voice message as a file that plays, and its 转文字
 
@@ -43,6 +44,7 @@ WHAT A COMMAND ANSWERS
     keys      each database's path under db_storage, to its enc_key and
               salt
     messages  account chat messages next
+    moments   account moments next
     voice     account chat id path format duration_ms size length_ms
               transcription
   file get and avatar answer path, size, sha256 and content_type of the
@@ -55,8 +57,9 @@ THE COMMANDS
   Reading the account, run by you or an agent:
       chats messages voice
       contacts contact group
-      articles
-  Getting a media message's file or an avatar, run by you or an agent:
+      articles moments
+  Getting a media message's or a Moment's file, or an avatar, run by
+  you or an agent:
       file avatar
   Getting the keys, run by the person whose Mac it is, with sudo:
       keys
