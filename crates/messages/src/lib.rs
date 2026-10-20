@@ -279,7 +279,8 @@ pub fn page(
     Page { messages: rows.iter().map(|r| message(chat, names, r, &held)).collect(), next }
 }
 
-/// `row` as the answer has it: its id, time and sender, its kind and that
+/// `row` as the answer has it: its id, time and sender (one its content
+/// names only by name, who goes by it in `names`), its kind and that
 /// kind's fields, a media kind's with whether WeChat holds its file and
 /// thumbnail as `held` says, and beside them WeChat's content and type.
 pub fn message(
@@ -289,6 +290,7 @@ pub fn message(
     held: &impl Fn(&Media, &Row) -> Held,
 ) -> Value {
     let Read { sender, content, mut parsed } = read(chat, row);
+    let sender = sender.or_else(|| parsed.named.as_deref().and_then(|n| names.who(chat, n)));
     if let Some(found) = media::locate(parsed.kind, &parsed.fields) {
         let h = held(&found, row);
         parsed.fields.insert("file_present".into(), json!(h.file));
