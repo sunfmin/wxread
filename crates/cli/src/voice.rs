@@ -9,6 +9,7 @@ use anyhow::anyhow;
 use serde_json::{Value, json};
 use wxread_media::Held;
 use wxread_messages::{Chat, Names};
+use wxread_schema::CONTACT_DB;
 use wxread_voice::{Format, SAMPLE_RATE};
 
 use crate::account::Account;
@@ -31,7 +32,8 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let id = wxread_voice::message_id(&asked.id).map_err(|e| anyhow!(e))?;
     let out = asked.out.clone().ok_or_else(|| anyhow!(wxread_voice::no_out()))?;
     let format = Format::of(asked.raw);
-    let account = Account::open(world, asked.account.as_deref(), &[MESSAGE_DBS, MEDIA_DB_PATHS])?;
+    let account =
+        Account::open(world, asked.account.as_deref(), &[CONTACT_DB, MESSAGE_DBS, MEDIA_DB_PATHS])?;
     let databases = account.databases()?;
     let table = wxread_schema::messages_table(&chat);
     let mut found = false;
@@ -83,7 +85,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
         .map_err(|e| anyhow!(wxread_voice::unwritable(&shown, &e.to_string())))?;
     Ok(json!({
         "account": account.id(),
-        "chat": chat,
+        "chat": crate::contacts::chat(&account, &chat)?,
         "id": id.to_string(),
         "path": shown,
         "format": format.name(),

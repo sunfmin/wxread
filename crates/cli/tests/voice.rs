@@ -74,7 +74,7 @@ fn a_voice_message_decodes_to_a_wav_as_long_as_the_message_and_nothing_else_is_w
         json,
         json!({
             "account": "wxid_me_1a2b",
-            "chat": "wxid_amy",
+            "chat": {"id": "wxid_amy", "display_name": ""},
             "id": "101",
             "path": path,
             "format": "wav",

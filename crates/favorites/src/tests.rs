@@ -55,10 +55,8 @@ fn a_favorite_is_its_kind_with_its_source_tags_type_and_content() {
             "kind": "text",
             "text": {"text": "Bring water"},
             "source": {
-                "from": "wxid_amy",
-                "from_name": "Amy",
-                "chat": GROUP,
-                "chat_name": "Hiking",
+                "from": {"id": "wxid_amy", "display_name": "Amy"},
+                "chat": {"id": GROUP, "display_name": "Hiking"},
                 "at": "2025-10-09T08:53:20Z",
                 "message_id": "4242",
                 "link": null,
@@ -80,8 +78,8 @@ fn what_was_said_directly_is_from_its_sayer_in_the_chat_with_the_other() {
     };
     let s = &read(&mine, &[])["source"];
     assert_eq!(
-        (&s["from"], &s["chat"], &s["chat_name"]),
-        (&json!(ME), &json!("wxid_bob"), &json!("Bob"))
+        (&s["from"]["id"], &s["chat"]),
+        (&json!(ME), &json!({"id": "wxid_bob", "display_name": "Bob"}))
     );
     let theirs = Row {
         content: format!(
@@ -90,7 +88,7 @@ fn what_was_said_directly_is_from_its_sayer_in_the_chat_with_the_other() {
         ..row(1, 1, 1, "")
     };
     let s = &read(&theirs, &[])["source"];
-    assert_eq!((&s["from"], &s["chat"]), (&json!("wxid_bob"), &json!("wxid_bob")));
+    assert_eq!((&s["from"]["id"], &s["chat"]["id"]), (&json!("wxid_bob"), &json!("wxid_bob")));
     let linked = Row {
         content: "<favitem type=\"5\"><source><link>https://e.com/a</link><fromusr>gh_crag</fromusr></source></favitem>".into(),
         from: None,
@@ -99,7 +97,7 @@ fn what_was_said_directly_is_from_its_sayer_in_the_chat_with_the_other() {
     };
     let s = &read(&linked, &[])["source"];
     assert_eq!(
-        (&s["from"], &s["link"], &s["at"]),
+        (&s["from"]["id"], &s["link"], &s["at"]),
         (&json!("gh_crag"), &json!("https://e.com/a"), &json!(null))
     );
 }
@@ -207,7 +205,7 @@ fn a_chat_history_is_each_message_as_its_kind_a_nested_one_with_its_own() {
     let items = got["items"].as_array().unwrap();
     assert_eq!(
         items[0],
-        json!({"kind": "text", "text": {"text": "Go"}, "sender": "wxid_amy", "sender_name": "Amy", "at": "2025-10-09T08:53:20Z", "type": 1})
+        json!({"kind": "text", "text": {"text": "Go"}, "sender": {"id": "wxid_amy", "display_name": "Amy"}, "at": "2025-10-09T08:53:20Z", "type": 1})
     );
     assert_eq!(items[1]["image"]["file_id"], json!("fav:8:b"));
     assert_eq!(items[2]["chat_history"]["title"], json!("Older"));
@@ -243,7 +241,7 @@ fn a_content_that_does_not_read_leaves_its_fields_out_never_the_favorite() {
         (&json!("image"), &json!({}), &json!([]))
     );
     assert_eq!(
-        (&got["source"]["from"], &got["source"]["chat"]),
+        (&got["source"]["from"]["id"], &got["source"]["chat"]["id"]),
         (&json!("wxid_amy"), &json!(GROUP))
     );
     let odd = row(3, 1, 1, "<desc>Tom & Jerry</desc>");
@@ -395,4 +393,44 @@ proptest! {
         }
         prop_assert_eq!(paged, whole);
     }
+}
+
+#[test]
+fn whoever_a_chat_history_saved_is_shown_by_their_contact_else_by_its_name() {
+    let body = format!(
+        "<title>Trip</title>{}",
+        list(&[
+            item(
+                1,
+                "a",
+                "<datadesc>Hi</datadesc><datasrcname>Bobby</datasrcname><dataitemsource><realchatname>wxid_bob</realchatname></dataitemsource>"
+            ),
+            item(
+                1,
+                "b",
+                "<datadesc>Yo</datadesc><datasrcname>Zed</datasrcname><dataitemsource><realchatname>wxid_zed</realchatname></dataitemsource>"
+            ),
+        ])
+    );
+    let got = &read(&row(8, 14, 1, &body), &[])["chat_history"]["items"];
+    assert_eq!(
+        (&got[0]["sender"], &got[1]["sender"]),
+        (
+            &json!({"id": "wxid_bob", "display_name": "Bob"}),
+            &json!({"id": "wxid_zed", "display_name": "Zed"})
+        )
+    );
+    // So is whoever a chat history inside one, or a note, saved.
+    let bob = "<datadesc>Hi</datadesc><datasrcname>Bobby</datasrcname><dataitemsource><realchatname>wxid_bob</realchatname></dataitemsource>";
+    let nested =
+        format!("<recordxml><recordinfo>{}</recordinfo></recordxml>", list(&[item(1, "n", bob)]));
+    let got = &read(&row(8, 14, 1, &list(&[item(17, "c", &nested)])), &[])["chat_history"];
+    let bob = json!({"id": "wxid_bob", "display_name": "Bob"});
+    assert_eq!(got["items"][0]["chat_history"]["items"][0]["sender"], bob);
+    let note = list(&[item(
+        1,
+        "t",
+        "<datadesc>Hi</datadesc><datasrcname>Bobby</datasrcname><dataitemsource><realchatname>wxid_bob</realchatname></dataitemsource>",
+    )]);
+    assert_eq!(read(&row(9, 18, 1, &note), &[])["note"]["items"][0]["sender"], bob);
 }

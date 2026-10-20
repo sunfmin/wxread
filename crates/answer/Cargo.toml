@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 flux-rs.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

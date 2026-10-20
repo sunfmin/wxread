@@ -44,7 +44,7 @@ pub struct Article {
     pub official_account: String,
     /// The official account as WeChat shows it: the name the account's
     /// contact of it has, else the name its push gives; "" for neither.
-    pub name: String,
+    pub display_name: String,
     /// When its push was sent (RFC 3339, UTC); None for no time.
     pub sent_at: Option<String>,
     pub title: String,
@@ -167,7 +167,7 @@ pub fn articles(message: &Message, contact: Option<&str>) -> Vec<Article> {
         let sent_at = message.create_time.and_then(rfc3339);
         let article = |title, digest, url, cover| Article {
             official_account: message.official_account.clone(),
-            name: name.clone(),
+            display_name: name.clone(),
             sent_at: sent_at.clone(),
             title,
             digest,
@@ -230,7 +230,7 @@ mod tests {
             got[1],
             Article {
                 official_account: "gh_a".into(),
-                name: "Crag".into(),
+                display_name: "Crag".into(),
                 sent_at: Some("2025-10-09T08:53:20Z".into()),
                 title: "T1".into(),
                 digest: "D1".into(),
@@ -243,11 +243,11 @@ mod tests {
     #[test]
     fn an_official_account_is_named_by_its_contact_else_its_push() {
         let m = message("gh_a", 1, 1, &push(1));
-        assert_eq!(articles(&m, Some("Crag"))[0].name, "Crag");
-        assert_eq!(articles(&m, Some(""))[0].name, "Pub");
-        assert_eq!(articles(&m, None)[0].name, "Pub");
+        assert_eq!(articles(&m, Some("Crag"))[0].display_name, "Crag");
+        assert_eq!(articles(&m, Some(""))[0].display_name, "Pub");
+        assert_eq!(articles(&m, None)[0].display_name, "Pub");
         let unnamed = push(1).replace("<nickname>Pub</nickname>", "");
-        assert_eq!(articles(&message("gh_a", 1, 1, &unnamed), None)[0].name, "Cat");
+        assert_eq!(articles(&message("gh_a", 1, 1, &unnamed), None)[0].display_name, "Cat");
     }
 
     #[test]
@@ -257,7 +257,12 @@ mod tests {
         m.local_type = APP;
         let got = articles(&m, None);
         assert_eq!(
-            (got.len(), got[0].digest.as_str(), got[0].cover.as_str(), got[0].name.as_str()),
+            (
+                got.len(),
+                got[0].digest.as_str(),
+                got[0].cover.as_str(),
+                got[0].display_name.as_str()
+            ),
             (1, "About", "https://e.com/s.jpg", "")
         );
     }

@@ -17,6 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Value, json};
 use wxread_answer::{CURSOR_FLAG, Limit};
 use wxread_media::{Held, Media};
+use wxread_messages::names::person;
 use wxread_messages::{CHAT_FLAG, Chat, FROM_FLAG, Kind, Names, Range, Row, TO_FLAG};
 
 /// What `searched` answers: WeChat's index searched, with what it has not
@@ -71,7 +72,12 @@ pub fn searchable(parsed: &wxread_messages::kinds::Parsed) -> Option<String> {
             vec![field("text")].into_iter().flatten().collect()
         }
         Kind::Link => [field("title"), field("summary")].into_iter().flatten().collect(),
-        Kind::File | Kind::Card => [field("name")].into_iter().flatten().collect(),
+        Kind::File => [field("name")].into_iter().flatten().collect(),
+        // The name the card gives its contact, as WeChat indexes it.
+        Kind::Card => {
+            let given = parsed.fields.get("contact").and_then(|c| c["display_name"].as_str());
+            given.into_iter().collect()
+        }
         Kind::Location => [field("name"), field("address")].into_iter().flatten().collect(),
         Kind::Solitaire => vec![field("text")].into_iter().flatten().collect(),
         Kind::Transfer | Kind::RedPacket => [field("memo")].into_iter().flatten().collect(),
@@ -382,7 +388,7 @@ pub fn page(found: Vec<Found>, range: Range, after: Option<&Cursor>, limit: Limi
 }
 
 /// `found` as the answer has it: the message as `wxread messages` answers
-/// it, with its chat's id and name, and the text it was found in;
+/// it, with its chat named as every person and account is, and the text it was found in;
 /// `account` the account's own id, `names` the names of the chat's
 /// senders, `chat_name` what WeChat shows the chat as, and `held` whether
 /// WeChat holds a media message's file and thumbnail.
@@ -396,8 +402,7 @@ pub fn answer(
     let chat = Chat { id: found.chat.clone(), account: account.into() };
     let mut message = wxread_messages::message(&chat, names, &found.row, held);
     if let Value::Object(fields) = &mut message {
-        fields.insert("chat".into(), json!(found.chat));
-        fields.insert("chat_name".into(), json!(chat_name.filter(|n| !n.is_empty())));
+        fields.insert("chat".into(), person(Some(&found.chat), chat_name));
         fields.insert("matched".into(), json!(found.matched));
     }
     message

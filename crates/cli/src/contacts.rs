@@ -2,7 +2,7 @@
 //! database (and for a contact's avatar, its head image database) and
 //! print what the contacts crate makes of them.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::anyhow;
 use rusqlite::{Connection, OptionalExtension};
@@ -145,6 +145,22 @@ pub fn contacts(account: &Account, avatars: bool) -> anyhow::Result<Contacts> {
         }
     }
     Ok(contacts)
+}
+
+/// What WeChat shows each contact as, by id: its `display_name` as
+/// `wxread contacts` answers it, the name every answer shows a person or
+/// an account by (in a group, a member's name in it comes before their
+/// own; [`wxread_messages::Names`] has that).
+pub fn display_names(account: &Account) -> anyhow::Result<BTreeMap<String, String>> {
+    let contacts = contacts(account, false)?.into_values().map(wxread_contacts::contact);
+    Ok(contacts.map(|c| (c.id, c.display_name)).collect())
+}
+
+/// The chat `id` as an answer names it: `{id, display_name}`, shown as
+/// [`display_names`] shows it.
+pub fn chat(account: &Account, id: &str) -> anyhow::Result<Value> {
+    let shown = display_names(account)?.remove(id);
+    Ok(wxread_messages::names::person(Some(id), shown.as_deref().filter(|s| !s.is_empty())))
 }
 
 /// The ids of the contacts `head_image` holds an avatar of.

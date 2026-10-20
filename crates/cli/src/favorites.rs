@@ -4,7 +4,7 @@
 //! the page the favorites crate makes of them; and the one favorite whose
 //! file `wxread file get fav:<id>:<item>` writes.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use anyhow::anyhow;
 use rusqlite::Connection;
@@ -33,7 +33,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     };
     let rows = rows(&db, None).map_err(sql)?;
     let page = wxread_favorites::page(rows, cursor.as_ref(), limit);
-    let names = names(&account.database(CONTACT_DB)?)?;
+    let names = crate::contacts::display_names(&account)?;
     let own = wxread_messages::names::account_id(account.id(), |id| names.contains_key(id));
     let dir = account.dir();
     let held: BTreeSet<String> = page
@@ -93,22 +93,4 @@ pub fn row(db: &Connection, id: i64) -> anyhow::Result<Option<Row>> {
 /// A query of the favorites database that failed.
 fn sql(e: rusqlite::Error) -> anyhow::Error {
     anyhow!(wxread_account::not_wechats(FAVORITE_DB, &e.to_string()))
-}
-
-/// Each contact the account knows, by its id, named as WeChat shows it:
-/// the account's remark, else its own name.
-fn names(db: &Connection) -> anyhow::Result<BTreeMap<String, String>> {
-    let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(CONTACT_DB, &e.to_string()));
-    let mut query = db.prepare("SELECT username, remark, nick_name FROM contact").map_err(sql)?;
-    let rows = query
-        .query_map([], |r| {
-            let (remark, name): (Option<String>, Option<String>) = (r.get(1)?, r.get(2)?);
-            Ok((
-                r.get::<_, Option<String>>(0)?.unwrap_or_default(),
-                wxread_contacts::display_name(remark.as_deref(), None, name.as_deref()),
-            ))
-        })
-        .and_then(Iterator::collect::<Result<BTreeMap<_, _>, _>>)
-        .map_err(sql)?;
-    Ok(rows.into_iter().filter(|(id, name)| !id.is_empty() && !name.is_empty()).collect())
 }

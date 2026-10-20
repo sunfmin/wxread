@@ -29,11 +29,11 @@ WHAT IT ANSWERS
     account   the account read: its directory's name, as doctor's id
     articles  [{official_account, sent_at, title, digest, url, cover}],
               newest first, a push's articles in its order:
-              official_account  {id, name}: the official account's gh_...
-                                id, and its name as WeChat shows it (the
-                                account's remark for it, else its own
-                                name, else the name its push gives; ""
-                                for none)
+              official_account  {id, display_name}: the official
+                                account's gh_... id, and its name as
+                                WeChat shows it (the account's remark
+                                for it, else its own name, else the name
+                                its push gives; "" for none)
               sent_at           when its push was sent, RFC 3339 in UTC;
                                 null for no time
               title             the article's title

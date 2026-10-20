@@ -1,10 +1,12 @@
-//! What every answer that lists or dates something is written with: how
-//! many things one page holds, the options that page, and a time as
-//! RFC 3339 in UTC, written and read back from what an agent passes. Each
+//! What every answer that lists, dates or names something is written with:
+//! how many things one page holds, the options that page, a time as
+//! RFC 3339 in UTC, written and read back from what an agent passes, and
+//! a person as `{id, display_name}`. Each
 //! list keeps its own cursor, since each sorts by its own key; nothing
 //! here reads or writes.
 
 use flux_rs::attrs::*;
+use serde_json::{Value, json};
 
 /// The options that page.
 pub const LIMIT_FLAG: &str = "--limit";
@@ -186,6 +188,16 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> Option<i64> {
         .checked_sub(yoe.checked_div(100)?)?
         .checked_add(doy)?;
     era.checked_mul(146_097)?.checked_add(doe)?.checked_sub(719_468)
+}
+
+/// A person or account as every answer names one: `{id, display_name}`,
+/// `display_name` "" when nothing names them; null when there is neither
+/// an id nor a name. An id is null for one named only by a name.
+pub fn person(id: Option<&str>, display_name: Option<&str>) -> Value {
+    if id.is_none() && display_name.is_none() {
+        return Value::Null;
+    }
+    json!({ "id": id, "display_name": display_name.unwrap_or_default() })
 }
 
 #[cfg(test)]
