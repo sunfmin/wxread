@@ -327,9 +327,14 @@ const SOLITAIRE_STARTED: &str = include_str!("fixtures/solitaire_started.xml");
 const SOLITAIRE_ESCAPED: &str = include_str!("fixtures/solitaire_escaped_with_example.xml");
 const SOLITAIRE_WITHOUT_ID: &str = include_str!("fixtures/solitaire_without_id.xml");
 
+/// Someone a 接龙 names, as the answer has them before the chat names them.
+fn person(id: &str) -> Value {
+    json!({ "id": id, "display_name": null })
+}
+
 /// An entry of a 接龙 as the answer has it before its member is named.
 fn entry(number: usize, member: &str, text: &str, at: &str) -> Value {
-    json!({ "number": number, "member": member, "text": text, "at": at })
+    json!({ "number": number, "member": person(member), "text": text, "at": at })
 }
 
 #[test]
@@ -341,7 +346,7 @@ fn a_solitaire_has_its_title_and_its_entries_in_order() {
             "id": "1792387959382_6313",
             "title": "周四10:30莫干山",
             "example": null,
-            "starter": "wxid_ann",
+            "starter": person("wxid_ann"),
             "entries": [
                 entry(1, "wxid_ann", "🐝Ann", "2026-10-19T05:32:29Z"),
                 entry(2, "wxid_bob", "Bob", "2026-10-19T06:00:10Z"),
@@ -375,7 +380,7 @@ fn each_message_of_one_solitaire_has_its_id() {
             "id": null,
             "title": "明早9点多龙井见",
             "example": null,
-            "starter": "wxid_ann",
+            "starter": person("wxid_ann"),
             "entries": [
                 entry(1, "wxid_ann", "🐝Ann", "2026-10-13T05:21:44Z"),
                 entry(2, "wxid_bob", "Bob 屁股", "2026-10-13T05:22:53Z"),
@@ -420,7 +425,7 @@ fn an_entry_whose_range_is_not_in_the_title_has_no_text() {
     for r in ["10-2", "99-1", "a-1", "10", "18446744073709551615-2", ""] {
         assert_eq!(
             one(r)["solitaire"]["entries"],
-            json!([{ "number": 1, "member": "wxid_ann", "text": null, "at": null }]),
+            json!([{ "number": 1, "member": person("wxid_ann"), "text": null, "at": null }]),
             "{r}"
         );
     }
@@ -449,21 +454,20 @@ fn a_solitaires_starter_and_members_are_named_as_wechat_shows_them() {
     r.content = format!("wxid_bob:\n{SOLITAIRE_WITHOUT_ID}").into_bytes();
     let m = message(&chat("1@chatroom"), &names, &r, &none);
     let s = &m["solitaire"];
-    assert_eq!((&s["starter"], &s["starter_name"]), (&json!("wxid_ann"), &json!("Annie")));
-    let named: Vec<(Value, Value)> = s["entries"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|e| (e["member"].clone(), e["member_name"].clone()))
-        .collect();
+    assert_eq!(s["starter"], json!({ "id": "wxid_ann", "display_name": "Annie" }));
+    let members: Vec<Value> =
+        s["entries"].as_array().unwrap().iter().map(|e| e["member"].clone()).collect();
     assert_eq!(
-        named,
-        vec![(json!("wxid_ann"), json!("Annie")), (json!("wxid_bob"), json!("Bobby"))]
+        members,
+        vec![
+            json!({ "id": "wxid_ann", "display_name": "Annie" }),
+            json!({ "id": "wxid_bob", "display_name": "Bobby" }),
+        ]
     );
-    // One nothing names is null.
+    // One nothing names is shown by no name.
     let m = message(&chat("1@chatroom"), &Names::default(), &r, &none);
-    assert_eq!(m["solitaire"]["entries"][0]["member_name"], Value::Null);
-    assert_eq!(m["solitaire"]["starter_name"], Value::Null);
+    assert_eq!(m["solitaire"]["entries"][0]["member"], person("wxid_ann"));
+    assert_eq!(m["solitaire"]["starter"], person("wxid_ann"));
 }
 
 /// A template notice `template`, its `links`.

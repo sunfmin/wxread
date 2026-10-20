@@ -465,7 +465,9 @@ const SOLITAIRE_TAG: &str = "#接龙";
 /// A 接龙, the `<appmsg>` `a`: what it shows is its `<title>`, and its
 /// `<solitaire_info>`, an XML document of its own, says where in that text
 /// its title, its example and each entry are, and who added each and
-/// when. Unknown when it has no list of entries.
+/// when, each person by id, their `display_name` null here: who they are
+/// shown as is the chat's to say ([`crate::message`]). Unknown when it has
+/// no list of entries.
 fn solitaire(a: Node) -> Option<Parsed> {
     let shown = child(a, "title").map(untrimmed).unwrap_or_default();
     let units: Vec<u16> = shown.encode_utf16().collect();
@@ -474,7 +476,7 @@ fn solitaire(a: Node) -> Option<Parsed> {
         for (at, i) in named(child(s, "content")?, "i").into_iter().enumerate() {
             entries.push(json!({
                 "number": at.checked_add(1)?,
-                "member": text(i, "u"),
+                "member": person(text(i, "u")),
                 "text": text(i, "r").and_then(|r| spanned(&units, &r)),
                 "at": text(i, "t").and_then(|t| t.parse::<i64>().ok()).and_then(wxread_answer::rfc3339),
             }));
@@ -490,12 +492,18 @@ fn solitaire(a: Node) -> Option<Parsed> {
                 "id": text(s, "sid"),
                 "title": title,
                 "example": text(s, "ex").and_then(|r| spanned(&units, &r)),
-                "starter": text(s, "au"),
+                "starter": person(text(s, "au")),
                 "entries": entries,
                 "text": shown.trim(),
             }),
         ))
     })
+}
+
+/// Someone a message names by `id`, as the answer has a person: `{id,
+/// display_name}`; null when it names none.
+fn person(id: Option<String>) -> Value {
+    json!(id.map(|id| json!({ "id": id, "display_name": null })))
 }
 
 /// The part of a text, `units` its UTF-16 code units, that `range` names
