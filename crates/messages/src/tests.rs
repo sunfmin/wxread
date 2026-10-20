@@ -499,6 +499,97 @@ fn a_calls_duration_is_read_as_wechat_shows_it() {
     }
 }
 
+/// A group's notice posted into its chat, as WeChat for Mac 4.x kept a
+/// real one (type 49, subtype 87): its ids, keys, digests and place
+/// replaced, the rest as it was.
+const GROUP_NOTICE: &str = include_str!("../fixtures/group_notice.xml");
+
+/// The text of [`GROUP_NOTICE`], as its `<textannouncement>` holds it.
+fn group_notice_text() -> String {
+    let (_, after) = GROUP_NOTICE.split_once("<textannouncement><![CDATA[").unwrap();
+    after.split_once("]]>").unwrap().0.to_string()
+}
+
+#[test]
+fn a_group_notice_has_its_text_its_poster_and_its_time() {
+    let text = group_notice_text();
+    assert!(text.starts_with("🍃【枫林苑・秋日便民活动通知】🍃\n秋意渐浓"), "{text}");
+    assert_eq!(
+        read(app(87), GROUP_NOTICE),
+        json!({ "kind": "group_notice", "group_notice": {
+            "text": text,
+            "by": { "id": "wxid_steward", "display_name": null },
+            "at": "2026-10-16T06:55:31Z",
+        } })
+    );
+    // Its subtype read from its XML, as WeChat stores some.
+    assert_eq!(read(APP, GROUP_NOTICE)["kind"], "group_notice");
+}
+
+#[test]
+fn a_group_notice_without_its_text_or_its_poster_reads_what_it_holds() {
+    // Another shape WeChat writes: no type, its source after its items,
+    // and no <textannouncement>: its text is its items' text.
+    let item = r#"<group_notice_item><datalist count="3"><dataitem datatype="8" htmlid="WeNoteHtmlFile"><datafmt>.htm</datafmt></dataitem><dataitem datatype="1" htmlid="-1"><datadesc>Ride at 9.</datadesc></dataitem><dataitem datatype="1" htmlid="-1"><datadesc>Bring water.</datadesc></dataitem></datalist><source><tousr>1@chatroom</tousr><fromusr>wxid_ann</fromusr></source><edittime>1792221368</edittime></group_notice_item>"#;
+    let notice = format!(
+        "<msg><appmsg><type>87</type><announcement><![CDATA[{item}]]></announcement></appmsg><fromusername><![CDATA[wxid_bob]]></fromusername></msg>"
+    );
+    assert_eq!(
+        read(app(87), &notice)["group_notice"],
+        json!({ "text": "Ride at 9.\nBring water.", "by": { "id": "wxid_ann", "display_name": null }, "at": "2026-10-17T07:16:08Z" })
+    );
+    // An announcement that does not read: its text alone, posted by who
+    // the message says sent it, at no time it says.
+    let bare = "<msg><appmsg><type>87</type><announcement><![CDATA[<group_notice_item>]]></announcement><textannouncement><![CDATA[Ride at 9.]]></textannouncement></appmsg><fromusername>wxid_bob</fromusername></msg>";
+    assert_eq!(
+        read(app(87), bare)["group_notice"],
+        json!({ "text": "Ride at 9.", "by": { "id": "wxid_bob", "display_name": null }, "at": null })
+    );
+    // One that says nothing is still a notice, its text empty.
+    assert_eq!(
+        read(app(87), "<msg><appmsg><type>87</type></appmsg></msg>")["group_notice"],
+        json!({ "text": "", "by": null, "at": null })
+    );
+}
+
+#[test]
+fn a_group_notices_poster_is_shown_as_wechat_shows_them() {
+    let mut names = Names::default();
+    names
+        .contacts
+        .insert("wxid_steward".into(), Contact { remark: None, nick_name: Some("Steward".into()) });
+    names.in_group.insert("wxid_steward".into(), "物业管家".into());
+    let mut r = row("message_0", 1, 1_792_133_732, 0);
+    r.local_type = app(87);
+    r.sender = Some("wxid_steward".into());
+    r.content = format!("wxid_steward:\n{GROUP_NOTICE}").into_bytes();
+    let m = message(&chat("12345678901@chatroom"), &names, &r, &none);
+    assert_eq!(
+        (&m["kind"], &m["sender"], &m["sender_name"]),
+        (&json!("group_notice"), &json!("wxid_steward"), &json!("物业管家"))
+    );
+    assert_eq!(
+        m["group_notice"],
+        json!({
+            "text": group_notice_text(),
+            "by": { "id": "wxid_steward", "display_name": "物业管家" },
+            "at": "2026-10-16T06:55:31Z",
+        })
+    );
+    // One whose XML names no poster or time is its sender's, when it was
+    // sent.
+    r.content = b"wxid_steward:\n<msg><appmsg><type>87</type></appmsg></msg>".to_vec();
+    let m = message(&chat("12345678901@chatroom"), &names, &r, &none);
+    assert_eq!(
+        m["group_notice"],
+        json!({
+            "text": "",
+            "by": { "id": "wxid_steward", "display_name": "物业管家" },
+            "at": "2026-10-16T06:55:32Z",
+        })
+    );
+}
+
 #[test]
 fn fen_reads_yuan_as_wechat_shows_them() {
     assert_eq!(kinds::fen(Some("￥0.01")), Some(1));
