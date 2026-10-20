@@ -8,5 +8,5 @@ The index lags the chats: `message_fts_v4_range` says, for each chat and message
 
 - A search costs a read of the index's entries (text only) and of the rows it found, plus the unindexed rows: about a second on an account of 60,000 indexed messages.
 - The keys must open `message/message_fts.db` when the account has one, as every database a command reads.
-- What WeChat indexes is the reference for what a message is searched by: a kind whose text WeChat indexes and `searchable` does not take is found while it is indexed and missed while it is not. Checked against a real account, the two agree but for kinds wxread reads as `unknown` and a channels feed whose description its link kind drops (#25).
+- What WeChat indexes is the reference for what a message is searched by: a kind whose text WeChat indexes and `searchable` does not take is found while it is indexed and missed while it is not. Checked against a real account, the two agree but for kinds wxread reads as `unknown`; a channels feed, whose text is only in its `<finderFeed><desc>`, agrees since its link is that description (#25).
 - A query is one text found inside words, not WeChat's word matching: "crag" finds "crags".

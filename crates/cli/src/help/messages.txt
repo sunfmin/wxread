@@ -70,7 +70,11 @@ THE KINDS AND THEIR FIELDS
   text        {text}
   link        {to, title, summary, url, source}: to is "web_page",
               "music", "video", "mini_program", "channels_feed" or
-              "channels_live"; source the site, account or mini-program
+              "channels_live"; source the site, account or mini-program.
+              For a channels feed or live, title is its description (its
+              author's nickname when it has none) and summary its
+              author's nickname: WeChat's own title and description of it
+              are a placeholder for clients too old to show it
   quote       {text, quoted: {id, sender, name, excerpt}}: the reply, and
               the quoted message's id, sender, name and, for a text, its
               words
