@@ -202,10 +202,8 @@ fn it_lists_every_favorite_newest_first_each_as_its_kind() {
     assert_eq!(
         text["source"],
         json!({
-            "from": "wxid_amy",
-            "from_name": "Auntie",
-            "chat": GROUP,
-            "chat_name": "Hiking",
+            "from": {"id": "wxid_amy", "display_name": "Auntie"},
+            "chat": {"id": GROUP, "display_name": "Hiking"},
             "at": "2025-10-09T08:53:20Z",
             "message_id": "9101",
             "link": null,
@@ -243,7 +241,7 @@ fn it_lists_every_favorite_newest_first_each_as_its_kind() {
     );
     assert_eq!(
         history["chat_history"]["items"][0],
-        json!({"kind": "text", "text": {"text": "Go at six"}, "sender": "wxid_amy", "sender_name": "Amy", "at": "2025-10-09T08:53:20Z", "type": 1})
+        json!({"kind": "text", "text": {"text": "Go at six"}, "sender": {"id": "wxid_amy", "display_name": "Auntie"}, "at": "2025-10-09T08:53:20Z", "type": 1})
     );
     assert_eq!(history["chat_history"]["items"][1]["image"]["file_id"], json!("fav:8:h2"));
     let note = by_id("13");

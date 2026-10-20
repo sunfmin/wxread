@@ -420,18 +420,15 @@ pub fn message(
         parsed.fields.insert("file_present".into(), json!(h.file));
         parsed.fields.insert("thumbnail_present".into(), json!(h.thumbnail));
     }
-    if parsed.kind == Kind::Solitaire {
-        members_named(&mut parsed.fields, names);
-    }
     if parsed.kind == Kind::GroupNotice {
-        posted(&mut parsed.fields, sender.as_deref(), row.create_time, names);
+        posted(&mut parsed.fields, sender.as_deref(), row.create_time);
     }
+    shown(parsed.kind, &mut parsed.fields, names);
     let (t, sub) = kinds::split(row.local_type);
     let mut out = Map::new();
     out.insert("id".into(), json!((row.server_id != 0).then(|| row.server_id.to_string())));
     out.insert("at".into(), json!(rfc3339(row.create_time)));
-    out.insert("sender".into(), json!(sender));
-    out.insert("sender_name".into(), json!(sender.as_deref().and_then(|s| names.of(s))));
+    out.insert("sender".into(), names.person(sender.as_deref(), None));
     out.insert("kind".into(), json!(parsed.kind.name()));
     out.insert(parsed.kind.name().into(), Value::Object(parsed.fields));
     out.insert("type".into(), json!(t));
@@ -440,36 +437,52 @@ pub fn message(
     Value::Object(out)
 }
 
-/// A 接龙's `fields` with who started it and each entry's member shown
-/// as `names` shows them: each one's `display_name`.
-fn members_named(fields: &mut Map<String, Value>, names: &Names) {
-    if let Some(starter) = fields.get_mut("starter") {
-        shown(starter, names);
-    }
-    if let Some(Value::Array(entries)) = fields.get_mut("entries") {
-        for member in entries.iter_mut().filter_map(|e| e.get_mut("member")) {
-            shown(member, names);
-        }
-    }
-}
-
-/// `person`, `{id, display_name}`, with its `display_name` as `names`
-/// shows its id; null stays null.
-fn shown(person: &mut Value, names: &Names) {
-    if let Value::Object(person) = person {
-        let name = person.get("id").and_then(Value::as_str).and_then(|id| names.of(id));
-        person.insert("display_name".into(), json!(name));
-    }
-}
-
 /// A group notice's `fields`, posted by whom and when its XML says, else
-/// by `sender` at `sent`: its poster shown as `names` shows them.
-fn posted(fields: &mut Map<String, Value>, sender: Option<&str>, sent: i64, names: &Names) {
-    let id = fields.get("by").and_then(|by| by["id"].as_str()).or(sender).map(str::to_string);
-    let by = id.map(|id| json!({ "display_name": names.of(&id), "id": id }));
-    fields.insert("by".into(), json!(by));
+/// by `sender` at `sent`.
+fn posted(fields: &mut Map<String, Value>, sender: Option<&str>, sent: i64) {
+    if fields.get("by").is_none_or(Value::is_null) {
+        fields.insert("by".into(), names::person(sender, None));
+    }
     if fields.get("at").is_none_or(Value::is_null) {
         fields.insert("at".into(), json!(rfc3339(sent)));
+    }
+}
+
+/// Every person the `fields` of a message of `kind` name, shown as
+/// `names` shows them, else by the name the message gives them.
+fn shown(kind: Kind, fields: &mut Map<String, Value>, names: &Names) {
+    // Where each person is: those alone, and a list of them with where in
+    // each item.
+    let (alone, listed): (&[&str], Option<(&str, &str)>) = match kind {
+        Kind::Card => (&["/contact"], None),
+        Kind::Nudge => (&["/from", "/to"], None),
+        Kind::Quote => (&["/quoted/sender"], None),
+        Kind::Renamed | Kind::GroupNotice => (&["/by"], None),
+        Kind::Join | Kind::Leave => (&["/by"], Some(("/contacts", ""))),
+        Kind::Forward => (&[], Some(("/messages", "/sender"))),
+        Kind::Solitaire => (&["/starter"], Some(("/entries", "/member"))),
+        _ => (&[], None),
+    };
+    if kind == Kind::Note
+        && let Some(items) = fields.get_mut("items").and_then(Value::as_array_mut)
+    {
+        wxread_favorites::name_senders(items, &|id, given| names.person(id, given));
+    }
+    let mut all = Value::Object(std::mem::take(fields));
+    for at in alone {
+        if let Some(found) = all.pointer_mut(at) {
+            names.name(found);
+        }
+    }
+    if let Some((list, at)) = listed {
+        for item in all.pointer_mut(list).and_then(Value::as_array_mut).into_iter().flatten() {
+            if let Some(found) = item.pointer_mut(at) {
+                names.name(found);
+            }
+        }
+    }
+    if let Value::Object(map) = all {
+        *fields = map;
     }
 }
 

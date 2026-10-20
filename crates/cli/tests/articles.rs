@@ -68,7 +68,7 @@ fn keys(account: &Account) -> String {
 fn article(id: &str, name: &str, at: &str, a: &Article) -> Value {
     let Article(title, digest, url, cover) = a;
     json!({
-        "official_account": {"id": id, "name": name},
+        "official_account": {"id": id, "display_name": name},
         "sent_at": at,
         "title": title,
         "digest": digest,

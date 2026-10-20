@@ -233,12 +233,15 @@ fn an_answer_is_the_message_with_its_chat_and_what_matched() {
     assert_eq!(
         value,
         json!({
-            "chat": "wxid_amy", "chat_name": "Amy W", "matched": "x",
-            "id": "1001", "at": "2025-10-09T08:53:20Z", "sender": "wxid_amy", "sender_name": "Amy W",
+            "chat": {"id": "wxid_amy", "display_name": "Amy W"}, "matched": "x",
+            "id": "1001", "at": "2025-10-09T08:53:20Z", "sender": {"id": "wxid_amy", "display_name": "Amy W"},
             "kind": "text", "text": {"text": "x"}, "type": 1, "subtype": 0, "content": "x",
         })
     );
-    assert_eq!(answer(&f, "wxid_me", &names, Some(""), &none_held)["chat_name"], Value::Null);
+    assert_eq!(
+        answer(&f, "wxid_me", &names, None, &none_held)["chat"],
+        json!({"id": "wxid_amy", "display_name": ""})
+    );
 }
 
 proptest! {

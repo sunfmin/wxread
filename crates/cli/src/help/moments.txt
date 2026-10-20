@@ -41,10 +41,10 @@ WHAT IT ANSWERS
     moments   [{id, author, at, text, location, link, media, likes,
               comments, type, content}], newest first:
               id         WeChat's id of the Moment, digits
-              author     {id, name}: who posted it, by id, and their name
-                         as WeChat shows it (the account's remark for
-                         them, else their own name, else the name the
-                         Moment gives; "" for none)
+              author     {id, display_name}: who posted it, by id, and
+                         their name as WeChat shows it (the account's
+                         remark for them, else their own name, else the
+                         name the Moment gives; "" for none)
               at         when it was posted, RFC 3339 in UTC; null for
                          no time
               text       what its author wrote; "" for nothing
@@ -76,11 +76,12 @@ WHAT IT ANSWERS
                                    cover), which `wxread file get <id>
                                    --thumbnail` writes; null as
                                    file_present is
-              likes      [{by, at}]: who liked it ({id, name}, named as
-                         author is) and when
+              likes      [{by, at}]: who liked it ({id, display_name},
+                         named as author is) and when
               comments   [{by, at, text, reply_to}]: who said what and
-                         when; reply_to the {id, name} of whom it answers,
-                         null for none. A deleted comment is not listed.
+                         when; reply_to the {id, display_name} of whom it
+                         answers, null for none. A deleted comment is not
+                         listed.
               type       WeChat's own type of the Moment, a number; null
                          when it gives none
               content    the Moment as WeChat keeps it: its XML

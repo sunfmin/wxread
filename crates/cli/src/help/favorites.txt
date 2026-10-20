@@ -34,12 +34,12 @@ WHAT IT ANSWERS
                kind      what it is, one of the kinds below
                <kind>    an object named by its kind, of the fields
                          below: "kind": "link" comes with "link": {…}
-               source    {from, from_name, chat, chat_name, at,
-                         message_id, link}: who said what was saved (a
-                         wxid; in a group the member) and the chat it was
-                         said in (a group's <n>@chatroom, else the other
-                         person), each with its name as WeChat shows it
-                         (the account's remark, else their own name);
+               source    {from, chat, at, message_id, link}: who said
+                         what was saved (in a group the member) and the
+                         chat it was said in (a group, else the other
+                         person), each {id, display_name}: its id, and
+                         its name as WeChat shows it (the account's
+                         remark, else their own name; "" for none);
                          when it was said (RFC 3339 in UTC); the id of
                          the message it was saved from, as `wxread
                          messages` answers ids; the page it was saved
@@ -71,13 +71,13 @@ THE KINDS AND THEIR FIELDS
                 thumbnail_present}
   location      {latitude, longitude, name, address}
   music         {title, summary, url, audio_url}
-  chat_history  {title, summary, items: [{kind, <kind>, sender,
-                sender_name, at, type}]}: each message saved, in order,
-                as its kind with the fields above (a chat history saved
-                in it with its own items); sender a wxid, sender_name the
-                name WeChat showed, at when it was said, type WeChat's
-                number for it
-  note          {items: [{kind, <kind>, sender, sender_name, at, type}]}:
+  chat_history  {title, summary, items: [{kind, <kind>, sender, at,
+                type}]}: each message saved, in order, as its kind with
+                the fields above (a chat history saved in it with its own
+                items); sender {id, display_name}, shown as WeChat shows
+                their contact, else by the name the history gives; at
+                when it was said, type WeChat's number for it
+  note          {items: [{kind, <kind>, sender, at, type}]}:
                 each part of the note, in order: its paragraphs (text),
                 images, files, places; its body as WeChat renders it is a
                 file of extension htm, written by `wxread file get`
