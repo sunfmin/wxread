@@ -1,0 +1,12 @@
+# Search reads WeChat's own index entries, and what it has not indexed yet message by message
+
+`wxread search` finds messages through WeChat's own full-text index of the chats, `message/message_fts.db`, wherever the account has one, and says so in its answer (`"searched": "wechat_index"`). That index is FTS5 tables (`message_fts_v4_<n>`) declared with WeChat's own tokenizer, `MMFtsTokenizer`, which only WeChat registers: SQLite refuses to open them (`no such tokenizer`), so `MATCH` cannot run outside WeChat. Their content tables (`message_fts_v4_<n>_content`) are plain, though, one row a message: the text WeChat searches it by (a text's words, a link's title, a file's name), its chat (a rowid of the index's `name2id`), its `local_id`, `sort_seq`, type and time. wxread reads those entries and finds the query in their text, ignoring case; it does not reimplement WeChat's tokenizer to read the inverted index, whose format is WeChat's private one and changes with it.
+
+The index lags the chats: `message_fts_v4_range` says, for each chat and message database (named by the database's `TimeStamp`), which `local_id`s it holds, and the newest messages are not in it yet. Those rows, and every chat of a database no range names, are read message by message, each searched by the same text taken from its kind (`wxread_search::searchable`). The two never overlap, so each message is found once. An entry does not name its database, so where two ranges hold its `local_id` each is tried, and only a row whose time and order match the entry is answered; an entry whose message is gone (deleted since) answers nothing. An account with no index is searched message by message throughout (`"searched": "messages"`).
+
+## Consequences
+
+- A search costs a read of the index's entries (text only) and of the rows it found, plus the unindexed rows: about a second on an account of 60,000 indexed messages.
+- The keys must open `message/message_fts.db` when the account has one, as every database a command reads.
+- What WeChat indexes is the reference for what a message is searched by: a kind whose text WeChat indexes and `searchable` does not take is found while it is indexed and missed while it is not. Checked against a real account, the two agree but for kinds wxread reads as `unknown` and a channels feed whose description its link kind drops (#25).
+- A query is one text found inside words, not WeChat's word matching: "crag" finds "crags".

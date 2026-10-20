@@ -61,7 +61,7 @@ fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
     let existing = existing();
     let names = [
         "articles", "avatar", "chats", "contact", "contacts", "doctor", "file", "group", "keys",
-        "messages", "resign", "voice",
+        "messages", "resign", "search", "voice",
     ];
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
@@ -315,6 +315,46 @@ fn articles_answers_exactly_the_keys_its_help_and_the_guide_name() {
     }
     for field in json["articles"][0]["official_account"].as_object().unwrap().keys() {
         assert!(help.contains("{id, name}") && help.contains(field), "{field}");
+    }
+}
+
+#[test]
+fn search_answers_exactly_the_keys_its_help_and_the_guide_name() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.messages = vec![Said::text("wxid_amy", 1, 1_760_000_000, "wxid_amy", "hi")];
+    account.write();
+    let json = world.run(&["search", "hi"], &[("WXREAD_KEYS", &account.all_keys())]).ok();
+    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(answered("search"), keys);
+    assert_eq!(guide_row("search"), keys);
+    let help = asked(&["search", "--help"]);
+    let messages = asked(&["messages", "--help"]);
+    let fields: BTreeSet<String> =
+        json["messages"][0].as_object().unwrap().keys().cloned().collect();
+    // Its own fields have their line; the rest are a message's, as
+    // `wxread messages --help` says them.
+    for field in fields.iter().filter(|f| *f != "text") {
+        let own = help.contains(&format!("              {field} "));
+        let listed = help.contains(&format!("{field},"))
+            && messages.contains(&format!("              {field} "));
+        assert!(own || listed, "search --help says what {field} is");
+    }
+    // Each kind it names, it names by its name.
+    let kinds: BTreeSet<String> =
+        wxread_messages::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
+    let searched = between(&help, "WHAT A MESSAGE IS SEARCHED BY", "TRIPS YOU UP");
+    let a_kinds_line = |l: &&&str| {
+        l.len() - l.trim_start().len() == 2
+            && l.trim_start().starts_with(|c: char| c.is_ascii_lowercase())
+    };
+    for line in searched.iter().filter(a_kinds_line) {
+        let named = line.split("  ").find(|s| !s.is_empty()).unwrap();
+        for kind in named.split(", ").map(str::trim).filter(|k| !k.is_empty()) {
+            if kind.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') {
+                assert!(kinds.contains(kind), "{kind} is a kind");
+            }
+        }
     }
 }
 

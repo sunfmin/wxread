@@ -21,6 +21,7 @@ wxread-media = { path = "../media" }
 wxread-messages = { path = "../messages" }
 wxread-resign = { path = "../resign" }
 wxread-schema = { path = "../schema" }
+wxread-search = { path = "../search" }
 wxread-sqlcipher = { path = "../sqlcipher" }
 wxread-voice = { path = "../voice" }
 # WeChat's voice codec, decoded in-process (docs/adr/0005-voice-is-decoded-in-process.md).

@@ -785,6 +785,7 @@ dependencies = [
  "wxread-messages",
  "wxread-resign",
  "wxread-schema",
+ "wxread-search",
  "wxread-sqlcipher",
  "wxread-voice",
 ]
@@ -899,6 +900,17 @@ name = "wxread-schema"
 version = "0.1.0"
 dependencies = [
  "md5",
+]
+
+[[package]]
+name = "wxread-search"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+ "wxread-answer",
+ "wxread-media",
+ "wxread-messages",
 ]
 
 [[package]]

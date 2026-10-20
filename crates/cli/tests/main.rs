@@ -13,6 +13,7 @@ mod help;
 mod messages;
 mod release;
 mod resign;
+mod search;
 mod synthetic;
 mod version;
 mod voice;

@@ -1,0 +1,24 @@
+[package]
+name = "wxread-search"
+description = "What wxread search answers: the messages of every chat a text finds, through WeChat's own full-text index where it has one, newest first, a page at a time: pure functions, checked by Flux (docs/adr/0002-pure-crates-checked-by-flux.md)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+wxread-answer = { path = "../answer" }
+wxread-media = { path = "../media" }
+wxread-messages = { path = "../messages" }
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+# `cargo flux` (through ../../verify.sh) checks every refinement in this crate.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }

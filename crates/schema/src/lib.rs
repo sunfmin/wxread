@@ -75,6 +75,41 @@ pub fn messages_table(chat: &str) -> String {
 /// What `WCDB_CT_message_content` is when the content is zstd-compressed.
 pub const ZSTD: i64 = 4;
 
+/// In each message database: when WeChat made it, in seconds since the
+/// epoch, one row. WeChat's full-text index names a database by it.
+pub const TIMESTAMP: &str = "CREATE TABLE TimeStamp(timestamp INTEGER)";
+
+/// WeChat's own full-text index of the chats' messages:
+/// `message/message_fts.db`.
+pub const MESSAGE_FTS_DB: &str = "message/message_fts.db";
+
+/// In `message/message_fts.db`: the chats its entries name, an entry's
+/// `session_id` being its chat's rowid here.
+pub const FTS_NAME2ID: &str = "CREATE TABLE name2id(username TEXT PRIMARY KEY)";
+
+/// In `message/message_fts.db`: what it has indexed, one row a chat and a
+/// message database: that chat's messages from `start_local_id` to
+/// `end_local_id` of the database whose [`TIMESTAMP`] is `db_time_stamp`.
+pub const FTS_RANGE: &str = "CREATE TABLE message_fts_v4_range(db_time_stamp INTEGER, start_local_id INTEGER, end_local_id INTEGER, session_id INTEGER, CONSTRAINT sessionId_dbTime PRIMARY KEY(session_id, db_time_stamp))";
+
+/// The tables of `message/message_fts.db` whose entries are read, each
+/// [`fts_content`] of its number: `message_fts_v4_<n>_content`.
+pub const FTS_CONTENT: (&str, &str) = ("message_fts_v4_", "_content");
+
+/// In `message/message_fts.db`: the entries of index `n`, one a message,
+/// each the columns of the FTS5 table `message_fts_v4_<n>` WeChat declares
+/// over them: `c0` the text WeChat searches it by (a text's words, a link's
+/// title, a file's name), then its `message_local_id`, `sort_seq`,
+/// `local_type`, `session_id`, `sender_id` and `create_time`. WeChat's own
+/// tokenizer (`MMFtsTokenizer`) is the only one that reads the FTS5 table,
+/// so the entries are read here, where they are plain.
+pub fn fts_content(n: u32) -> String {
+    format!(
+        "CREATE TABLE '{}{n}{}'(id INTEGER PRIMARY KEY, c0, c1, c2, c3, c4, c5, c6)",
+        FTS_CONTENT.0, FTS_CONTENT.1
+    )
+}
+
 /// The databases a chat's voice messages are in, under `db_storage`:
 /// `message/media_<n>.db`, `<n>` from 0.
 pub const MEDIA_DBS: &str = "message/media_";

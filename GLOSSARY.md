@@ -81,6 +81,10 @@ _Avoid_: author, from, user
 A message WeChat itself writes into a chat: a recall, a join or leave, a rename, and the like.
 _Avoid_: system message, event
 
+**Full-text index**:
+WeChat's own index of the chats' messages (`message/message_fts.db`): for each message it has indexed, the text WeChat searches it by; the newest messages are not in it yet.
+_Avoid_: FTS, search index, fts db
+
 **Media**:
 A file a message carries rather than holds: an image, a video, a voice message, a file.
 _Avoid_: attachment, resource
