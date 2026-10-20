@@ -1,8 +1,11 @@
 wxread chats: the account's chats, newest first, a page at a time; with
---with, only the chats that hold the contacts given, the smallest first.
+--query, only the chats whose name holds a text; with --with, only the
+chats that hold the contacts given, the smallest first.
 
 WHEN TO RUN IT
   To see which chats there are and pick one, before reading its messages.
+  To find a chat by its name without paging every one:
+    wxread chats --query <name>
   To find the chat with someone, or the group of you, A and B:
     wxread chats --with <A's id> --with <B's id>
   `wxread contacts --query <name>` finds each one's id.
@@ -25,9 +28,14 @@ OPTIONS
                     with them first; then every group they are all members
                     of, the smallest first, newest first among the same
                     size, whether or not the group has a chat in the list
+  --query <text>    only the chats whose id, name (as answered below: the
+                    remark first, and an unnamed group's members' names)
+                    or own name (what a contact or group calls itself,
+                    remarked or not) holds it, whatever its case; with
+                    --with, only those of its chats
   --limit <n>       how many chats a page holds, 1 to 1000; 100 unless given
   --cursor <next>   start after the page that answered this `next`, asked
-                    with the same --with
+                    with the same --query and --with
 
 WHAT IT ANSWERS
     account   the account read: its directory's name, as doctor's id
@@ -57,6 +65,10 @@ TRIPS YOU UP
     a new message since moves to the front, so it is not on a later page,
     and a fresh run from the newest shows it.
   - An official account (gh_...) is a "direct" chat.
+  - A --query is matched against each chat's text as it is; it does not
+    match pinyin. A member's name finds the direct chat with them and
+    every unnamed group named by them, not a group with a name of its own
+    that they are in: --with <their id> finds those.
   - --with takes ids, not names: an id that is no contact is an error
     naming `wxread contacts --query`, and a group's id is an error naming
     `wxread group <id>`, which answers its members.

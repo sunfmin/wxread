@@ -1,7 +1,8 @@
 //! What `wxread chats` answers of the rows it read: each chat with its
 //! name, kind, times and members, newest first, a page at a time; or with
 //! `--with`, only the chats that hold the contacts given, the smallest
-//! first. The effect crate reads the rows out of the session and contact
+//! first; with `--query`, only the chats whose id or name holds a text.
+//! The effect crate reads the rows out of the session and contact
 //! databases; nothing here reads or writes.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -119,7 +120,7 @@ impl Cursor {
         .filter(|c| !c.place.id.is_empty())
         .ok_or_else(|| {
             format!(
-                "{CURSOR_FLAG} {text} is not a `next` that wxread chats answered: pass the `next` of the answer before, with the same {WITH_FLAG}, or leave {CURSOR_FLAG} out to start at the first chat"
+                "{CURSOR_FLAG} {text} is not a `next` that wxread chats answered: pass the `next` of the answer before, with the same {QUERY_FLAG} and {WITH_FLAG}, or leave {CURSOR_FLAG} out to start at the first chat"
             )
         })
     }
@@ -140,25 +141,33 @@ pub struct Page {
 }
 
 /// The page of the chats in `rows`, the members of whose groups are in
-/// `rooms`, that starts after `after` (at the newest, for none) and holds
-/// at most `limit`: newest first by where WeChat sorts them, and by id
-/// among those sorted alike, so a cursor names one place and each chat is
-/// on one page. A row with no id is no chat.
-pub fn page(rows: Vec<Row>, rooms: &Rooms, after: Option<&Cursor>, limit: Limit) -> Page {
-    paged(rows, rooms, false, after, limit)
+/// `rooms`, that `query` finds (every one, for none), that starts after
+/// `after` (at the newest, for none) and holds at most `limit`: newest
+/// first by where WeChat sorts them, and by id among those sorted alike,
+/// so a cursor names one place and each chat is on one page. A row with
+/// no id is no chat.
+pub fn page(
+    rows: Vec<Row>,
+    rooms: &Rooms,
+    query: Option<&str>,
+    after: Option<&Cursor>,
+    limit: Limit,
+) -> Page {
+    paged(rows, rooms, false, query, after, limit)
 }
 
 /// The page of the chats that hold every contact `with` names: the direct
 /// chat with the one, when it names one, and every group of `rooms` they
 /// are all members of, whether or not `rows` has its chat; the smallest
-/// first, then as [`page`] orders them. `contacts` names the chats `rows`
-/// lacks. An id `with` names that is no contact, or a group, is refused
-/// with its fix.
+/// first, then as [`page`] orders them, and of those only what `query`
+/// finds. `contacts` names the chats `rows` lacks. An id `with` names that
+/// is no contact, or a group, is refused with its fix.
 pub fn holding(
     rows: Vec<Row>,
     contacts: &Contacts,
     rooms: &Rooms,
     with: &[String],
+    query: Option<&str>,
     after: Option<&Cursor>,
     limit: Limit,
 ) -> Result<Page, String> {
@@ -193,7 +202,7 @@ pub fn holding(
         sort_timestamp: None,
         contact: contacts.get(id).cloned(),
     }));
-    Ok(paged(chats, rooms, true, after, limit))
+    Ok(paged(chats, rooms, true, query, after, limit))
 }
 
 /// How many are in the chat `id`, the account included.
@@ -204,12 +213,13 @@ fn members(rooms: &Rooms, id: &str) -> Option<usize> {
     }
 }
 
-/// The page of `rows` after `after` holding at most `limit`, by size first
-/// when `by_size`.
+/// The page of the `rows` `query` finds after `after` holding at most
+/// `limit`, by size first when `by_size`.
 fn paged(
     rows: Vec<Row>,
     rooms: &Rooms,
     by_size: bool,
+    query: Option<&str>,
     after: Option<&Cursor>,
     limit: Limit,
 ) -> Page {
@@ -221,7 +231,8 @@ fn paged(
     let mut placed: Vec<(Place, Row)> = Vec::new();
     for row in rows {
         let at = place(&row);
-        if !row.id.is_empty() && after.is_none_or(|c| at > c.place) {
+        let found = query.is_none_or(|q| matches(&row, q));
+        if !row.id.is_empty() && found && after.is_none_or(|c| at > c.place) {
             placed.push((at, row));
         }
     }
@@ -230,6 +241,22 @@ fn paged(
     placed.truncate(limit.get());
     let next = if more { placed.last().map(|(p, _)| Cursor { place: p.clone() }) } else { None };
     Page { chats: placed.into_iter().map(|(_, r)| chat(r, rooms)).collect(), next }
+}
+
+/// Whether `row` is found by `query`: its id, the name WeChat shows it by
+/// (an unnamed group's, its members' names, included) or its own name
+/// holds it, whatever their case. Every chat is found by "".
+pub fn matches(row: &Row, query: &str) -> bool {
+    let query = query.to_lowercase();
+    let shown = row
+        .contact
+        .as_ref()
+        .map(|c| shown_name(c.remark.as_deref(), c.nick_name.as_deref(), &c.members));
+    let own = row.contact.as_ref().and_then(|c| c.nick_name.as_deref());
+    [Some(row.id.as_str()), shown.as_deref(), own]
+        .into_iter()
+        .flatten()
+        .any(|text| text.to_lowercase().contains(&query))
 }
 
 fn chat(row: Row, rooms: &Rooms) -> Chat {
@@ -313,6 +340,7 @@ mod tests {
             &rooms,
             &with(&["wxid_amy", "wxid_bob"]),
             None,
+            None,
             Limit::default_limit(),
         )
         .unwrap();
@@ -335,6 +363,7 @@ mod tests {
             &rooms,
             &with(&["wxid_amy"]),
             None,
+            None,
             Limit::default_limit(),
         )
         .unwrap();
@@ -345,13 +374,21 @@ mod tests {
             &rooms,
             &with(&["wxid_amy", "wxid_amy"]),
             None,
+            None,
             Limit::default_limit(),
         )
         .unwrap();
         assert_eq!(ids(&page)[0], "wxid_amy");
-        let page =
-            holding(rows, &contacts, &rooms, &with(&["gh_news"]), None, Limit::default_limit())
-                .unwrap();
+        let page = holding(
+            rows,
+            &contacts,
+            &rooms,
+            &with(&["gh_news"]),
+            None,
+            None,
+            Limit::default_limit(),
+        )
+        .unwrap();
         assert_eq!(ids(&page), ["gh_news"]);
         assert_eq!(page.chats[0].name, "News");
     }
@@ -364,6 +401,7 @@ mod tests {
             &contacts,
             &rooms,
             &with(&["wxid_nobody", "1@chatroom"]),
+            None,
             None,
             Limit::default_limit(),
         )
@@ -385,7 +423,7 @@ mod tests {
     #[test]
     fn chats_are_newest_first_and_by_id_among_equals() {
         let rows = vec![row("b", 5), row("a", 9), row("c", 5), row("d", 1), row("", 20)];
-        let page = page(rows, &Rooms::new(), None, Limit::default_limit());
+        let page = page(rows, &Rooms::new(), None, None, Limit::default_limit());
         assert_eq!(ids(&page), ["a", "b", "c", "d"]);
         assert_eq!(page.next, None);
     }
@@ -394,12 +432,12 @@ mod tests {
     fn each_chat_is_on_one_page() {
         let rows = vec![row("b", 5), row("a", 9), row("c", 5), row("d", 1), row("e", 5)];
         let two = Limit::new(2).unwrap();
-        let first = page(rows.clone(), &Rooms::new(), None, two);
+        let first = page(rows.clone(), &Rooms::new(), None, None, two);
         assert_eq!(ids(&first), ["a", "b"]);
         let next = Cursor::parse(&first.next.unwrap().text()).unwrap();
-        let second = page(rows.clone(), &Rooms::new(), Some(&next), two);
+        let second = page(rows.clone(), &Rooms::new(), None, Some(&next), two);
         assert_eq!(ids(&second), ["c", "e"]);
-        let third = page(rows, &Rooms::new(), second.next.as_ref(), two);
+        let third = page(rows, &Rooms::new(), None, second.next.as_ref(), two);
         assert_eq!(ids(&third), ["d"]);
         assert_eq!(third.next, None);
     }
@@ -435,6 +473,61 @@ mod tests {
         assert_eq!(named("", ""), "孙凤君、秦俊斌 @qinjunbin");
         assert_eq!(named("", "Hiking"), "Hiking");
         assert_eq!(named("Ours", "Hiking"), "Ours");
+    }
+
+    fn contact(remark: &str, nick: &str, members: &[&str]) -> Option<Contact> {
+        Some(Contact {
+            remark: Some(remark.into()),
+            nick_name: Some(nick.into()),
+            members: members.iter().map(|m| m.to_string()).collect(),
+        })
+    }
+
+    #[test]
+    fn a_query_finds_a_chat_by_its_id_its_shown_name_or_its_own_name_whatever_the_case() {
+        let mut rows = vec![
+            row("wxid_qin", 6),
+            row("1@chatroom", 5),
+            row("2@chatroom", 4),
+            row("3@chatroom", 3),
+            row("wxid_amy", 2),
+            row("wxid_stranger", 1),
+        ];
+        rows[0].contact = contact("", "秦俊斌 @QinJunbin", &[]);
+        rows[1].contact = contact("", "", &["孙凤君", "秦俊斌 @QinJunbin"]);
+        rows[2].contact = contact("", "Hiking", &["秦俊斌 @QinJunbin"]);
+        rows[3].contact = contact("Ours", "Climbing", &[]);
+        rows[4].contact = contact("Auntie", "Amy", &[]);
+        let found = |query: &str| {
+            let p = page(rows.clone(), &Rooms::new(), Some(query), None, Limit::default_limit());
+            ids(&p).into_iter().map(String::from).collect::<Vec<_>>()
+        };
+        assert_eq!(found("秦俊斌"), ["wxid_qin", "1@chatroom"]);
+        assert_eq!(found("qinjunbin"), ["wxid_qin", "1@chatroom"]);
+        assert_eq!(found("hIKING"), ["2@chatroom"]);
+        assert_eq!(found("ours"), ["3@chatroom"]);
+        assert_eq!(found("climb"), ["3@chatroom"]);
+        assert_eq!(found("auntie"), ["wxid_amy"]);
+        assert_eq!(found("amy"), ["wxid_amy"]);
+        assert_eq!(found("STRANGER"), ["wxid_stranger"]);
+        assert_eq!(found("nobody"), Vec::<String>::new());
+        assert_eq!(found("").len(), rows.len());
+    }
+
+    #[test]
+    fn with_a_query_only_the_chats_holding_them_that_it_finds_are_answered() {
+        let (rows, contacts, rooms) = world();
+        let page = holding(
+            rows,
+            &contacts,
+            &rooms,
+            &with(&["wxid_amy"]),
+            Some("SMALL"),
+            None,
+            Limit::default_limit(),
+        )
+        .unwrap();
+        assert_eq!(ids(&page), ["2@chatroom"]);
     }
 
     #[test]
@@ -481,14 +574,14 @@ mod tests {
                 }
             }
             let amy = with(&["wxid_amy"]);
-            let whole = holding(rows.clone(), &contacts, &rooms, &amy, None, Limit::new(MAX_LIMIT).unwrap()).unwrap();
+            let whole = holding(rows.clone(), &contacts, &rooms, &amy, None, None, Limit::new(MAX_LIMIT).unwrap()).unwrap();
             prop_assert_eq!(whole.chats.len(), groups.len() + 1);
             let sizes: Vec<usize> = whole.chats.iter().map(|c| c.members.unwrap()).collect();
             prop_assert!(sizes.windows(2).all(|w| w[0] <= w[1]));
             let mut paged = Vec::new();
             let mut after = None;
             loop {
-                let p = holding(rows.clone(), &contacts, &rooms, &amy, after.as_ref(), Limit::new(limit).unwrap()).unwrap();
+                let p = holding(rows.clone(), &contacts, &rooms, &amy, None, after.as_ref(), Limit::new(limit).unwrap()).unwrap();
                 prop_assert!(p.chats.len() <= limit);
                 paged.extend(p.chats);
                 match p.next {
@@ -500,16 +593,20 @@ mod tests {
         }
 
         #[test]
-        fn paging_lists_every_chat_once_in_order(
+        fn paging_lists_every_chat_the_query_finds_once_in_order(
             sorts in proptest::collection::vec(0i64..4, 0..30),
             limit in 1usize..7,
+            query in proptest::option::of("C[0-2]"),
         ) {
             let rows: Vec<Row> = sorts.iter().enumerate().map(|(i, &s)| row(&format!("c{i:02}"), s)).collect();
-            let whole = page(rows.clone(), &Rooms::new(), None, Limit::new(MAX_LIMIT).unwrap());
+            let query = query.as_deref();
+            let whole = page(rows.clone(), &Rooms::new(), query, None, Limit::new(MAX_LIMIT).unwrap());
+            let found = |c: &Chat| query.is_none_or(|q| c.id.contains(&q.to_lowercase()));
+            prop_assert_eq!(whole.chats.len(), rows.iter().filter(|r| found(&chat((*r).clone(), &Rooms::new()))).count());
             let mut paged = Vec::new();
             let mut after = None;
             loop {
-                let p = page(rows.clone(), &Rooms::new(), after.as_ref(), Limit::new(limit).unwrap());
+                let p = page(rows.clone(), &Rooms::new(), query, after.as_ref(), Limit::new(limit).unwrap());
                 prop_assert!(p.chats.len() <= limit);
                 paged.extend(p.chats);
                 match p.next {
