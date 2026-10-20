@@ -63,6 +63,16 @@ fn keys_of(json: &Value) -> BTreeSet<String> {
     json.as_object().unwrap().keys().cloned().collect()
 }
 
+/// The one group of an answer whose id is `id`.
+fn group_of<'a>(json: &'a Value, id: &str) -> &'a Value {
+    json["groups"].as_array().unwrap().iter().find(|g| g["id"] == id).expect(id)
+}
+
+/// The strings of a JSON array.
+fn strings(json: &Value) -> Vec<&str> {
+    json.as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect()
+}
+
 #[test]
 fn without_yes_it_answers_the_plan_and_changes_nothing() {
     let world = World::new();
@@ -71,21 +81,18 @@ fn without_yes_it_answers_the_plan_and_changes_nothing() {
     let json = world.run(&["group", "leave", GROUP], &[("WXREAD_KEYS", &keys(&account))]).ok();
     assert_eq!(snapshot(&world.root), before, "nothing was written");
     assert_eq!(json["account"], "wxid_me_1a2b");
-    assert_eq!(json["applied"], false);
-    assert_eq!(json["confirmed_in"], Value::Null);
-    let group = &json["group"];
+    let group = group_of(&json, GROUP);
     assert_eq!(
         (&group["id"], &group["display_name"], &group["name"], &group["members"]),
         (&json!(GROUP), &json!("Ads"), &json!("Ads"), &json!(2))
     );
+    assert_eq!((&group["outcome"], &group["confirmed_in"]), (&json!("planned"), &Value::Null));
     assert_eq!(group["last_message"]["content"], "cheaper flats", "its newest message");
-    let plan: Vec<&str> =
-        json["plan"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect();
+    let plan = strings(&group["plan"]);
     assert!(plan.iter().any(|s| s.contains("title reads Ads (2)")), "{plan:?}");
     assert!(plan.iter().any(|s| s.contains("Group Name reads Ads")), "{plan:?}");
     // No WeChat is logged in as a synthetic account: that blocks --yes.
-    let blockers: Vec<&str> =
-        json["blockers"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect();
+    let blockers = strings(&json["blockers"]);
     assert!(
         blockers.iter().any(|b| b.starts_with("WeChat is not running")
             || b.contains("not wxid_me_1a2b")
@@ -93,6 +100,49 @@ fn without_yes_it_answers_the_plan_and_changes_nothing() {
         "{blockers:?}"
     );
     assert!(json["next"].as_str().unwrap().starts_with("nothing was changed"), "{json}");
+}
+
+#[test]
+fn several_groups_are_each_planned_in_the_order_given() {
+    let world = World::new();
+    let account = account(&world);
+    let args = ["group", "leave", "6@chatroom", GROUP, "6@chatroom"];
+    let json = world.run(&args, &[("WXREAD_KEYS", &keys(&account))]).ok();
+    let ids: Vec<&Value> = json["groups"].as_array().unwrap().iter().map(|g| &g["id"]).collect();
+    assert_eq!(ids, [&json!("6@chatroom"), &json!(GROUP)], "each once, in the order given");
+    assert!(
+        strings(&group_of(&json, "6@chatroom")["plan"])
+            .iter()
+            .any(|s| s.contains("title reads Left (2)"))
+    );
+    assert!(
+        strings(&group_of(&json, GROUP)["plan"]).iter().any(|s| s.contains("title reads Ads (2)"))
+    );
+}
+
+#[test]
+fn the_ids_can_be_given_on_stdin() {
+    use std::io::Write as _;
+    let world = World::new();
+    let account = account(&world);
+    let mut command = world.command(&["group", "leave", "-"]);
+    command.env("WXREAD_KEYS", keys(&account));
+    command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped());
+    let mut child = command.spawn().unwrap();
+    child.stdin.take().unwrap().write_all(format!("{GROUP}\n6@chatroom\n").as_bytes()).unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    let json: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let ids: Vec<&Value> = json["groups"].as_array().unwrap().iter().map(|g| &g["id"]).collect();
+    assert_eq!(ids, [&json!(GROUP), &json!("6@chatroom")]);
+}
+
+#[test]
+fn no_id_on_stdin_is_refused_with_its_fix() {
+    let world = World::new();
+    let account = account(&world);
+    let error = world.run(&["group", "leave", "-"], &[("WXREAD_KEYS", &keys(&account))]).error();
+    assert!(error.starts_with("no group's id was given on stdin"), "{error}");
 }
 
 #[test]
@@ -108,18 +158,30 @@ fn with_yes_what_blocks_it_is_refused_before_the_window_is_touched() {
 }
 
 #[test]
-fn a_group_the_account_is_not_in_is_refused() {
+fn a_group_the_account_is_not_in_is_answered_as_nothing_to_leave() {
     let world = World::new();
     let account = account(&world);
     for yes in [&[][..], &["--yes"]] {
-        let mut args = vec!["group", "leave", "9@chatroom"];
+        let mut args = vec!["group", "leave", "9@chatroom", "5@chatroom"];
         args.extend(yes);
-        let error = world.run(&args, &[("WXREAD_KEYS", &keys(&account))]).error();
-        assert_eq!(
-            error,
-            "the account is not a member of 9@chatroom (Hiking): there is nothing to leave; `wxread group 9@chatroom` answers who is"
-        );
+        let json = world.run(&args, &[("WXREAD_KEYS", &keys(&account))]).ok();
+        for id in ["9@chatroom", "5@chatroom"] {
+            assert_eq!(group_of(&json, id)["outcome"], "not_member", "{json}");
+        }
+        assert_eq!(json["blockers"], json!([]), "nothing is to be left, so nothing blocks it");
+        assert!(json["next"].as_str().unwrap().starts_with("nothing to leave"), "{json}");
     }
+}
+
+#[test]
+fn every_group_that_cannot_be_left_is_named_at_once_and_nothing_is_touched() {
+    let world = World::new();
+    let account = account(&world);
+    let args = ["group", "leave", GROUP, "7@chatroom", "wxid_amy", "--yes"];
+    let error = world.run(&args, &[("WXREAD_KEYS", &keys(&account))]).error();
+    assert!(error.contains("shown as Twins (7@chatroom, 8@chatroom)"), "{error}");
+    assert!(error.contains("wxid_amy is a person, not a group"), "{error}");
+    assert!(!error.contains("nothing was touched: WeChat"), "the groups are named first: {error}");
 }
 
 #[test]
@@ -140,8 +202,9 @@ fn a_group_of_the_same_name_the_account_has_left_does_not_stop_it() {
     let account = account(&world);
     let json =
         world.run(&["group", "leave", "6@chatroom"], &[("WXREAD_KEYS", &keys(&account))]).ok();
-    assert_eq!(json["group"]["display_name"], "Left");
-    assert_eq!(json["group"]["last_message"], Value::Null, "no message in it");
+    let group = group_of(&json, "6@chatroom");
+    assert_eq!((&group["display_name"], &group["outcome"]), (&json!("Left"), &json!("planned")));
+    assert_eq!(group["last_message"], Value::Null, "no message in it");
 }
 
 #[test]
@@ -194,6 +257,9 @@ fn its_help_says_it_cannot_be_undone_what_it_needs_and_that_it_takes_the_window(
         "for about ten seconds",
         "Without --yes it says what it would do and changes nothing",
         "`wxread doctor` says whether each is allowed",
+        "stops at the first group it fails to leave",
+        "the same command again",
+        "wxread group leave <id>... [--account <id>] [--yes]",
     ] {
         assert!(words.contains(said), "group leave --help says {said}");
     }
@@ -210,6 +276,11 @@ fn it_answers_exactly_the_keys_its_help_and_the_guide_name() {
     let answered: BTreeSet<String> =
         keys.filter_map(|line| line.split_whitespace().next()).map(str::to_string).collect();
     assert_eq!(answered, keys_of(&json));
+    let fields = between(&help, "WHAT IT ANSWERS", "TRIPS YOU UP").into_iter();
+    let fields = fields.filter(|line| line.len() - line.trim_start().len() == 16);
+    let named: BTreeSet<String> =
+        fields.filter_map(|line| line.split_whitespace().next()).map(str::to_string).collect();
+    assert_eq!(named, keys_of(&json["groups"][0]), "each key of a group");
     let mut rows = between(wxread::GUIDE, "WHAT A COMMAND ANSWERS", "THE COMMANDS")
         .into_iter()
         .skip_while(|line| !line.starts_with("    group leave "));
