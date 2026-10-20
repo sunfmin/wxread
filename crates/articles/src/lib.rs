@@ -117,22 +117,21 @@ pub fn page(
     after: Option<&Cursor>,
     limit: Limit,
 ) -> Page {
-    let mut placed: Vec<(Place, Article)> = messages
-        .iter()
-        .flat_map(|m| {
-            let articles = articles(m, names.get(&m.official_account).map(String::as_str));
-            articles.into_iter().enumerate().map(move |(index, article)| {
-                let place = Place {
-                    sent: Reverse(m.create_time.unwrap_or(0)),
-                    official_account: m.official_account.clone(),
-                    local_id: Reverse(m.local_id),
-                    index,
-                };
-                (place, article)
-            })
-        })
-        .filter(|(place, _)| after.is_none_or(|c| *place > c.0))
-        .collect();
+    let mut placed: Vec<(Place, Article)> = Vec::new();
+    for m in messages {
+        let named = names.get(&m.official_account).map(String::as_str);
+        for (index, article) in articles(m, named).into_iter().enumerate() {
+            let place = Place {
+                sent: Reverse(m.create_time.unwrap_or(0)),
+                official_account: m.official_account.clone(),
+                local_id: Reverse(m.local_id),
+                index,
+            };
+            if after.is_none_or(|c| place > c.0) {
+                placed.push((place, article));
+            }
+        }
+    }
     placed.sort_by(|a, b| a.0.cmp(&b.0));
     let more = placed.len() > limit.get();
     placed.truncate(limit.get());
