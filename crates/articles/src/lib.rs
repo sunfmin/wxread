@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 
 use roxmltree::Node;
 use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
-use wxread_messages::kinds::{child, named, split, text, xml};
+use wxread_messages::kinds::split;
+use wxread_xml::{child, named, text, xml};
 
 /// The option that picks one official account's articles.
 pub const OFFICIAL_ACCOUNT_FLAG: &str = "--official-account";

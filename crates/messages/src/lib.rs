@@ -13,6 +13,7 @@ use wxread_media::{Held, Media};
 pub mod kinds;
 pub mod media;
 pub mod names;
+pub mod note;
 mod proto;
 
 pub use names::{Contact, Names};
@@ -61,6 +62,7 @@ pub enum Kind {
     Location,
     Card,
     Forward,
+    Note,
     Solitaire,
     Recall,
     Nudge,
@@ -82,13 +84,14 @@ pub enum Kind {
 
 impl Kind {
     /// Every kind, as the answer names them.
-    pub const ALL: [Kind; 23] = [
+    pub const ALL: [Kind; 24] = [
         Kind::Text,
         Kind::Link,
         Kind::Quote,
         Kind::Location,
         Kind::Card,
         Kind::Forward,
+        Kind::Note,
         Kind::Solitaire,
         Kind::Recall,
         Kind::Nudge,
@@ -116,6 +119,7 @@ impl Kind {
             Kind::Location => "location",
             Kind::Card => "card",
             Kind::Forward => "forward",
+            Kind::Note => "note",
             Kind::Solitaire => "solitaire",
             Kind::Recall => "recall",
             Kind::Nudge => "nudge",
@@ -406,6 +410,11 @@ pub fn message(
 ) -> Value {
     let Read { sender, content, mut parsed } = read(chat, row);
     let sender = sender.or_else(|| parsed.named.as_deref().and_then(|n| names.who(chat, n)));
+    if parsed.kind == Kind::Note
+        && let Some(fields) = note::read(chat, row, &|m: &Media| Some(held(m, row)))
+    {
+        parsed.fields = fields;
+    }
     if let Some(found) = media::locate(parsed.kind, &parsed.fields) {
         let h = held(&found, row);
         parsed.fields.insert("file_present".into(), json!(h.file));
@@ -454,6 +463,11 @@ fn shown(kind: Kind, fields: &mut Map<String, Value>, names: &Names) {
         Kind::Solitaire => (&["/starter"], Some(("/entries", "/member"))),
         _ => (&[], None),
     };
+    if kind == Kind::Note
+        && let Some(items) = fields.get_mut("items").and_then(Value::as_array_mut)
+    {
+        wxread_favorites::name_senders(items, &|id, given| names.person(id, given));
+    }
     let mut all = Value::Object(std::mem::take(fields));
     for at in alone {
         if let Some(found) = all.pointer_mut(at) {

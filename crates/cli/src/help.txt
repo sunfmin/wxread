@@ -30,8 +30,8 @@ RUN FIRST
   wxread search <text>
                     the messages of every chat that hold a text
   wxread file get <id> --out <path>
-                    a media message's file, or a Moment's, written as
-                    the file it is
+                    a media message's file, or a note's item's, a
+                    favorite's or a Moment's, written as the file it is
   wxread favorites  what the account saved (收藏), each as its kind
   wxread voice <id> --chat <id> --out <path>
                     a voice message as a file that plays, and its 转文字

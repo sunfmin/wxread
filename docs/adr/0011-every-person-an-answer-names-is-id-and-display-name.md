@@ -7,7 +7,7 @@ Every person, group, official account and chat an answer names is now `{id, disp
 ## Consequences
 
 - One function in the effect crate (`contacts::display_names`) says what each contact is shown as, read the way `wxread contacts` reads it; `moments`, `articles`, `favorites`, `search`, `file get` and `voice` use it instead of their own reading of the contact table. Within a chat's messages, `wxread_messages::Names` adds the name in the group, as the glossary's display name says.
-- One function makes the shape (`wxread_messages::names::person`); a kind's fields carry each person with the name the message gives them, and naming them is one step (`Names::name`) applied wherever a kind holds a person.
+- One function makes the shape (`wxread_answer::person`, beside what else every answer is written with, so `favorites` and `messages` share it though `messages` reads a note through `favorites`); a kind's fields carry each person with the name the message gives them, and naming them is one step (`Names::name`; a favorite's or a note's items, `wxread_favorites::name_senders`) applied wherever a kind holds a person.
 - A field that is a name but not a person keeps its own key: a renamed group's new `name`, a place's `name`, a file's `name`.
 - `wxread voice` now reads contact/contact.db, for its chat's display name, so its keys must open it.
 - `account`, the account's directory as doctor names it, is not a contact and stays a string.

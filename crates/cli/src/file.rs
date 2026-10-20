@@ -1,7 +1,7 @@
 //! `wxread file get` and `wxread avatar`: find one media message's file
-//! (or its thumbnail) where WeChat keeps it, or a favorite's, or a
-//! contact's avatar in the head image database, and write it at `--out` as
-//! the file it is.
+//! (or its thumbnail) where WeChat keeps it, or a note's item's, or a
+//! favorite's, or a Moment's, or a contact's avatar in the head image
+//! database, and write it at `--out` as the file it is.
 
 use std::path::{Path, PathBuf};
 
@@ -10,7 +10,7 @@ use rusqlite::{Connection, OptionalExtension as _};
 use serde_json::{Value, json};
 use wxread_favorites::FileId;
 use wxread_media::Media;
-use wxread_messages::{Chat, Row};
+use wxread_messages::{Chat, Kind, Row, note};
 use wxread_moments::MediaId;
 use wxread_schema::{CONTACT_DB, FAVORITE_DB, HEAD_IMAGE_DB, SNS_DB};
 
@@ -41,6 +41,9 @@ pub fn get(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     if wxread_favorites::is_file_id(&asked.id) {
         return favorite(world, asked);
     }
+    if note::is_file_id(&asked.id) {
+        return note_item(world, asked);
+    }
     if let Some(id) = MediaId::parse(&asked.id) {
         return moment(world, asked, id);
     }
@@ -54,24 +57,55 @@ pub fn get(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let found = find(&account, server_id)?
         .ok_or_else(|| anyhow!(wxread_media::no_such_message(&asked.id, account.id())))?;
     let chat = Chat { id: found.chat.clone(), account: account.id().to_string() };
-    let media = wxread_messages::media_of(&chat, &found.row)
-        .map_err(|kind| anyhow!(wxread_media::not_media(&asked.id, kind.name())))?;
+    let media = wxread_messages::media_of(&chat, &found.row).map_err(|kind| match kind {
+        Kind::Note => anyhow!(note::not_media(&asked.id)),
+        kind => anyhow!(wxread_media::not_media(&asked.id, kind.name())),
+    })?;
+    fetched(&account, &found, &media, asked)
+}
+
+/// What `file get note:<message>:<item>` answers of `world`: the file of
+/// that item of the note the message sent, or its thumbnail, found under
+/// the note's own directory in the chat's.
+fn note_item(world: &World, asked: &Asked) -> anyhow::Result<Value> {
+    let id =
+        note::FileId::parse(&asked.id).ok_or_else(|| anyhow!(note::not_a_file_id(&asked.id)))?;
+    let account = Account::open(world, asked.account.as_deref(), &[MESSAGE_DBS])?;
+    let no_such = || anyhow!(note::no_such_item(&id, account.id()));
+    let found = find(&account, id.message)?.ok_or_else(no_such)?;
+    let chat = Chat { id: found.chat.clone(), account: account.id().to_string() };
+    let media = note::item(&chat, &found.row, &id.item)
+        .map_err(|kind| anyhow!(note::not_a_file(&id, kind)))?
+        .ok_or_else(no_such)?;
+    fetched(&account, &found, &media, asked)
+}
+
+/// What `file get` answers of `media`, the file of the message `found` or
+/// of an item of its note: written at `--out`, or missing, with what makes
+/// WeChat fetch it.
+fn fetched(
+    account: &Account,
+    found: &Found,
+    media: &Media,
+    asked: &Asked,
+) -> anyhow::Result<Value> {
+    let server_id = found.row.server_id;
     if asked.thumbnail && !media.has_thumbnail() {
         return Err(anyhow!(wxread_media::no_thumbnail(media.kind(), &asked.id)));
     }
-    if let Media::Sticker { md5, url } = &media {
+    if let Media::Sticker { md5, url } = media {
         return sticker(&asked.id, md5.as_deref(), url.as_deref(), &asked.out);
     }
     let at = wxread_answer::rfc3339(found.row.create_time).unwrap_or_default();
     let mut key = None;
     let bytes = |thumbnail: bool, key: &mut _| -> anyhow::Result<Option<Vec<u8>>> {
-        match &media {
-            Media::Voice => Ok(media::voices(&account, None, Some(server_id))?
+        match media {
+            Media::Voice => Ok(media::voices(account, None, Some(server_id))?
                 .into_iter()
                 .next()
                 .map(|(_, silk)| silk)),
-            _ => match media::find(&account.dir(), &media, &found.chat_dir, thumbnail) {
-                Some(path) if media.sealed() => media::decrypted(&account, &path, key).map(Some),
+            _ => match media::find(&account.dir(), media, &found.chat_dir, thumbnail) {
+                Some(path) if media.sealed() => media::decrypted(account, &path, key).map(Some),
                 Some(path) => media::read(&path).map(Some),
                 None => Ok(None),
             },
@@ -80,13 +114,15 @@ pub fn get(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     if let Some(bytes) = bytes(asked.thumbnail, &mut key)? {
         return media::write(&asked.out, &bytes);
     }
+    // A note's item is fetched by opening its message.
+    let message = server_id.to_string();
     if asked.thumbnail {
-        let fix = wxread_media::thumbnail_fix(media.kind(), &asked.id, &found.chat, &at);
+        let fix = wxread_media::thumbnail_fix(media.kind(), &message, &found.chat, &at);
         return Ok(missing(None, &fix));
     }
     let thumbnail = if media.has_thumbnail() { bytes(true, &mut key)? } else { None };
     let written = thumbnail.map(|t| media::write(&asked.out, &t)).transpose()?;
-    let fix = wxread_media::fetch_fix(media.kind(), &asked.id, &found.chat, &at, written.is_some());
+    let fix = wxread_media::fetch_fix(media.kind(), &message, &found.chat, &at, written.is_some());
     Ok(missing(written, &fix))
 }
 

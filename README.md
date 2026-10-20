@@ -18,7 +18,7 @@ wxread --keys <file> messages --chat <id>   # a chat's messages, each as its kin
 wxread --keys <file> moments --contact <id> # the Moments WeChat loaded, with likes and comments
 wxread --keys <file> search crag            # messages across every chat that hold a text
 wxread --keys <file> favorites              # what the account saved (收藏), each as its kind
-wxread --keys <file> file get <id> --out <path>  # a message's, a favorite's or a Moment's file, as it is
+wxread --keys <file> file get <id> --out <path>  # a message's, a note's, a favorite's or a Moment's file, as it is
 wxread --keys <file> avatar <id> --out <path>    # a contact's avatar
 wxread --keys <file> voice <id> --chat <id> --out v.wav
                                             # a voice message that plays

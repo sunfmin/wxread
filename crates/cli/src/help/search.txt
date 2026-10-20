@@ -67,6 +67,8 @@ WHAT A MESSAGE IS SEARCHED BY
   location       its name and address
   card           the name the card gives the contact it shares
   forward        its title and what each message in it says
+  note           the words of its paragraphs, and its places' names and
+                 addresses and its files' names
   solitaire      all a 接龙 shows: its title and each entry, numbered
   transfer, red_packet
                  its memo

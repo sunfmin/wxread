@@ -1,13 +1,16 @@
 wxread file get: write one media message's file (an image, a video, a
-file, a sticker or a voice message), or a favorite's, or a Moment's
-image or video, or its thumbnail, as the file it is.
+file, a sticker or a voice message), or a note's image or file, or a
+favorite's, or a Moment's image or video, or its thumbnail, as the file
+it is.
 
   wxread file get <id> --out <path> [--thumbnail]
 
 WHEN TO RUN IT
   To see or keep what a message carries, once `wxread messages` has
   answered its id and said, in its file_present and thumbnail_present,
-  that WeChat holds it; or what a favorite holds, once `wxread favorites`
+  that WeChat holds it; or what an item of a note sent into a chat holds,
+  once `wxread messages` has answered its file_id under note.items and
+  said the same; or what a favorite holds, once `wxread favorites`
   has answered its file_id and said the same; or what a Moment shows,
   once `wxread moments` has answered its media's ids and said the same.
   Run by you or an agent, once the keys are supplied.
@@ -31,6 +34,15 @@ WHAT IT READS
     voice    its SILK bytes in message/media_<n>.db
     sticker  fetched from WeChat's CDN at its url, with macOS's own curl,
              into memory, and checked against its md5
+  A note's item's file (its file_id note:<message>:<item>): the note's
+  message, by its id, in the message databases, then the file under the
+  note's own directory in the chat's, msg/attach/<md5 of the chat id>/
+  <YYYY-MM>/Rec/<dir> (<dir> named in the message's packed_info_data), by
+  the item's place in the note (0 its first):
+    image    Img/<place>; its thumbnail Img/<place>_t. Sealed as a
+             message's image is, decrypted in memory.
+    file     F/<place>/<its name>; the note's own body (extension htm)
+             Dat/<place>/<its name, else its place>. Not sealed.
   A favorite's file (its file_id fav:<favorite>:<item>): the favorite in
   favorite/favorite.db, then its item's file under the account's
   directory, business/favorite/data/<h[..2]>/<h> (its thumbnail
@@ -59,8 +71,11 @@ WHAT IT WRITES
 
 OPTIONS
   <id>              the message's id, its "id" as `wxread messages`
-                    answers it; a favorite's file_id as `wxread
-                    favorites` answers it (fav:<favorite>:<item>); or a
+                    answers it; a note's item's file_id as `wxread
+                    messages` answers it under note.items
+                    (note:<message>:<item>); a favorite's file_id as
+                    `wxread favorites` answers it (fav:<favorite>:<item>);
+                    or a
                     Moment's medium's, its "id" under media as `wxread
                     moments` answers it; required
   --out <path>      the file to write; required. Its directory must exist.
@@ -85,7 +100,8 @@ WHAT IT ANSWERS
     thumbnail     the thumbnail written at --out in its place, as
                   {path, size, sha256, content_type}, when WeChat holds
                   one; else null, and nothing is written
-    fix           what makes WeChat fetch it: open the message (or the
+    fix           what makes WeChat fetch it: open the message (for a
+                  note's item, the note's message; for a favorite's, the
                   favorite, in WeChat's Favorites) in WeChat, which
                   downloads it, then run this again; for a Moment's, open
                   the Moment in WeChat's Moments and let it load
@@ -98,8 +114,12 @@ TRIPS YOU UP
   - A message that carries no file (a text, a link, …) is an error
     naming its kind; so is a favorite's item that carries none, and a
     Moment's medium of kind other.
-  - A favorite's note body (extension htm) is HTML WeChat wrote without a
-    header, so its content_type is application/octet-stream.
+  - A note's body (extension htm), a favorite's or one sent into a chat,
+    is HTML WeChat wrote without a header, so its content_type is
+    application/octet-stream.
+  - A note's own id is not a file's: `wxread file get <its id>` is an
+    error saying to pass one of its items' file_id. A note's video or
+    voice message has none: where WeChat keeps it is not known.
   - Images sealed under the account's key need the kvcomm files WeChat
     for Mac writes on this Mac: with none that opens them, the error says
     to log in to WeChat for Mac here and run again.

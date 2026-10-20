@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<msg>
+	<appmsg appid="" sdkver="0">
+		<title />
+		<des>10 ：30 导航到这里 杭州九点 20 左右出发
+[位置] 莫干山庾村广场P4停车场
+[图片]</des>
+		<action>view</action>
+		<type>24</type>
+		<showtype>0</showtype>
+		<content />
+		<url>https://support.weixin.qq.com/update/</url>
+		<dataurl />
+		<lowurl />
+		<lowdataurl />
+		<recorditem>&lt;recordinfo&gt;&lt;info&gt;10 ：30 导航到这里 杭州九点 20 左右出发
+[位置] 莫干山庾村广场P4停车场
+[图片]&lt;/info&gt;&lt;datalist count="4"&gt;&lt;dataitem htmlid="WeNoteHtmlFile" datatype="8" dataid="58f6f1ad9a8dc9939d7948311046641e"&gt;&lt;head256md5&gt;e9a1af9ebc6bac2346dd7f7eb3e6ebe7&lt;/head256md5&gt;&lt;thumbfiletype&gt;0&lt;/thumbfiletype&gt;&lt;datafmt&gt;.htm&lt;/datafmt&gt;&lt;datasize&gt;299&lt;/datasize&gt;&lt;filetype&gt;0&lt;/filetype&gt;&lt;fullmd5&gt;64627dd336c63c63e22bcc755e3bbf47&lt;/fullmd5&gt;&lt;/dataitem&gt;&lt;dataitem htmlid="-1" datatype="1" dataid="e884e2dd481545a59da8c7b342bc70af"&gt;&lt;thumbfiletype&gt;0&lt;/thumbfiletype&gt;&lt;datadesc&gt;10 ：30 导航到这里
+杭州九点 20 左右出发&lt;/datadesc&gt;&lt;filetype&gt;0&lt;/filetype&gt;&lt;/dataitem&gt;&lt;dataitem htmlid="WeNote_2" datatype="6" dataid="7ed1aaa822651ed33a5275e48d5bc71d"&gt;&lt;thumbfiletype&gt;0&lt;/thumbfiletype&gt;&lt;filetype&gt;0&lt;/filetype&gt;&lt;locitem&gt;&lt;lng&gt;119.8946685791016&lt;/lng&gt;&lt;poiname&gt;莫干山庾村广场P4停车场&lt;/poiname&gt;&lt;label&gt;浙江省湖州市德清县大乐之野莫干山(庾村店)南&lt;/label&gt;&lt;isfrompoilist&gt;1&lt;/isfrompoilist&gt;&lt;poiid&gt;qqmap_17492634260825969565&lt;/poiid&gt;&lt;lat&gt;30.59977149963379&lt;/lat&gt;&lt;scale&gt;17.61685412672318&lt;/scale&gt;&lt;/locitem&gt;&lt;/dataitem&gt;&lt;dataitem htmlid="WeNote_3" datatype="2" subtype="1" dataid="084b81e4ceaa08076026a325299e26fe"&gt;&lt;head256md5&gt;4e865b43a3fa15105441b802695c8ce6&lt;/head256md5&gt;&lt;thumbsize&gt;135211&lt;/thumbsize&gt;&lt;thumbhead256md5&gt;f13f87b0d59d428a3140c892710db88a&lt;/thumbhead256md5&gt;&lt;thumbfiletype&gt;1&lt;/thumbfiletype&gt;&lt;datafmt&gt;jpg&lt;/datafmt&gt;&lt;datasize&gt;360153&lt;/datasize&gt;&lt;thumbfullmd5&gt;8c8952b4310a0b4411445ae8e936b77b&lt;/thumbfullmd5&gt;&lt;filetype&gt;0&lt;/filetype&gt;&lt;fullmd5&gt;d673c7e91f8158989fe7d6adab11696b&lt;/fullmd5&gt;&lt;/dataitem&gt;&lt;/datalist&gt;&lt;editusr&gt;wxid_me&lt;/editusr&gt;&lt;edittime&gt;1792387918&lt;/edittime&gt;&lt;desc&gt;10 ：30 导航到这里 杭州九点 20 左右出发
+[位置] 莫干山庾村广场P4停车场
+[图片]&lt;/desc&gt;&lt;fromscene&gt;2&lt;/fromscene&gt;&lt;/recordinfo&gt;</recorditem>
+		<thumburl />
+		<messageaction />
+		<laninfo />
+		<extinfo />
+		<sourceusername />
+		<sourcedisplayname />
+		<commenturl />
+		<appattach>
+			<totallen>0</totallen>
+			<attachid />
+			<emoticonmd5 />
+			<fileext />
+			<aeskey />
+		</appattach>
+		<webviewshared>
+			<publisherId />
+			<publisherReqId>0</publisherReqId>
+		</webviewshared>
+		<weappinfo>
+			<pagepath />
+			<username />
+			<appid />
+			<appservicetype>0</appservicetype>
+		</weappinfo>
+		<websearch />
+	</appmsg>
+	<fromusername>wxid_amy</fromusername>
+	<scene>0</scene>
+	<appinfo>
+		<version>1</version>
+		<appname></appname>
+	</appinfo>
+	<commenturl></commenturl>
+</msg>

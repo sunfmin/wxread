@@ -8,8 +8,11 @@
 //! `local_type` carries a subtype in its high 32 bits: an app message (49)
 //! is `49 | <type> << 32`, the `<type>` of its `<appmsg>`.
 
-use roxmltree::{Document, Node};
+use roxmltree::Node;
 use serde_json::{Map, Value, json};
+use wxread_xml::{attr, child, inner, named, text, untrimmed, xml};
+
+use wxread_media::Media;
 
 use crate::Kind;
 use crate::names::person;
@@ -41,11 +44,12 @@ const LINKS: [(i64, &str); 7] = [
     (63, "channels_live"),
 ];
 /// The other subtypes of an app message wxread reads: a file, a sticker, a
-/// forwarded history, a 接龙, a quote, a nudge, a group's notice posted
-/// into its chat, a transfer and a red packet.
+/// forwarded history, a note, a 接龙, a quote, a nudge, a group's notice
+/// posted into its chat, a transfer and a red packet.
 const APP_FILE: i64 = 6;
 const APP_STICKER: i64 = 8;
 const FORWARD: i64 = 19;
+const NOTE: i64 = 24;
 const SOLITAIRE: i64 = 53;
 const QUOTE: i64 = 57;
 const NUDGE: i64 = 62;
@@ -161,125 +165,6 @@ pub fn parse(account: &str, local_type: i64, content: &str, packed: &[u8]) -> Pa
     .unwrap_or_else(Parsed::unknown)
 }
 
-/// What `read` makes of the XML document `content`, read as WeChat writes
-/// it: from its first tag, without the XML declarations WeChat puts inside
-/// some messages, and with an `&` that starts no entity, as in some links'
-/// addresses. None when it is not XML even then.
-pub fn xml<R>(content: &str, read: impl FnOnce(Node) -> Option<R>) -> Option<R> {
-    let text = declarations_removed(content.trim());
-    let escaped;
-    let doc = match Document::parse(&text) {
-        Ok(doc) => doc,
-        Err(_) => {
-            escaped = bare_ampersands_escaped(&text);
-            Document::parse(&escaped).ok()?
-        }
-    };
-    read(doc.root_element())
-}
-
-/// `text` without its `<?xml …?>` declarations.
-fn declarations_removed(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some((before, after)) = rest.split_once("<?xml") {
-        out.push_str(before);
-        rest = after.split_once("?>").map_or("", |(_, after)| after);
-    }
-    out.push_str(rest);
-    out
-}
-
-/// `text` with each `&` that starts no entity (`&amp;`, `&#38;`) written
-/// `&amp;`.
-fn bare_ampersands_escaped(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut pieces = text.split('&');
-    if let Some(first) = pieces.next() {
-        out.push_str(first);
-    }
-    for piece in pieces {
-        out.push('&');
-        let entity = piece.split_once(';').is_some_and(|(name, _)| is_entity(name));
-        if !entity {
-            out.push_str("amp;");
-        }
-        out.push_str(piece);
-    }
-    out
-}
-
-/// Whether `&<name>;` is an entity XML reads: a name, or a character XML
-/// allows by its number.
-fn is_entity(name: &str) -> bool {
-    let all =
-        |s: &str, f: fn(&u8) -> bool| !s.is_empty() && s.len() <= 8 && s.bytes().all(|c| f(&c));
-    // A character XML allows: not a control character but tab, newline
-    // and return.
-    let allowed = |n: Option<u32>| {
-        n.and_then(char::from_u32)
-            .is_some_and(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r'))
-    };
-    match (name.strip_prefix("#x"), name.strip_prefix('#')) {
-        (Some(hex), _) => {
-            all(hex, u8::is_ascii_hexdigit) && allowed(u32::from_str_radix(hex, 16).ok())
-        }
-        (None, Some(decimal)) => all(decimal, u8::is_ascii_digit) && allowed(decimal.parse().ok()),
-        (None, None) => {
-            name.starts_with(|c: char| c.is_ascii_alphabetic())
-                && all(name, u8::is_ascii_alphanumeric)
-        }
-    }
-}
-
-/// `node`'s child named `path`'s last part, through each part before it:
-/// `child(n, "appmsg/refermsg/svrid")`.
-pub fn child<'a, 'i>(node: Node<'a, 'i>, path: &str) -> Option<Node<'a, 'i>> {
-    let mut at = node;
-    for name in path.split('/') {
-        at = named(at, name).into_iter().next()?;
-    }
-    Some(at)
-}
-
-/// `node`'s children named `name`, in order.
-pub fn named<'a, 'i>(node: Node<'a, 'i>, name: &str) -> Vec<Node<'a, 'i>> {
-    let mut found = Vec::new();
-    for c in node.children() {
-        if c.has_tag_name(name) {
-            found.push(c);
-        }
-    }
-    found
-}
-
-/// The text of `path` under `node`, trimmed: None when it is absent or
-/// empty.
-pub fn text(node: Node, path: &str) -> Option<String> {
-    child(node, path).and_then(inner)
-}
-
-/// The text a node holds, trimmed, CDATA or not: None when empty.
-fn inner(node: Node) -> Option<String> {
-    Some(untrimmed(node).trim().to_string()).filter(|t| !t.is_empty())
-}
-
-/// The text a node holds, CDATA or not, as it holds it.
-fn untrimmed(node: Node) -> String {
-    let mut t = String::new();
-    for n in node.children() {
-        if let Some(text) = n.text().filter(|_| n.is_text()) {
-            t.push_str(text);
-        }
-    }
-    t
-}
-
-/// Attribute `name` of `node`, trimmed: None when it is absent or empty.
-pub fn attr(node: Node, name: &str) -> Option<String> {
-    node.attribute(name).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string)
-}
-
 fn card(root: Node) -> Option<Parsed> {
     Some(Parsed::of(
         Kind::Card,
@@ -388,6 +273,12 @@ fn app(root: Node, sub: i64) -> Option<Parsed> {
                 Kind::Forward,
                 json!({ "title": text(a, "title").unwrap_or_default(), "messages": messages }),
             ))
+        }
+        NOTE => {
+            // Its items' files are looked for once the message's id and
+            // directory are known (crate::note::read).
+            let files = crate::note::InChat { message: 0, rec: None, held: &|_: &Media| None };
+            Some(Parsed::of(Kind::Note, Value::Object(crate::note::fields(a, &files)?)))
         }
         SOLITAIRE => solitaire(a),
         GROUP_NOTICE => Some(group_notice(root, a)),

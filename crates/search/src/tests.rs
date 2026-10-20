@@ -69,6 +69,11 @@ fn each_kind_is_searched_by_the_text_wechat_indexes() {
         Some("Gym\n1 x Rd".into())
     );
     assert_eq!(matched(42, r#"<msg username="wxid_x" nickname="Rex"/>"#), Some("Rex".into()));
+    let record = r#"<recordinfo><datalist><dataitem datatype="8" dataid="b"><datafmt>.htm</datafmt></dataitem><dataitem datatype="1" dataid="p"><datadesc>Meet x</datadesc></dataitem><dataitem datatype="6" dataid="l"><locitem><poiname>Gate</poiname><label>1 x Rd</label></locitem></dataitem><dataitem datatype="8" dataid="f"><datatitle>x.gpx</datatitle></dataitem><dataitem datatype="2" dataid="i"></dataitem></datalist></recordinfo>"#;
+    let note = format!(
+        "<msg><appmsg><type>24</type><recorditem><![CDATA[{record}]]></recorditem></appmsg></msg>"
+    );
+    assert_eq!(matched(app(24), &note), Some("Meet x\nGate\n1 x Rd\nx.gpx".into()));
     // A 接龙 by all it shows, as WeChat's index holds it: its title and
     // each entry, numbered.
     let solitaire = "<msg><appmsg><title>#接龙\nx ride\n\n1. Ann</title><type>53</type><extinfo><solitaire_info><![CDATA[<solitaire><tt>0-10</tt><content><i><u>wxid_ann</u><t>1</t><r>15-3</r></i></content></solitaire>]]></solitaire_info></extinfo></appmsg></msg>";

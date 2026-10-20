@@ -4,7 +4,8 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::{Value, json};
+use serde_json::Value;
+pub use wxread_answer::person;
 use wxread_contacts::display_name;
 
 use crate::Chat;
@@ -79,16 +80,6 @@ impl Names {
             _ => None,
         }
     }
-}
-
-/// A person or account as every answer names one: `{id, display_name}`,
-/// `display_name` "" when nothing names them; null when there is neither
-/// an id nor a name. An id is null for one named only by a name.
-pub fn person(id: Option<&str>, display_name: Option<&str>) -> Value {
-    if id.is_none() && display_name.is_none() {
-        return Value::Null;
-    }
-    json!({ "id": id, "display_name": display_name.unwrap_or_default() })
 }
 
 /// The account's own id, out of its directory's name `dir` (WeChat names
