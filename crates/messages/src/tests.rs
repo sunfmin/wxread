@@ -1080,6 +1080,141 @@ proptest! {
     }
 }
 
+/// A note sent into a group, as WeChat for Mac 4.1 kept it: its body, a
+/// paragraph, a place and an image, the CDN's addresses and keys and the
+/// sender's id taken out.
+const NOTE: &str = include_str!("fixtures/note.xml");
+/// Its `packed_info_data`: the note's directory, `58d452fe52a3cf23`, in
+/// field 9's field 1.
+const NOTE_PACKED: &str = "08F70110014A120A10353864343532666535326133636632335800";
+const NOTE_ID: i64 = 1_857_813_742_130_961_658;
+
+fn note_row() -> Row {
+    let packed = (0..NOTE_PACKED.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&NOTE_PACKED[i..i + 2], 16).unwrap())
+        .collect();
+    Row {
+        server_id: NOTE_ID,
+        local_type: app(24),
+        sender: Some("wxid_amy".into()),
+        content: NOTE.as_bytes().to_vec(),
+        packed,
+        ..row("message_0", 902, 1_792_391_734, 0)
+    }
+}
+
+/// The note's items as `wxread favorites` answers a note's, each media
+/// one's file as `file` says it: its id, and whether WeChat holds it and
+/// its thumbnail.
+fn note_items(file: impl Fn(&str) -> (Value, Value, Value)) -> Value {
+    let (body_id, body, _) = file("58f6f1ad9a8dc9939d7948311046641e");
+    let (image_id, image, thumb) = file("084b81e4ceaa08076026a325299e26fe");
+    let said = |kind: &str, t: i64, fields: Value| json!({ "kind": kind, kind: fields, "sender": null, "sender_name": null, "at": null, "type": t });
+    json!([
+        said(
+            "file",
+            8,
+            json!({ "file_id": body_id, "size": 299, "name": null, "extension": "htm", "file_present": body, "thumbnail_present": null })
+        ),
+        said("text", 1, json!({ "text": "10 ：30 导航到这里\n杭州九点 20 左右出发" })),
+        said(
+            "location",
+            6,
+            json!({ "latitude": 30.59977149963379, "longitude": 119.8946685791016, "name": "莫干山庾村广场P4停车场", "address": "浙江省湖州市德清县大乐之野莫干山(庾村店)南" })
+        ),
+        said(
+            "image",
+            2,
+            json!({ "file_id": image_id, "size": 360153, "file_present": image, "thumbnail_present": thumb })
+        ),
+    ])
+}
+
+#[test]
+fn a_note_is_its_items_as_a_favorites_note_is() {
+    let unlooked = |_: &str| (Value::Null, Value::Null, Value::Null);
+    assert_eq!(
+        read(app(24), NOTE),
+        json!({ "kind": "note", "note": { "items": note_items(unlooked) } })
+    );
+    // The subtype from <type> when local_type has none, and the record
+    // kept as CDATA rather than escaped.
+    assert_eq!(read(APP, NOTE)["kind"], "note");
+    let record = NOTE.split_once("<recorditem>").unwrap().1.split_once("</recorditem>").unwrap().0;
+    let unescaped = record.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
+    let cdata = NOTE.replace(record, &format!("<![CDATA[{unescaped}]]>"));
+    assert_eq!(read(app(24), &cdata), read(app(24), NOTE));
+    // A note whose record does not read is unknown, its content kept.
+    let broken =
+        "<msg><appmsg><type>24</type><recorditem>&lt;recordinfo</recorditem></appmsg></msg>";
+    assert_eq!(read(app(24), broken)["kind"], "unknown");
+}
+
+#[test]
+fn a_notes_items_name_their_files_by_its_message_and_say_whether_wechat_holds_them() {
+    let rec = Some("58d452fe52a3cf23".to_string());
+    let held = |m: &Media, r: &Row| {
+        assert_eq!(r.local_id, 902);
+        match m {
+            Media::NoteImage { rec: r, place: 3 } if *r == rec => {
+                Held { file: true, thumbnail: Some(false) }
+            }
+            Media::NoteFile { rec: r, place: 0, name: None } if *r == rec => Held::default(),
+            other => panic!("{other:?}"),
+        }
+    };
+    let m = message(&chat("48614902608@chatroom"), &Names::default(), &note_row(), &held);
+    let present = |item: &str| {
+        let id = json!(format!("note:{NOTE_ID}:{item}"));
+        if item.starts_with("084b") {
+            (id, json!(true), json!(false))
+        } else {
+            (id, json!(false), Value::Null)
+        }
+    };
+    assert_eq!(
+        (&m["kind"], &m["note"]),
+        (&json!("note"), &json!({ "items": note_items(present) }))
+    );
+    assert_eq!((&m["type"], &m["subtype"]), (&json!(49), &json!(24)));
+    // A note the server never saw names no file.
+    let unsent = Row { server_id: 0, ..note_row() };
+    let m = message(&chat("48614902608@chatroom"), &Names::default(), &unsent, &held);
+    assert_eq!(m["note"]["items"][3]["image"]["file_id"], Value::Null);
+}
+
+#[test]
+fn a_notes_item_is_found_by_its_file_id() {
+    let id =
+        note::FileId::parse(&format!("note:{NOTE_ID}:084b81e4ceaa08076026a325299e26fe")).unwrap();
+    assert_eq!((id.message, id.item.as_str()), (NOTE_ID, "084b81e4ceaa08076026a325299e26fe"));
+    assert_eq!(id.text(), format!("note:{NOTE_ID}:084b81e4ceaa08076026a325299e26fe"));
+    for bad in
+        ["note:", "note:12", "note:x:ab", "note:12:", "note:0:ab", "note:12:a/b", "fav:1:a", "12"]
+    {
+        assert_eq!(note::FileId::parse(bad), None, "{bad}");
+    }
+    assert!(note::is_file_id("note:x") && !note::is_file_id("fav:1:a"));
+    let chat = chat("48614902608@chatroom");
+    let rec = Some("58d452fe52a3cf23".to_string());
+    assert_eq!(
+        note::item(&chat, &note_row(), "084b81e4ceaa08076026a325299e26fe"),
+        Ok(Some(Media::NoteImage { rec: rec.clone(), place: 3 }))
+    );
+    assert_eq!(
+        note::item(&chat, &note_row(), "58f6f1ad9a8dc9939d7948311046641e"),
+        Ok(Some(Media::NoteFile { rec, place: 0, name: None }))
+    );
+    // A paragraph carries no file; an item the note does not hold is none.
+    assert_eq!(
+        note::item(&chat, &note_row(), "e884e2dd481545a59da8c7b342bc70af"),
+        Err(wxread_favorites::Kind::Text)
+    );
+    assert_eq!(note::item(&chat, &note_row(), "nope"), Ok(None));
+    // A message that is not a note holds no item.
+    assert_eq!(note::item(&chat, &row("message_0", 1, 1, 0), "a"), Ok(None));
+}
 #[test]
 fn a_chat_no_database_holds_is_refused_without_calling_it_an_id_chats_lists() {
     let why = no_such_chat("wxid_nobody", "wxid_me_1a2b");

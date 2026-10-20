@@ -88,6 +88,22 @@ THE KINDS AND THEIR FIELDS
               inside}]}: each message forwarded, in order; one forwarded
               inside another follows it, its inside the position in this
               list of the forward it sits in (null at the top)
+  note        {items: [{kind, <kind>, sender, sender_name, at, type}]}: a
+              note (笔记) sent into the chat, read as `wxread favorites`
+              reads a favorite's note: each part of it, in order, as its
+              kind with that kind's fields: its paragraphs (text {text}),
+              places (location {latitude, longitude, name, address}),
+              images (image {file_id, size, file_present,
+              thumbnail_present}), files (file {file_id, size, name,
+              extension, file_present, thumbnail_present}), links and the
+              rest; type WeChat's number for the part (1 text, 2 image, 6
+              place, 8 file). Its body as WeChat renders it is a file of
+              extension htm, its first part. file_id is what `wxread file
+              get <file_id> --out <path>` writes (note:<message>:<item>),
+              size its bytes; a note's video or voice message has
+              file_id and file_present null: where WeChat keeps it is not
+              known. sender, sender_name and at are null: a note keeps
+              none
   solitaire   {id, title, example, starter: {id, display_name},
               entries: [{number, member: {id, display_name}, text, at}],
               text}: a 接龙 (a sign-up list in a group), as this
@@ -167,7 +183,9 @@ TRIPS YOU UP
     the database; its fix is `sudo wxread keys`, then supplying the keys
     again.
   - Media is named, not fetched: `wxread file get <id> --out <path>`
-    writes a media message's file. Its file_present says whether WeChat
+    writes a media message's file, and `wxread file get <file_id>` the
+    file of a note's image or file, by the file_id under note.items (the
+    note's own id is not one). Its file_present says whether WeChat
     holds it, which it may never have downloaded, or cleared. `wxread voice`
     writes a voice message as a file that plays.
   - Several accounts logged in is an error naming them: pass --account.

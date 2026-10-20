@@ -817,6 +817,7 @@ dependencies = [
  "roxmltree",
  "wxread-answer",
  "wxread-messages",
+ "wxread-xml",
 ]
 
 [[package]]
@@ -864,7 +865,7 @@ dependencies = [
  "roxmltree",
  "serde_json",
  "wxread-answer",
- "wxread-messages",
+ "wxread-xml",
 ]
 
 [[package]]
@@ -896,8 +897,10 @@ dependencies = [
  "wxread-answer",
  "wxread-chats",
  "wxread-contacts",
+ "wxread-favorites",
  "wxread-media",
  "wxread-schema",
+ "wxread-xml",
 ]
 
 [[package]]
@@ -908,7 +911,7 @@ dependencies = [
  "roxmltree",
  "wxread-answer",
  "wxread-media",
- "wxread-messages",
+ "wxread-xml",
 ]
 
 [[package]]
@@ -957,6 +960,13 @@ version = "0.1.1"
 dependencies = [
  "proptest",
  "wxread-schema",
+]
+
+[[package]]
+name = "wxread-xml"
+version = "0.1.1"
+dependencies = [
+ "roxmltree",
 ]
 
 [[package]]

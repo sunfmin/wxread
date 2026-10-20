@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use roxmltree::Node;
 use serde_json::{Map, Value, json};
 use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
-use wxread_messages::kinds::{attr, child, named, text, xml};
+use wxread_xml::{attr, child, named, text, xml};
 
 /// Where a favorite's files lie, under the account's directory.
 pub const SHELF: &str = "business/favorite";
@@ -87,7 +87,7 @@ impl Kind {
     }
 
     /// The kind of an item of `datatype` `d`.
-    fn of_datatype(d: i64) -> Kind {
+    pub fn of_datatype(d: i64) -> Kind {
         DATATYPES.into_iter().find(|(n, _)| *n == d).map_or(Kind::Unknown, |(_, k)| k)
     }
 
@@ -237,8 +237,8 @@ pub fn favorite(row: &Row, seen: &Seen) -> Value {
     let kind = Kind::of_type(row.fav_type);
     let read = xml(&row.content, |root| {
         let item = child(root, "datalist").and_then(|l| named(l, "dataitem").into_iter().next());
-        let at = At { favorite: row.local_id, seen };
-        Some((at.fields(kind, root, item, true), source(root, row, seen), tags(root)))
+        let at = At { files: &Saved { favorite: row.local_id, seen } };
+        Some((at.fields(kind, root, item, true, 0), source(root, row, seen), tags(root)))
     });
     let (fields, source, tags) =
         read.unwrap_or_else(|| (Map::new(), source_of(row, None, seen), Vec::new()));
@@ -359,22 +359,81 @@ pub fn path(item: &str, md5: Option<&str>, which: &str) -> String {
 }
 
 /// What an item says it is: its `datatype`.
-fn datatype(item: Node) -> Option<i64> {
+pub fn datatype(item: Node) -> Option<i64> {
     attr(item, "datatype").or_else(|| text(item, "datatype"))?.parse().ok()
 }
 
-/// Reading one favorite's fields: its id, which its files' ids name, and
-/// what it is seen with.
-struct At<'s, 'n> {
+/// What finds the file an item carries: its id, which `wxread file get`
+/// takes, and whether WeChat holds it and its thumbnail. A favorite's items
+/// are named by the favorite (`fav:<favorite>:<item>`); a note's sent into
+/// a chat, by its message.
+pub trait Files {
+    /// The file of `item`, of the media kind `kind`, the `place`-th item
+    /// of its list.
+    fn of(&self, kind: Kind, item: Option<Node>, place: usize) -> File;
+}
+
+/// The file an item carries, as its answer says it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct File {
+    /// What `wxread file get` takes: None when nothing names it.
+    pub id: Option<String>,
+    /// Whether WeChat holds it: None when that cannot be told.
+    pub present: Option<bool>,
+    /// Whether WeChat holds its thumbnail: None for a kind that has none.
+    pub thumbnail: Option<bool>,
+}
+
+/// The items of the `<datalist>` under `list`, in order, each as its kind
+/// with who said it and when, as a chat history or a note keeps them, the
+/// files they carry found by `files`.
+pub fn items(list: Node, files: &impl Files) -> Vec<Value> {
+    At { files }.items(list)
+}
+
+/// A favorite's files: named by its id and each item's `dataid`, and held
+/// when WeChat holds what [`paths`] names.
+struct Saved<'s, 'n> {
     favorite: i64,
     seen: &'s Seen<'n>,
 }
 
-impl At<'_, '_> {
+impl Files for Saved<'_, '_> {
+    fn of(&self, kind: Kind, item: Option<Node>, _place: usize) -> File {
+        let dataid = item.and_then(|i| attr(i, "dataid"));
+        let id = dataid.as_ref().map(|d| FileId { favorite: self.favorite, item: d.clone() });
+        let held = |which: &str, md5: &str| {
+            let md5 = item.and_then(|i| text(i, md5));
+            dataid
+                .as_deref()
+                .is_some_and(|d| self.seen.held.contains(&path(d, md5.as_deref(), which)))
+        };
+        File {
+            id: id.map(|i| i.text()),
+            present: Some(held("data", "fullmd5")),
+            thumbnail: kind.has_thumbnail().then(|| held("thumb", "thumbfullmd5")),
+        }
+    }
+}
+
+/// Reading the fields of a favorite or of an item, the files its items
+/// carry found by `files`.
+struct At<'f, F> {
+    files: &'f F,
+}
+
+impl<F: Files> At<'_, F> {
     /// The fields of a `kind`, read from `own` (the `<favitem>`, with
     /// `top`; else the item itself) and `item` (its first item, or the
-    /// item itself).
-    fn fields(&self, kind: Kind, own: Node, item: Option<Node>, top: bool) -> Map<String, Value> {
+    /// item itself, the `place`-th of its list).
+    fn fields(
+        &self,
+        kind: Kind,
+        own: Node,
+        item: Option<Node>,
+        top: bool,
+        place: usize,
+    ) -> Map<String, Value> {
         let of = |name: &str| text(own, name);
         let it = |name: &str| item.and_then(|i| text(i, name));
         let either = |own_name: &str, item_name: &str| {
@@ -445,7 +504,7 @@ impl At<'_, '_> {
             }
             Kind::Note => json!({ "items": self.items(own) }),
             Kind::Image | Kind::Video | Kind::Voice | Kind::File => {
-                self.media(kind, own, item, top)
+                self.media(kind, own, item, top, place)
             }
             Kind::Unknown => json!({}),
         };
@@ -457,18 +516,15 @@ impl At<'_, '_> {
 
     /// A media kind's fields: its file's id, size and whether WeChat holds
     /// it and its thumbnail, beside its kind's own.
-    fn media(&self, kind: Kind, own: Node, item: Option<Node>, top: bool) -> Value {
+    fn media(&self, kind: Kind, own: Node, item: Option<Node>, top: bool, place: usize) -> Value {
         let it = |name: &str| item.and_then(|i| text(i, name));
-        let dataid = item.and_then(|i| attr(i, "dataid"));
-        let id = dataid.as_ref().map(|d| FileId { favorite: self.favorite, item: d.clone() });
-        let held = |which: &str, md5: &str| {
-            dataid
-                .as_deref()
-                .is_some_and(|d| self.seen.held.contains(&path(d, it(md5).as_deref(), which)))
-        };
+        let file = self.files.of(kind, item, place);
         let mut fields = Map::new();
-        fields.insert("file_id".into(), json!(id.map(|i| i.text())));
-        fields.insert("size".into(), json!(it("fullsize").and_then(|s| s.parse::<u64>().ok())));
+        fields.insert("file_id".into(), json!(file.id));
+        // A favorite's item says its size in `fullsize`, a note's sent into
+        // a chat in `datasize`.
+        let size = it("fullsize").or_else(|| it("datasize")).and_then(|s| s.parse::<u64>().ok());
+        fields.insert("size".into(), json!(size));
         match kind {
             Kind::Video => {
                 fields.insert(
@@ -490,9 +546,8 @@ impl At<'_, '_> {
             }
             _ => {}
         }
-        fields.insert("file_present".into(), json!(held("data", "fullmd5")));
-        let thumbnail = kind.has_thumbnail().then(|| held("thumb", "thumbfullmd5"));
-        fields.insert("thumbnail_present".into(), json!(thumbnail));
+        fields.insert("file_present".into(), json!(file.present));
+        fields.insert("thumbnail_present".into(), json!(file.thumbnail));
         Value::Object(fields)
     }
 
@@ -503,7 +558,7 @@ impl At<'_, '_> {
             return Vec::new();
         };
         let mut out = Vec::new();
-        for item in named(list, "dataitem") {
+        for (place, item) in named(list, "dataitem").into_iter().enumerate() {
             let t = datatype(item);
             let kind = t.map_or(Kind::Unknown, Kind::of_datatype);
             let source = child(item, "dataitemsource");
@@ -512,7 +567,7 @@ impl At<'_, '_> {
             one.insert("kind".into(), json!(kind.name()));
             one.insert(
                 kind.name().into(),
-                Value::Object(self.fields(kind, item, Some(item), false)),
+                Value::Object(self.fields(kind, item, Some(item), false, place)),
             );
             one.insert("sender".into(), json!(from("realchatname").or_else(|| from("fromusr"))));
             one.insert("sender_name".into(), json!(text(item, "datasrcname")));
