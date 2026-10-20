@@ -9,7 +9,7 @@
 set -e
 cd "$(dirname "$0")"
 # The pure crates: every one is checked, none is taken on trust.
-PURE="wxread-keys wxread-doctor"
+PURE="wxread-keys wxread-crack wxread-doctor"
 # cargo-flux re-invokes `cargo +<its nightly>`, which only rustup's cargo
 # understands, and rustup needs some toolchain to start from.
 PATH="$HOME/.cargo/bin:$PATH"
