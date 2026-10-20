@@ -2,21 +2,23 @@
 //! message databases, its senders' names out of its contacts, and prints
 //! the page the messages crate makes of them.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::anyhow;
 use rusqlite::types::Value as Sql;
 use rusqlite::{Connection, OptionalExtension as _, params};
 use serde_json::{Value, json};
 use wxread_answer::Limit;
+use wxread_media::Media;
 use wxread_messages::{CHAT_FLAG, Chat, Contact, Cursor, Names, Range, Row};
 use wxread_schema::CONTACT_DB;
 
 use crate::account::Account;
+use crate::media::{self, MEDIA_DB_PATHS};
 use crate::world::World;
 
 /// The message databases, as a refusal of missing keys names them.
-const MESSAGE_DBS: &str = "message/message_<n>.db";
+pub const MESSAGE_DBS: &str = "message/message_<n>.db";
 
 /// What `--account`, `--chat`, `--from`, `--to`, `--limit` and `--cursor`
 /// said.
@@ -39,7 +41,8 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let limit = Limit::parse(asked.limit.as_deref(), "messages").map_err(|e| anyhow!(e))?;
     let range = Range::parse(asked.from.as_deref(), asked.to.as_deref()).map_err(|e| anyhow!(e))?;
     let cursor = asked.cursor.as_deref().map(Cursor::parse).transpose().map_err(|e| anyhow!(e))?;
-    let account = Account::open(world, asked.account.as_deref(), &[CONTACT_DB, MESSAGE_DBS])?;
+    let account =
+        Account::open(world, asked.account.as_deref(), &[CONTACT_DB, MESSAGE_DBS, MEDIA_DB_PATHS])?;
     let contacts_db = account.database(CONTACT_DB)?;
     let names = names(&contacts_db, &chat)?;
     let table = wxread_schema::messages_table(&chat);
@@ -72,7 +75,18 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
         names.contacts.contains_key(id) || senders.iter().any(|s| s == id)
     });
     let chat = Chat { id: chat, account: own };
-    let page = wxread_messages::page(&chat, &names, rows, range, cursor.as_ref(), limit);
+    // The media databases are read only when a voice message may be on
+    // the page, to tell whether WeChat holds its sound.
+    let voice =
+        |r: &Row| wxread_messages::kinds::split(r.local_type).0 == wxread_messages::kinds::VOICE;
+    let voices = if rows.iter().any(voice) {
+        media::voices(&account, Some(&chat.id), None)?.into_iter().map(|(id, _)| id).collect()
+    } else {
+        BTreeSet::new()
+    };
+    let (dir, chat_dir) = (account.dir(), wxread_media::chat_dir(&chat.id));
+    let held = |m: &Media, r: &Row| media::held(&dir, m, &chat_dir, r.server_id, &voices);
+    let page = wxread_messages::page(&chat, &names, rows, range, cursor.as_ref(), limit, held);
     Ok(json!({
         "account": account.id(),
         "chat": chat.id,
@@ -130,7 +144,7 @@ fn read(
 }
 
 /// A column's value as the bytes it holds.
-fn bytes(value: Sql) -> Vec<u8> {
+pub fn bytes(value: Sql) -> Vec<u8> {
     match value {
         Sql::Text(s) => s.into_bytes(),
         Sql::Blob(b) => b,

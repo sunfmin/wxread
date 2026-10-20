@@ -7,6 +7,7 @@ mod common;
 mod contacts;
 mod doctor;
 mod errors;
+mod file;
 mod help;
 mod messages;
 mod release;

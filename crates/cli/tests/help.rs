@@ -59,7 +59,8 @@ fn run_in(text: &str) -> BTreeSet<String> {
 #[test]
 fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
     let existing = existing();
-    let names = ["chats", "contact", "contacts", "doctor", "group", "keys", "messages"];
+    let names =
+        ["avatar", "chats", "contact", "contacts", "doctor", "file", "group", "keys", "messages"];
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
     let short = asked(&["-h"]);
@@ -228,5 +229,40 @@ fn contacts_contact_and_group_answer_exactly_the_keys_their_help_and_the_guide_n
                 args[0]
             );
         }
+    }
+}
+
+#[test]
+fn file_get_and_avatar_answer_exactly_the_keys_their_help_and_the_guide_name() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.contacts = vec![Contact("wxid_amy", "Amy", ""), Contact("wxid_bob", "Bob", "")];
+    account.avatars = vec!["wxid_amy"];
+    let mut image = Said::text("wxid_amy", 7, 1_760_000_000, "wxid_amy", "<msg><img/></msg>");
+    image.local_type = 3;
+    image.packed = crate::synthetic::field(3, &crate::synthetic::field(4, b"gone"));
+    let mut video = image.clone();
+    (video.server_id, video.local_type) = (8, 43);
+    video.packed = crate::synthetic::field(4, &crate::synthetic::field(8, b"v"));
+    account.messages = vec![image, video];
+    account.files = vec![("msg/video/2025-10/v.mp4".into(), b"\0\0\0\x18ftypmp42".to_vec())];
+    account.write();
+    let keys = account.all_keys();
+    let out = world.root.join("out");
+    let out = out.to_str().unwrap();
+    for (command, args) in [
+        ("file", [&["file", "get", "8", "--out", out][..], &["file", "get", "7", "--out", out]]),
+        (
+            "avatar",
+            [&["avatar", "wxid_amy", "--out", out][..], &["avatar", "wxid_bob", "--out", out]],
+        ),
+    ] {
+        let mut keys_answered = BTreeSet::new();
+        for args in args {
+            let json = world.run(args, &[("WXREAD_KEYS", &keys)]).ok();
+            keys_answered.extend(json.as_object().unwrap().keys().cloned());
+        }
+        assert_eq!(answered(command), keys_answered, "{command}");
+        assert_eq!(guide_row(command), keys_answered, "{command}");
     }
 }

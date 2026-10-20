@@ -2,14 +2,13 @@ wxread reads WeChat for Mac 4.x directly. Each command prints one JSON
 object; a failure is {"error": "…"}, non-zero, naming its fix.
 Usage: wxread [--data-dir <dir>] [--keys <file>] <command>
 
-Run first:
-  wxread doctor      find WeChat's accounts and the keys; name each fix
-
 Commands:
+  avatar    write a contact's avatar, as the image it is (--out)
   chats     the account's chats, newest first, a page at a time
   contact   one contact in full, by its id
   contacts  the account's contacts by id; --query finds one
-  doctor    find WeChat's accounts and the keys supplied; change nothing
+  doctor    run first: find WeChat's accounts and the keys; name each fix
+  file      file get <id>: write a media message's file (--out)
   group     a group's notice, owner and members, each named in it
   keys      read every database key from the running WeChat (sudo)
   messages  a chat's messages, each as its kind, a page at a time

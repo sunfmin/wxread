@@ -66,11 +66,11 @@ impl Media {
     }
 
     /// The directory under the account's whose months (`YYYY-MM`) hold its
-    /// file, for a message of `chat`: None for a voice message and a
-    /// sticker, which are not kept in one.
-    pub fn shelf(&self, chat: &str) -> Option<String> {
+    /// file, for a message of the chat whose [`chat_dir`] is `chat_dir`:
+    /// None for a voice message and a sticker, which are not kept in one.
+    pub fn shelf(&self, chat_dir: &str) -> Option<String> {
         match self {
-            Media::Image { .. } => Some(format!("msg/attach/{}", chat_dir(chat))),
+            Media::Image { .. } => Some(format!("msg/attach/{chat_dir}")),
             Media::Video { .. } => Some("msg/video".into()),
             Media::File { .. } => Some("msg/file".into()),
             Media::Sticker { .. } | Media::Voice => None,
@@ -113,6 +113,14 @@ impl Media {
             .or(found.first())
             .map(|(p, _)| p)
     }
+}
+
+/// Whether WeChat holds a media message's file, and its thumbnail when
+/// its kind has one (None when it has not): what `wxread messages` shows.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Held {
+    pub file: bool,
+    pub thumbnail: Option<bool>,
 }
 
 /// Whether `name` is one name in a directory, not a path out of it.
@@ -219,6 +227,13 @@ pub fn not_media(id: &str, kind: &str) -> String {
     )
 }
 
+/// What fixes a message id that is not one.
+pub fn not_an_id(id: &str) -> String {
+    format!(
+        "{id} is not a message's id: pass one as `wxread messages` answers it (its \"id\", WeChat's server id, digits)"
+    )
+}
+
 /// What fixes naming a message no message database holds.
 pub fn no_such_message(id: &str, account: &str) -> String {
     format!(
@@ -256,7 +271,7 @@ mod tests {
     fn each_kind_lies_in_its_shelf_under_its_names() {
         let image = Media::Image { name: Some("a1".into()) };
         assert_eq!(
-            image.shelf("1@chatroom"),
+            image.shelf(&chat_dir("1@chatroom")),
             Some(format!("msg/attach/{}", chat_dir("1@chatroom")))
         );
         assert_eq!(image.names(false), ["Img/a1_h.dat", "Img/a1.dat"]);

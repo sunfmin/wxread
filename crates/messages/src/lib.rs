@@ -7,6 +7,7 @@ use std::io::Read as _;
 
 use serde_json::{Map, Value, json};
 use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
+use wxread_media::{Held, Media};
 
 pub mod kinds;
 pub mod media;
@@ -256,7 +257,7 @@ impl Chat {
 /// after `after` (at the newest, for none) and holds at most `limit`:
 /// newest first, by when each was sent and its order in that second, so a
 /// cursor names one place and each message is on one page; each named by
-/// `names`.
+/// `names`, and a media message's file and thumbnail held as `held` says.
 pub fn page(
     chat: &Chat,
     names: &Names,
@@ -264,6 +265,7 @@ pub fn page(
     range: Range,
     after: Option<&Cursor>,
     limit: Limit,
+    held: impl Fn(&Media, &Row) -> Held,
 ) -> Page {
     let mut rows: Vec<Row> = rows
         .into_iter()
@@ -273,14 +275,25 @@ pub fn page(
     let more = rows.len() > limit.get();
     rows.truncate(limit.get());
     let next = if more { rows.last().map(Cursor::of) } else { None };
-    Page { messages: rows.iter().map(|r| message(chat, names, r)).collect(), next }
+    Page { messages: rows.iter().map(|r| message(chat, names, r, &held)).collect(), next }
 }
 
 /// `row` as the answer has it: its id, time and sender, its kind and that
-/// kind's fields, and beside them WeChat's content and type.
-pub fn message(chat: &Chat, names: &Names, row: &Row) -> Value {
+/// kind's fields, a media kind's with whether WeChat holds its file and
+/// thumbnail as `held` says, and beside them WeChat's content and type.
+pub fn message(
+    chat: &Chat,
+    names: &Names,
+    row: &Row,
+    held: &impl Fn(&Media, &Row) -> Held,
+) -> Value {
     let (sender, content) = said(chat, row);
-    let parsed = kinds::parse(&chat.account, row.local_type, &content, &row.packed);
+    let mut parsed = kinds::parse(&chat.account, row.local_type, &content, &row.packed);
+    if let Some(found) = media::locate(parsed.kind, &parsed.fields) {
+        let h = held(&found, row);
+        parsed.fields.insert("file_present".into(), json!(h.file));
+        parsed.fields.insert("thumbnail_present".into(), json!(h.thumbnail));
+    }
     let sender = parsed.sender.or(sender);
     let (t, sub) = kinds::split(row.local_type);
     let mut out = Map::new();
@@ -294,6 +307,14 @@ pub fn message(chat: &Chat, names: &Names, row: &Row) -> Value {
     out.insert("subtype".into(), json!(sub));
     out.insert("content".into(), json!(content));
     Value::Object(out)
+}
+
+/// What finds the file of `row`, a message of `chat`; or, for one that
+/// carries none, its kind.
+pub fn media_of(chat: &Chat, row: &Row) -> Result<Media, Kind> {
+    let (_, content) = said(chat, row);
+    let parsed = kinds::parse(&chat.account, row.local_type, &content, &row.packed);
+    media::locate(parsed.kind, &parsed.fields).ok_or(parsed.kind)
 }
 
 /// Who said `row` in `chat`, and what: its content decompressed, a

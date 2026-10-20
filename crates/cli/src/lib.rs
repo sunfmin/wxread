@@ -14,6 +14,8 @@ pub mod account;
 pub mod chats;
 pub mod contacts;
 pub mod doctor;
+pub mod file;
+pub mod media;
 pub mod messages;
 pub mod world;
 
@@ -43,6 +45,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Write the avatar WeChat holds of a contact, as the image it is
+    Avatar {
+        /// The contact's id: a wxid, a group's <n>@chatroom, a gh_ official account
+        #[arg(value_name = "ID")]
+        id: String,
+        /// The file to write it to
+        #[arg(long, value_name = "PATH")]
+        out: Option<PathBuf>,
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+    },
     /// List the account's chats, newest first, a page at a time
     Chats {
         /// The account to read, by its id, when several are logged in
@@ -81,6 +95,11 @@ enum Command {
     },
     /// Find WeChat's accounts and the keys supplied; change nothing, name each fix
     Doctor,
+    /// Get a media message's file: an image, video, file, sticker or voice message
+    File {
+        #[command(subcommand)]
+        action: FileAction,
+    },
     /// Answer a group: its name, notice, owner and every member
     Group {
         /// The group's id: <n>@chatroom
@@ -115,9 +134,41 @@ enum Command {
     Keys,
 }
 
+#[derive(Subcommand)]
+enum FileAction {
+    /// Write a media message's file, or its thumbnail, as the file it is
+    Get {
+        /// The message's id, as `wxread messages` answers it
+        #[arg(value_name = "ID")]
+        id: String,
+        /// The thumbnail WeChat keeps of an image or a video, not the file
+        #[arg(long)]
+        thumbnail: bool,
+        /// The file to write it to
+        #[arg(long, value_name = "PATH")]
+        out: Option<PathBuf>,
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+    },
+}
+
+/// What fixes a command that writes a file and was given no `--out`.
+fn out_of(out: Option<PathBuf>) -> anyhow::Result<PathBuf> {
+    out.filter(|o| !o.as_os_str().is_empty()).ok_or_else(|| {
+        anyhow::anyhow!(
+            "no {} was given: pass {} <path>, the file to write it to",
+            wxread_media::OUT_FLAG,
+            wxread_media::OUT_FLAG
+        )
+    })
+}
+
 /// The help file of subcommand `name`: what `wxread <name> --help` prints.
 fn help_of(name: &str) -> Option<&'static str> {
     match name {
+        "avatar" => Some(include_str!("help/avatar.txt")),
+        "file" => Some(include_str!("help/file.txt")),
         "chats" => Some(include_str!("help/chats.txt")),
         "contact" => Some(include_str!("help/contact.txt")),
         "contacts" => Some(include_str!("help/contacts.txt")),
@@ -177,6 +228,15 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
         }
     };
     let result = match cli.command {
+        Command::Avatar { id, out, account } => out_of(out).and_then(|out| {
+            world::World::from_env(cli.data_dir, cli.keys)
+                .and_then(|w| file::avatar(&w, account.as_deref(), &id, &out))
+        }),
+        Command::File { action: FileAction::Get { id, thumbnail, out, account } } => out_of(out)
+            .and_then(|out| {
+                world::World::from_env(cli.data_dir, cli.keys)
+                    .and_then(|w| file::get(&w, &file::Asked { id, thumbnail, out, account }))
+            }),
         Command::Chats { account, limit, cursor } => world::World::from_env(cli.data_dir, cli.keys)
             .and_then(|w| chats::run(&w, &chats::Asked { account, limit, cursor })),
         Command::Contact { id, account } => world::World::from_env(cli.data_dir, cli.keys)
