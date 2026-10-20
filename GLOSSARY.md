@@ -53,6 +53,10 @@ _Avoid_: public account, subscription, biz account
 One piece an official account published, with its title, digest, url and cover; one push of an official account's holds one or several.
 _Avoid_: post, news, biz message
 
+**Moment**:
+One post to Moments (朋友圈): its author, when, its text, location, link and media, and the likes and comments on it, as WeChat on this Mac last loaded it into `sns/sns.db`.
+_Avoid_: post, feed, timeline item, SNS
+
 **Chat**:
 A conversation the account has: direct, with one contact, or in one group.
 _Avoid_: session, conversation, thread
@@ -82,7 +86,7 @@ A message WeChat itself writes into a chat: a recall, a join or leave, a rename,
 _Avoid_: system message, event
 
 **Media**:
-A file a message carries rather than holds: an image, a video, a voice message, a file.
+A file a message or a Moment carries rather than holds: an image, a video, a voice message, a file; one of them a medium.
 _Avoid_: attachment, resource
 
 **Transcription**:

@@ -1,7 +1,7 @@
 # wxread
 
 An agent CLI that reads WeChat for Mac 4.x directly: chats, contacts, every
-message kind, files and voice. Each command prints one JSON object, and every
+message kind, files and voice, and the Moments WeChat has loaded. Each command prints one JSON object, and every
 failure names its fix. `wxread --help` is the manual.
 
 ```sh
@@ -11,7 +11,8 @@ wxread --keys <file> articles               # what official accounts sent, newes
 wxread --keys <file> contacts --query amy   # find a contact, and its id
 wxread --keys <file> group <n>@chatroom     # a group's notice and members
 wxread --keys <file> messages --chat <id>   # a chat's messages, each as its kind
-wxread --keys <file> file get <id> --out <path>  # a media message's file, as it is
+wxread --keys <file> moments --contact <id> # the Moments WeChat loaded, with likes and comments
+wxread --keys <file> file get <id> --out <path>  # a message's or a Moment's file, as it is
 wxread --keys <file> avatar <id> --out <path>    # a contact's avatar
 wxread --keys <file> voice <id> --chat <id> --out v.wav
                                             # a voice message that plays
