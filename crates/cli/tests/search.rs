@@ -43,6 +43,13 @@ fn said(
 /// covers and some not (the WAL, a database it has no range of), with an
 /// index entry whose message is gone; with the index when `indexed`.
 fn account(world: &World, indexed: bool) -> Account {
+    let account = unwritten(world, indexed);
+    account.write();
+    account
+}
+
+/// [`account`], its databases not yet written.
+fn unwritten(world: &World, indexed: bool) -> Account {
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     account.contacts = vec![
         Contact("wxid_me", "Me", ""),
@@ -116,7 +123,6 @@ fn account(world: &World, indexed: bool) -> Account {
         ]);
         account.stale = vec![Stale("wxid_amy", 50, "crag, deleted since", T + 50)];
     }
-    account.write();
     account
 }
 
@@ -185,6 +191,39 @@ fn without_wechats_index_every_message_is_read_and_the_same_are_found() {
     let topo = json["messages"].as_array().unwrap().iter().find(|m| m["id"] == "9002").unwrap();
     assert_eq!(topo["matched"], "Crag topo\nfor Saturday");
     assert_eq!(ids(&search(&world, &account, &["map.pdf"])), ["9003"]);
+}
+
+#[test]
+fn a_channels_feed_is_found_by_its_description_when_wechat_has_not_indexed_it() {
+    // WeChat's appmsg title of a feed is its placeholder for old clients;
+    // the feed's text is only in its <finderFeed><desc>.
+    const PLACEHOLDER: &str = "当前微信版本不支持展示该内容，请升级至最新版本。";
+    let feed = format!(
+        "<msg><appmsg><title>{PLACEHOLDER}</title><des>{PLACEHOLDER}</des><type>51</type><finderFeed><nickname>Crag TV</nickname><desc>周末抱石 at dawn</desc></finderFeed></appmsg></msg>"
+    );
+    for indexed in [false, true] {
+        let world = World::new();
+        let mut account = unwritten(&world, indexed);
+        account.recent_messages.push(said(
+            "message_0",
+            GROUP,
+            10,
+            "wxid_bob",
+            app(51),
+            &feed,
+            None,
+        ));
+        account.write();
+        let json = search(&world, &account, &["周末"]);
+        assert_eq!(ids(&json), ["9010"], "indexed {indexed}: {json}");
+        let found = &json["messages"][0];
+        assert_eq!(found["matched"], "周末抱石 at dawn\nCrag TV");
+        assert_eq!(
+            (&found["link"]["to"], &found["link"]["title"], &found["link"]["summary"]),
+            (&json!("channels_feed"), &json!("周末抱石 at dawn"), &json!("Crag TV"))
+        );
+        assert_eq!(ids(&search(&world, &account, &["crag tv"])), ["9010"]);
+    }
 }
 
 #[test]
