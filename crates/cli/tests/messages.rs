@@ -197,7 +197,7 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
         (
             group(19, 34, r#"<msg><voicemsg voicelength="3200"/></msg>"#),
             "voice",
-            json!({ "length_ms": 3200 }),
+            json!({ "length_ms": 3200, "transcription": null }),
         ),
         (
             group(20, 10000, "Bobby is now an admin"),
