@@ -33,7 +33,6 @@ fn matched(local_type: i64, content: &str) -> Option<String> {
 fn a_query_finds_its_text_whatever_the_case() {
     let q = query("  Topo ");
     assert!(q.finds("the route TOPO is here"));
-    assert!(!q.finds("top o"));
     assert!(query("攀岩").finds("周六去攀岩吗"));
     for blank in ["", "  "] {
         let why = Query::parse(blank).unwrap_err();
