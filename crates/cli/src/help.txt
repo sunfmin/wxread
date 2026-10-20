@@ -50,7 +50,7 @@ WHAT A COMMAND ANSWERS
     favorites account favorites next
     file      path size sha256 content_type missing thumbnail fix
     group     account group
-    group leave  account groups blockers next
+    group leave  account groups blockers next seconds
     keys      each database's path under db_storage, to its enc_key and
               salt
     messages  account chat messages next
@@ -61,9 +61,9 @@ WHAT A COMMAND ANSWERS
               transcription
   file get and avatar answer path, size, sha256 and content_type of the
   file they wrote; or, when WeChat does not hold it, missing (true),
-  thumbnail and fix, exit 0. group leave that stops at a group answers
-  its keys too, error added, exit 1: the groups it left, and those left
-  to do.
+  thumbnail and fix, exit 0. group leave that stops at a group, or a
+  --dry-run that does not tell every group's chat, answers its keys too,
+  error added, exit 1: the groups it left or told, and those left to do.
 
 THE COMMANDS
   Setting up, run by you or an agent:
@@ -81,7 +81,7 @@ THE COMMANDS
       resign
   Leaving a group, which cannot be undone, run by the person whose Mac it
   is (or an agent they told to), only with --yes; it takes WeChat's window
-  for about ten seconds:
+  for a few seconds a group, and --dry-run checks each group first:
       group leave
 
 RULES

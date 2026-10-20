@@ -16,7 +16,7 @@ WHAT IT READS
 
 USAGE
   wxread group <id> [--account <id>]
-  wxread group leave <id>... [--account <id>] [--yes]
+  wxread group leave <id>... [--account <id>] [--dry-run | --yes]
 
   <id>              the group's id, <n>@chatroom, as `wxread contacts`
                     answers it

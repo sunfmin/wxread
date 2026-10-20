@@ -1,8 +1,10 @@
 //! What `wxread group leave` decides: whether the group may be left at all,
 //! what stops the run before WeChat's window is touched, the steps through
 //! the window, how each screen is told by the text macOS recognizes on it,
-//! and every refusal with its fix
+//! which group a chat opened is (by its member count and newest messages,
+//! [`identify`]), and every refusal with its fix
 //! (docs/adr/0015-a-group-is-left-by-driving-wechats-window-only-with-yes.md,
+//! docs/adr/0017-the-group-opened-is-told-by-its-member-count-and-newest-messages.md,
 //! docs/leave-group.md). The effect crate reads the group and the host,
 //! takes each screenshot and sends each key and click a [`Move`] names;
 //! nothing here touches anything.
@@ -10,33 +12,52 @@
 use flux_rs::attrs::*;
 use wxread_doctor::Permission;
 
+pub mod identify;
+
+pub use identify::{COMPARED, Identity, Said, closeness, fold};
+
 /// How long the keyboard and mouse must have been left alone before the
-/// window is touched, and how long that is waited for at most.
-pub const IDLE_SECONDS: u64 = 3;
-pub const IDLE_WAIT_SECONDS: u64 = 60;
-/// How long the databases are read, once a second, for the account to be
-/// gone from the group's members after OK.
+/// window is first touched, and how long that is waited for at most: once
+/// a run, before its first group.
+pub const IDLE_SECONDS: u64 = 1;
+pub const IDLE_WAIT_SECONDS: u64 = 30;
+/// How long the databases are read for the account to be gone from the
+/// group's members after OK, and how often.
 pub const LEFT_WAIT_SECONDS: u64 = 30;
+pub const POLL_MILLIS: u64 = 200;
 /// How many times the chat info is scrolled looking for Leave.
 pub const MAX_SCROLLS: u32 = 8;
 /// How many of the chats a search lists by the name are opened, looking
-/// for the group: the others are groups the account has left, or a contact
-/// of the same name.
+/// for the group: the others are groups of a name like it, or a contact.
 pub const MAX_MATCHES: u32 = 4;
 
 /// Why it stopped, and the fix, as the one line the run answers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refusal(pub String);
 
-/// The command line that leaves `ids`, in order, with the `--account` it
-/// was given: what a fix says to run, and what the plan says would leave
-/// them.
-pub fn line(ids: &[&str], account: Option<&str>) -> String {
+/// The command line that does to `ids`, in order, what `mode` does (a
+/// plan's is a leave's), with the `--account` it was given: what a fix
+/// says to run, and what the plan says would leave them.
+pub fn line(ids: &[&str], account: Option<&str>, mode: Mode) -> String {
     let ids = ids.join(" ");
+    let flag = if mode == Mode::Rehearse { "--dry-run" } else { "--yes" };
     match account {
-        Some(account) => format!("wxread group leave {ids} --account {account} --yes"),
-        None => format!("wxread group leave {ids} --yes"),
+        Some(account) => format!("wxread group leave {ids} --account {account} {flag}"),
+        None => format!("wxread group leave {ids} {flag}"),
     }
+}
+
+/// What a run does with the groups it was given.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// Without --yes or --dry-run: say what leaving them would do; touch
+    /// nothing.
+    Plan,
+    /// --dry-run: open each one's chat and tell whether it is the group,
+    /// every one, clicking nothing past opening it.
+    Rehearse,
+    /// --yes: leave each in turn, stopping at the first failure.
+    Leave,
 }
 
 /// What became of one group of a run.
@@ -47,6 +68,11 @@ pub enum Outcome {
     /// The account is not among its members: nothing to leave, whether it
     /// never was or a run before left it.
     NotMember,
+    /// --dry-run opened its chat and told it is the group.
+    Identified,
+    /// --dry-run did not tell its chat is the group: its error says what
+    /// was read, and what did not match.
+    NotIdentified,
     /// This run left it, the databases confirming it this many seconds
     /// after OK.
     Left(u64),
@@ -62,6 +88,8 @@ impl Outcome {
         match self {
             Outcome::Planned => "planned",
             Outcome::NotMember => "not_member",
+            Outcome::Identified => "identified",
+            Outcome::NotIdentified => "not_identified",
             Outcome::Left(_) => "left",
             Outcome::Stopped => "stopped",
             Outcome::NotTried => "not_tried",
@@ -79,40 +107,42 @@ impl Outcome {
     /// Whether the account is still to leave the group after this run:
     /// what a run again is to do.
     fn remains(self) -> bool {
-        matches!(self, Outcome::Planned | Outcome::Stopped | Outcome::NotTried)
+        !matches!(self, Outcome::NotMember | Outcome::Left(_))
     }
 }
 
 /// The run of `groups`, in order, each its target when the account is
-/// among its members, else None: without `yes` each is planned and none
-/// touched; with it each is left in turn by `leave`, which answers the
-/// seconds the databases took to confirm it, or why it failed. The first
-/// failure ends the run: it is answered beside the outcomes, and every
-/// group after it is not tried. A group the account is not in is passed
-/// over, so a run again of the same groups leaves only the rest.
+/// among its members, else None, as `mode` says: a plan touches none; a
+/// rehearsal has `go` open each, every one, and a failure only marks its
+/// group; a leave has `go` leave each in turn, and its first failure ends
+/// the run, every group after it not tried. `go` answers the outcome it
+/// came to (identified, or left), or why it failed. A group the account is
+/// not in is passed over, so a run again of the same groups leaves only
+/// the rest. Each group's failure, if any, is answered beside its outcome.
 pub fn run<E>(
     groups: &[Option<Target>],
-    yes: bool,
-    mut leave: impl FnMut(&Target) -> Result<u64, E>,
-) -> (Vec<Outcome>, Option<E>) {
-    let mut outcomes = Vec::new();
-    let mut stop = None;
+    mode: Mode,
+    mut go: impl FnMut(&Target) -> Result<Outcome, E>,
+) -> Vec<(Outcome, Option<E>)> {
+    let mut ran = Vec::new();
+    let mut stopped = false;
     for group in groups {
-        let outcome = match group {
-            None => Outcome::NotMember,
-            Some(_) if !yes => Outcome::Planned,
-            Some(_) if stop.is_some() => Outcome::NotTried,
-            Some(target) => match leave(target) {
-                Ok(seconds) => Outcome::Left(seconds),
+        let done = match group {
+            None => (Outcome::NotMember, None),
+            Some(_) if mode == Mode::Plan => (Outcome::Planned, None),
+            Some(_) if stopped => (Outcome::NotTried, None),
+            Some(target) => match go(target) {
+                Ok(outcome) => (outcome, None),
+                Err(why) if mode == Mode::Rehearse => (Outcome::NotIdentified, Some(why)),
                 Err(why) => {
-                    stop = Some(why);
-                    Outcome::Stopped
+                    stopped = true;
+                    (Outcome::Stopped, Some(why))
                 }
             },
         };
-        outcomes.push(outcome);
+        ran.push(done);
     }
-    (outcomes, stop)
+    ran
 }
 
 /// The groups of `ids` whose `outcomes` leave them still to leave, in
@@ -128,21 +158,31 @@ pub fn rest<'a>(ids: &[&'a str], outcomes: &[Outcome]) -> Vec<&'a str> {
 }
 
 /// What to do once a run of `ids` ended in `outcomes`, asked with
-/// `--account` `account`; `blocked` when blockers stop --yes.
+/// `--account` `account`; `blocked` when blockers stop it.
 pub fn next(ids: &[&str], outcomes: &[Outcome], account: Option<&str>, blocked: bool) -> String {
     let rest = rest(ids, outcomes);
-    let retry = line(&rest, account);
+    let retry = line(&rest, account, Mode::Leave);
     if outcomes.contains(&Outcome::Stopped) {
         return format!(
             "fix what error names, then run `{retry}` to leave the rest; or the same command again: the groups the account has left are passed over"
         );
     }
+    if outcomes.contains(&Outcome::NotIdentified) {
+        return "nothing was changed: each group not_identified has an error saying what its chat showed and what did not match; leave those in WeChat itself, or run --dry-run again once its chat shows its newest messages, and leave out of --yes any still not identified"
+            .to_string();
+    }
+    if outcomes.contains(&Outcome::Identified) {
+        return format!(
+            "nothing was changed, and the chat of each one is the group: run `{retry}` to leave them; it cannot be undone"
+        );
+    }
     if outcomes.contains(&Outcome::Planned) {
         if blocked {
-            return "nothing was changed: fix each of blockers, then run it again with --yes"
-                .to_string();
+            return "nothing was changed: fix each of blockers, then run it again".to_string();
         }
-        return format!("nothing was changed: run `{retry}` to leave them; it cannot be undone");
+        return format!(
+            "nothing was changed: run it with --dry-run to check each one's chat is told apart, then `{retry}` to leave them; it cannot be undone"
+        );
     }
     let mut left = Vec::new();
     for (at, id) in ids.iter().enumerate() {
@@ -171,20 +211,20 @@ pub struct Target {
     /// How many members it has, the account among them: the count its
     /// chat's title shows.
     pub members: usize,
+    /// Its newest messages, newest first, at most [`COMPARED`]: what its
+    /// chat shows at its bottom.
+    pub recent: Vec<Said>,
 }
 
 /// The group `id` as the target of a leave, when the account `own` is
-/// among its `members` and no other group it is in is shown as it is:
-/// `same_name` holds the id of every group the account is in that is shown
-/// as `display_name`. A group it has left reads apart in the window: its
-/// chat's title holds no member count.
+/// among its `members`; `recent` are its newest messages, newest first.
 pub fn target(
     id: &str,
     display_name: &str,
     name: &str,
     members: &[String],
     own: &str,
-    same_name: &[String],
+    recent: Vec<Said>,
 ) -> Result<Target, Refusal> {
     if !members.iter().any(|m| m == own) {
         return Err(Refusal(format!(
@@ -196,24 +236,14 @@ pub fn target(
             "group {id} has no name WeChat shows it by, so its window cannot be searched for it: leave it in WeChat itself"
         )));
     }
-    let mut all: Vec<&str> = vec![id];
-    for other in same_name {
-        if other != id {
-            all.push(other);
-        }
-    }
-    if all.len() > 1 {
-        all.sort_unstable();
-        return Err(Refusal(format!(
-            "more than one of the account's groups is shown as {display_name} ({}): nothing in WeChat's window tells them apart, so nothing was touched; give this one a remark in WeChat (its chat info › Remark) that no other group has, or leave it in WeChat itself",
-            all.join(", ")
-        )));
-    }
+    let mut recent = recent;
+    recent.truncate(COMPARED);
     Ok(Target {
         id: id.to_string(),
         display_name: display_name.to_string(),
         name: name.to_string(),
         members: members.len(),
+        recent,
     })
 }
 
@@ -226,7 +256,7 @@ pub enum WeChat {
     LoggedIn(Vec<String>),
 }
 
-/// What stops a leave of `account`'s group before the window is touched:
+/// What stops a run of `account`'s groups before the window is touched:
 /// each permission `missing`, and WeChat not running or logged in as
 /// another account; `retry` is the line to run again.
 pub fn blockers(
@@ -255,42 +285,67 @@ pub fn blockers(
     found
 }
 
-/// What the plan says the run does, in order, for `target`.
-pub fn plan(target: &Target) -> Vec<String> {
+/// What the plan says the run does, in order, for `target`: up to telling
+/// its chat is the group when `rehearse`, else up to leaving it.
+pub fn plan(target: &Target, rehearse: bool) -> Vec<String> {
     let shown = &target.display_name;
     let mut steps = vec![
         format!(
-            "wait until the keyboard and mouse have been left alone for {IDLE_SECONDS} s (at most {IDLE_WAIT_SECONDS} s)"
+            "once a run, before its first group: wait until the keyboard and mouse have been left alone for {IDLE_SECONDS} s (at most {IDLE_WAIT_SECONDS} s), and bring WeChat to the front, where it stays until the last group is done"
         ),
-        "bring WeChat to the front".to_string(),
         format!(
-            "search for {shown} (Edit › Search, then Edit › Paste, the pasteboard put back) and, once the search box holds it, click the chat it lists by that name; a group of that name the account has left is passed for the next, up to {MAX_MATCHES}"
+            "search for {shown} (Edit › Search, then Edit › Paste, the pasteboard put back) and click the chat it lists whose name reads most like it; one that is not the group is passed for the next, up to {MAX_MATCHES}"
         ),
-        format!("check the chat's title reads {shown} ({})", target.members),
+        format!(
+            "tell the chat is the group: its title shows {} members, and most of the {} newest messages the databases hold of it are in the chat, in order",
+            target.members,
+            target.recent.len()
+        ),
     ];
-    if target.name.is_empty() {
-        steps.push("open its chat info (···)".to_string());
+    if rehearse {
+        steps.push("click nothing more: the chat is left open".to_string());
     } else {
-        steps.push(format!(
-            "open its chat info (···) and check its Group Name reads {}",
-            target.name
-        ));
+        steps.extend([
+            format!(
+                "open its chat info (···), click Leave (退出群聊), then OK (确定) once the confirmation quotes {shown}, leaving Clear Chat History unticked: the chat's messages stay"
+            ),
+            format!(
+                "read the databases every {POLL_MILLIS} ms, for at most {LEFT_WAIT_SECONDS} s, until they no longer list the account among its members"
+            ),
+        ]);
     }
-    steps.extend([
-        format!(
-            "click Leave (退出群聊), then OK (确定) once the confirmation quotes {shown}, leaving Clear Chat History unticked: the chat's messages stay"
-        ),
-        format!(
-            "read the databases once a second, for at most {LEFT_WAIT_SECONDS} s, until they no longer list the account among its members"
-        ),
-        "give the front back to the app that had it".to_string(),
-    ]);
+    steps.push("after the last group, give the front back to the app that had it".to_string());
     steps
 }
 
 /// Whether the account `own` has left: it is not among `members`.
 pub fn left(members: &[String], own: &str) -> bool {
     !members.iter().any(|m| m == own)
+}
+
+/// The newest message of a group's chat, as the databases hold it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Newest {
+    /// Whether it is a system message (type 10000): a notice WeChat writes.
+    pub system: bool,
+    /// WeChat's id of it: 0 for one the server never saw.
+    pub server_id: i64,
+    pub sender: Option<String>,
+    /// When it was written, in seconds since the epoch.
+    pub at: i64,
+}
+
+/// Whether `newest` is the notice WeChat writes into the chat when the
+/// account `own` leaves it (`You've left the group chat`, in WeChat's
+/// language): a system message of the account's own, never sent to the
+/// server, written no earlier than the second OK was clicked in,
+/// `clicked`. It comes about a second after OK; the membership can take
+/// ten.
+pub fn left_by_notice(newest: &Newest, own: &str, clicked: i64) -> bool {
+    newest.system
+        && newest.server_id == 0
+        && newest.sender.as_deref() == Some(own)
+        && newest.at >= clicked
 }
 
 /// What is answered when the account is still a member `seconds` after OK.
@@ -389,12 +444,33 @@ pub enum Look {
 }
 
 impl Look {
+    /// Every screen a step expects, in the order of the path.
+    pub const ALL: [Look; 4] = [Look::Search, Look::Chat, Look::Info, Look::Confirmation];
+
     pub fn name(self) -> &'static str {
         match self {
-            Look::Search => "the search box",
+            Look::Search => "the search's matches",
             Look::Chat => "the group's chat",
             Look::Info => "its chat info",
             Look::Confirmation => "the confirmation",
+        }
+    }
+
+    /// The step of a leave its time is counted in, as the answer names it.
+    pub fn step(self) -> &'static str {
+        match self {
+            Look::Search => "search",
+            Look::Chat => "identify",
+            Look::Info | Look::Confirmation => "leave",
+        }
+    }
+
+    /// How long, in milliseconds, the window is looked at again for this
+    /// screen to come before [`Path::waited`] is asked what then.
+    pub fn patience(self) -> u64 {
+        match self {
+            Look::Search | Look::Chat => 4000,
+            Look::Info | Look::Confirmation => 3000,
         }
     }
 }
@@ -430,8 +506,8 @@ pub enum Act {
     Front,
     Key(Key),
     Menu(MenuItem),
-    /// Put the text where the focus is by Edit › Paste, the pasteboard
-    /// put back after.
+    /// Put the text where the focus is by Edit › Paste; the pasteboard is
+    /// put back before the next act, or when the path ends.
     Paste(String),
     /// A click at a point of the window; WeChat is made the front first.
     Click {
@@ -443,16 +519,19 @@ pub enum Act {
         x: u32,
         y: u32,
     },
-    /// Milliseconds for WeChat to draw what changed.
-    Wait(u64),
 }
 
 /// What to do next.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Move {
     /// Do these, then take a screenshot and pass it to [`Path::seen`]: it
-    /// should be this screen.
+    /// should come to be this screen.
     Then(Vec<Act>, Look),
+    /// The screen is not yet what the step waits for: look again, and
+    /// once the look's [`Look::patience`] has passed, ask [`Path::waited`].
+    Again,
+    /// A rehearsal's end: the chat opened is the group.
+    Identified,
     /// These click the confirmation's OK; the databases tell what came of it.
     Confirm(Vec<Act>),
     /// Do these (a confirmation's Cancel, or nothing), then answer the refusal.
@@ -508,7 +587,8 @@ const CLEAR_HISTORY: [&str; 2] = ["ClearChatHistory", "聊天记录"];
 const MATCH_INDENT: u32 = 35;
 /// The title row and the search box are above this, in points.
 const TOP: u32 = 40;
-/// The chat list is left of this; the chat's title right of [`TITLE_FROM`].
+/// The chat list is left of this; the chat's title and messages right of
+/// [`TITLE_FROM`].
 const LIST_TO: u32 = 330;
 const TITLE_FROM: u32 = 360;
 /// The chat info is the panel this wide at the window's right.
@@ -517,34 +597,51 @@ const PANEL: u32 = 300;
 const MORE_FROM_RIGHT: u32 = 34;
 const MORE_FROM_TOP: u32 = 27;
 
-/// The path through WeChat's window to leave one group: each [`Move`] it
-/// answers is checked against the screen that came of the one before.
+/// What the step waiting for its screen saw last that was not it: what a
+/// stop says if the screen never comes.
+#[derive(Debug, Clone)]
+struct Miss {
+    look: Look,
+    why: String,
+    read: Vec<String>,
+}
+
+/// The path through WeChat's window to leave one group, or to tell its
+/// chat is the group: each [`Move`] it answers is checked against the
+/// screen that came of the one before.
 #[derive(Debug, Clone)]
 pub struct Path {
     target: Target,
     retry: String,
+    rehearse: bool,
     step: Step,
     scrolls: Count,
     /// The matches of the search opened, and found not the group.
     opened: Count,
+    missed: Option<Miss>,
+    /// What the last chat opened showed of which group it is.
+    identity: Option<Identity>,
 }
 
 impl Path {
-    /// The path to leave `target`; `retry` is the line a refusal says to
-    /// run again.
-    pub fn new(target: Target, retry: &str) -> Path {
+    /// The path to leave `target`, or only to tell its chat when
+    /// `rehearse`; `retry` is the line a refusal says to run again.
+    pub fn new(target: Target, retry: &str, rehearse: bool) -> Path {
         Path {
             target,
             retry: retry.to_string(),
+            rehearse,
             step: Step::Start,
             scrolls: Count::none(),
             opened: Count::none(),
+            missed: None,
+            identity: None,
         }
     }
 
-    /// The title its chat shows: its display name and member count.
-    pub fn title(&self) -> String {
-        format!("{}({})", normalize(&self.target.display_name), self.target.members)
+    /// What the last chat opened showed of which group it is, if one was.
+    pub fn identity(&self) -> Option<&Identity> {
+        self.identity.as_ref()
     }
 
     /// The first move: WeChat in front, its search holding the name.
@@ -558,14 +655,13 @@ impl Path {
     /// WeChat in front, its search holding the name.
     fn search(&mut self) -> Move {
         self.step = Step::Look(Look::Search);
+        self.missed = None;
         Move::Then(
             vec![
                 Act::Front,
                 Act::Key(Key::Escape),
                 Act::Menu(MenuItem::Search),
-                Act::Wait(300),
                 Act::Paste(self.target.display_name.clone()),
-                Act::Wait(800),
             ],
             Look::Search,
         )
@@ -584,105 +680,116 @@ impl Path {
         }
     }
 
-    fn searched(&mut self, screen: &Screen) -> Move {
-        let name = normalize(&self.target.display_name);
-        let field = texts(screen, |_, l| l.y < TOP && l.x < LIST_TO);
-        // The magnifier before the name and the clear button after it are
-        // read as text too (`、`, `1`): the box holds the name, not is it.
-        if !field.iter().any(|f| f.contains(&name)) {
-            return self.stop(
-                Look::Search,
-                "the search box does not hold the name it was given",
-                &field,
-            );
+    /// The move once the screen waited for has not come within the look's
+    /// patience: the next match of the search when the chat opened was not
+    /// the group, else a stop saying what was seen last.
+    pub fn waited(&mut self) -> Move {
+        let Step::Look(look) = self.step else {
+            return self.stop(Look::Search, "a wait came where none was asked for", &[]);
+        };
+        if look == Look::Chat
+            && let Some(more) = self.opened.more(MAX_MATCHES - 1)
+        {
+            self.opened = more;
+            return self.search();
         }
+        let miss = self.missed.take().unwrap_or(Miss {
+            look,
+            why: "it did not come".to_string(),
+            read: Vec::new(),
+        });
+        self.stop(miss.look, &miss.why, &miss.read)
+    }
+
+    /// Not yet the screen `look` waits for, for `why`, having read `read`.
+    fn miss(&mut self, look: Look, why: &str, read: Vec<String>) -> Move {
+        self.missed = Some(Miss { look, why: why.to_string(), read });
+        Move::Again
+    }
+
+    fn searched(&mut self, screen: &Screen) -> Move {
+        let name = fold(&self.target.display_name);
         // The matches are listed in a window of their own, under headings
         // that change from one search to the next; a search of the internet
-        // is listed too. Each chat listed by the name is opened in turn, its
-        // title telling whether it is the group.
+        // is listed too. The chats listed by a name like it are opened in
+        // turn, closest first, until one is told to be the group.
         let mut matches = Vec::new();
-        let mut read = Vec::new();
+        let mut read = texts(screen, |_, l| l.y < TOP && l.x < LIST_TO);
         for overlay in &screen.overlays {
             matches.extend(chats_named(&overlay.lines, &name));
             for line in &overlay.lines {
                 read.push(normalize(&line.text));
             }
         }
+        matches.sort_by_key(|(apart, l)| (*apart, l.y, l.x));
         // Opening a match can move it up the list, so the matches are taken
         // in turn, round the list.
         let turn = (self.opened.count() as usize).checked_rem(matches.len()).unwrap_or(0);
-        let Some(found) = matches.get(turn) else {
-            return self.stop(Look::Search, "the search lists no chat by the name", &read);
+        let Some((_, found)) = matches.get(turn) else {
+            return self.miss(Look::Search, "the search lists no chat by a name like it", read);
         };
         let (x, y) = found.center();
         self.step = Step::Look(Look::Chat);
-        Move::Then(vec![Act::Click { x, y }, Act::Wait(1200)], Look::Chat)
+        self.missed = None;
+        Move::Then(vec![Act::Click { x, y }], Look::Chat)
     }
 
     fn opened(&mut self, screen: &Screen) -> Move {
-        let title = titles(screen);
-        if !title.contains(&self.title()) {
-            // A group of the same name the account has left: its title is
-            // the name alone, with no member count. The next match, if any;
-            // any other title stops the run.
-            let left = title.contains(&normalize(&self.target.display_name));
-            if let Some(more) = self.opened.more(MAX_MATCHES - 1).filter(|_| left) {
-                self.opened = more;
-                return self.search();
-            }
-            return self.stop(Look::Chat, "the opened chat is not the group asked for", &title);
+        let identity = identify::identity(screen, &self.target);
+        let verdict = identity.of(&self.target);
+        let read = [identity.title.clone(), identity.read.clone()].concat();
+        self.identity = Some(identity);
+        if let Err(why) = verdict {
+            return self.miss(
+                Look::Chat,
+                &format!("the chat opened is not told to be the group: {why}"),
+                read,
+            );
         }
-        if group_name_label(screen).is_some() {
-            // The ··· toggles the chat info: it is open already.
-            self.step = Step::Look(Look::Info);
-            return self.info(screen);
+        if self.rehearse {
+            self.step = Step::Done;
+            return Move::Identified;
         }
         self.step = Step::Look(Look::Info);
+        self.missed = None;
+        if group_name_label(screen).is_some() {
+            // The ··· toggles the chat info: it is open already.
+            return self.info(screen);
+        }
         Move::Then(
-            vec![
-                Act::Click { x: screen.width.saturating_sub(MORE_FROM_RIGHT), y: MORE_FROM_TOP },
-                Act::Wait(1000),
-            ],
+            vec![Act::Click { x: screen.width.saturating_sub(MORE_FROM_RIGHT), y: MORE_FROM_TOP }],
             Look::Info,
         )
     }
 
     fn info(&mut self, screen: &Screen) -> Move {
-        let Some(label) = group_name_label(screen) else {
-            return self.stop(Look::Info, "the chat info did not open", &panel(screen));
-        };
-        let title = titles(screen);
-        if !title.contains(&self.title()) {
-            return self.stop(Look::Info, "the chat changed under its chat info", &title);
+        if group_name_label(screen).is_none() {
+            return self.miss(Look::Info, "the chat info did not open", panel(screen));
         }
-        let own = normalize(&self.target.name);
-        if !own.is_empty() {
-            let value = below(screen, label).map(|l| normalize(&l.text));
-            if value.as_deref() != Some(own.as_str()) {
-                let read: Vec<String> = value.into_iter().collect();
-                return self.stop(
-                    Look::Info,
-                    "its chat info's Group Name is not the group's own name",
-                    &read,
-                );
+        // The chat told to be the group must still be the one open: its
+        // title's member count is read again.
+        let shown = identify::identity(screen, &self.target);
+        match shown.members {
+            None => return self.miss(Look::Info, "its title shows no member count", shown.title),
+            Some(n) if n != self.target.members => {
+                return self.stop(Look::Info, "the chat changed under its chat info", &shown.title);
             }
+            Some(_) => {}
         }
         if let Some(leave) = in_panel(screen, &LEAVE) {
             let (x, y) = leave.center();
             self.step = Step::Look(Look::Confirmation);
-            return Move::Then(vec![Act::Click { x, y }, Act::Wait(1000)], Look::Confirmation);
+            self.missed = None;
+            return Move::Then(vec![Act::Click { x, y }], Look::Confirmation);
         }
         match self.scrolls.more(MAX_SCROLLS) {
             Some(more) => {
                 self.scrolls = more;
                 Move::Then(
-                    vec![
-                        Act::Scroll {
-                            x: screen.width.saturating_sub(PANEL / 2),
-                            y: screen.height / 2,
-                        },
-                        Act::Wait(500),
-                    ],
+                    vec![Act::Scroll {
+                        x: screen.width.saturating_sub(PANEL / 2),
+                        y: screen.height / 2,
+                    }],
                     Look::Info,
                 )
             }
@@ -692,7 +799,7 @@ impl Path {
 
     fn confirmation(&mut self, screen: &Screen) -> Move {
         let Some(dialog) = screen.overlays.first() else {
-            return self.stop(Look::Confirmation, "no confirmation came up", &[]);
+            return self.miss(Look::Confirmation, "no confirmation came up", Vec::new());
         };
         // Only the text inside the confirmation's own window: the chat list
         // behind it is level with it.
@@ -707,19 +814,15 @@ impl Path {
             read.push(normalize(&line.text));
         }
         let Some(ask) = first(&inside, 0, |l| holds(&l.text, &ASKS)) else {
-            return self.stop(Look::Confirmation, "no confirmation came up", &read);
+            return self.miss(Look::Confirmation, "no confirmation came up", read);
         };
         let cancel = first(&inside, ask.y, |l| is(&l.text, &CANCEL));
         let ok = first(&inside, ask.y, |l| is(&l.text, &OK));
         let (Some(cancel), Some(ok)) = (cancel, ok) else {
-            return self.stop(
-                Look::Confirmation,
-                "the confirmation's buttons were not read",
-                &read,
-            );
+            return self.miss(Look::Confirmation, "the confirmation's buttons were not read", read);
         };
         // The quoted name, on as many lines as it wraps to, from below the
-        // question down to the Clear Chat History box.
+        // question down to the Clear Chat History box, folded as a name is.
         let mid = ask.y.saturating_add(ask.h / 2);
         let bottom = first(&inside, ask.y, |l| holds(&l.text, &CLEAR_HISTORY)).unwrap_or(cancel);
         let end = bottom.y.saturating_sub(2);
@@ -732,17 +835,17 @@ impl Path {
         quoted.sort_by_key(|l| (l.y, l.x));
         let mut named = String::new();
         for line in &quoted {
-            named.push_str(&normalize(&line.text));
+            named.push_str(&line.text);
         }
-        if named != normalize(&self.target.display_name) {
+        if fold(&named) != fold(&self.target.display_name) {
             let (x, y) = cancel.center();
             let refusal = self.refusal(
                 Look::Confirmation,
                 "the confirmation does not quote the group's name",
-                &[named],
+                &[normalize(&named)],
                 "Cancel was clicked",
             );
-            return Move::Stop(vec![Act::Click { x, y }, Act::Wait(800)], refusal);
+            return Move::Stop(vec![Act::Click { x, y }], refusal);
         }
         self.step = Step::Done;
         let (x, y) = ok.center();
@@ -776,40 +879,25 @@ fn first<'a>(lines: &[&'a Line], y: u32, wanted: fn(&Line) -> bool) -> Option<&'
     lines.iter().copied().find(|line| line.y > y && wanted(line))
 }
 
-/// The chats a search's matches `lines` list by `name`, made comparable:
-/// each [`lists`] the name, indented past its avatar from the list's left
-/// edge. Those that read the whole name come first, then those cut short,
-/// each top first.
-fn chats_named<'a>(lines: &'a [Line], name: &str) -> Vec<&'a Line> {
+/// The chats a search's matches `lines` list by a name like `name`, made
+/// comparable ([`fold`]), each with how far it reads from it
+/// ([`closeness`]): a line indented past its avatar from the list's left
+/// edge.
+fn chats_named<'a>(lines: &'a [Line], name: &str) -> Vec<(usize, &'a Line)> {
     let mut edge = u32::MAX;
     for line in lines {
         edge = edge.min(line.x);
     }
-    let mut found: Vec<&Line> = Vec::new();
+    let mut found = Vec::new();
     for line in lines {
-        if line.x >= edge.saturating_add(MATCH_INDENT) && lists(&line.text, name) {
-            found.push(line);
+        if line.x < edge.saturating_add(MATCH_INDENT) {
+            continue;
+        }
+        if let Some(apart) = closeness(&fold(&line.text), name) {
+            found.push((apart, line));
         }
     }
-    found.sort_by_key(|l| (normalize(&l.text) != name, l.y, l.x));
     found
-}
-
-/// What a name cut short in a list ends in, as macOS reads it: `…`, `⋯`,
-/// or one or more `.`.
-const ELLIPSIS: [char; 3] = ['.', '…', '⋯'];
-
-/// Whether a chat read as `text` in a list is listed by `name`, made
-/// comparable: it reads the name, or the name cut short, a part of it
-/// before an [`ELLIPSIS`]. The chat's title and its Group Name are what
-/// tell it is the group.
-fn lists(text: &str, name: &str) -> bool {
-    let text = normalize(text);
-    if text == name {
-        return true;
-    }
-    let stem = text.trim_end_matches(ELLIPSIS);
-    stem.len() < text.len() && !stem.is_empty() && stem.len() < name.len() && name.starts_with(stem)
 }
 
 /// Whether `text`, made comparable, is one of `labels`.
@@ -835,11 +923,6 @@ fn texts(screen: &Screen, keep: fn(&Screen, &Line) -> bool) -> Vec<String> {
     texts
 }
 
-/// The text of the chat's title row.
-fn titles(screen: &Screen) -> Vec<String> {
-    texts(screen, |_, l| l.y < TOP && l.x > TITLE_FROM)
-}
-
 /// Whether `line` is in the chat info's panel, at the window's right.
 fn at_right(screen: &Screen, line: &Line) -> bool {
     line.x > screen.width.saturating_sub(PANEL)
@@ -855,16 +938,9 @@ fn group_name_label(screen: &Screen) -> Option<&Line> {
     in_panel(screen, &GROUP_NAME)
 }
 
-/// The line of the panel right below `label`: its value.
-fn below<'a>(screen: &'a Screen, label: &Line) -> Option<&'a Line> {
-    let mut value: Option<&Line> = None;
-    for line in &screen.lines {
-        let higher = value.is_none_or(|v| line.y < v.y);
-        if at_right(screen, line) && line.y > label.y && higher {
-            value = Some(line);
-        }
-    }
-    value
+/// Whether the chat info is open, taking the window's right.
+fn panel_open(screen: &Screen) -> bool {
+    group_name_label(screen).is_some()
 }
 
 /// The panel's text, for a refusal to say what it read.

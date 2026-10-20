@@ -33,32 +33,17 @@ Chinese.
 
 ## Before anything: which group
 
-wxread answers the group (`wxread group <id>`): its display name, its own name,
-and its members. Then every contact is read (`wxread contacts`, page by page:
-`--query` matches a group's own name, not the display name a group with none is
-shown by), and the display name must belong to this one group alone among the
-groups the account is in. A group of the same name the account has left is
-told apart in the window: its chat's title is the name alone, with no member
-count, and wxread passes it for the next chat the search lists by the name. Two groups
-answered with the same display name are refused before the window is touched:
-
-```json
-{"step":"refused","why":"more than one group is shown as 孙凤君、秦俊斌 @qinjunbin: the window cannot tell them apart","groups":["17812931124@chatroom","19010950345@chatroom"]}
-```
-
-WeChat's search opens the first chat it finds by a name, and nothing in the
-window says which of two same-named groups it is (the member count can be the
-same too: these two have 3 each), so there is nothing to tell them apart by.
-
-The opened chat is then the group asked for when **all three** hold:
-
-1. its title reads `<display name> (<members>)`, the count being the number of
-   members wxread answers;
-2. its chat info's **Group Name** (群聊名称) reads the group's own name, when it
-   has one;
-3. the confirmation quotes the display name, on as many lines as it wraps to.
-
-Any of them failing stops the path; at the confirmation, it is cancelled.
+wxread answers the group (`wxread group <id>`): its display name, its own
+name, its members, and its newest messages (`wxread messages --chat <id>`).
+The prototype then told the chat it opened by its name: the title had to read
+`<display name> (<members>)`, the chat info's **Group Name** the group's own
+name, and two groups of the same display name were refused. Built into
+wxread, macOS's reading of names proved too unreliable for that (#71, #76),
+and the chat is told by what it shows instead
+(docs/adr/0017-the-group-opened-is-told-by-its-member-count-and-newest-messages.md):
+its title's member count, and its newest messages against those the
+databases hold. See [Told by what it shows](#told-by-what-it-shows). The
+confirmation must still quote the display name, compared folded.
 
 ## The path
 
@@ -245,3 +230,40 @@ that left are kept, as their text, in crates/leave/screens/recorded-*.
   message was the notice `You've left the group chat`. `wxread group` answered
   `members: []`.
 
+## Told by what it shows
+
+How `wxread group leave` tells the chat it opened is the group, found on
+2026-10-20 on this account, WeChat 4.1.15 in English, on 17 groups the
+account was in (the run's `--dry-run`, then `--yes` on one).
+
+- **The title.** The member count is the digits in the title's last
+  parentheses, read whatever the name before it reads as: `团结友爱AITO问界车友群18（500）`
+  for 团结友爱AITO问界车友群⑱, `智能通信定位圈一广域物联②群（500）|` with a
+  text cursor after it. Every one of the 17 counts was read right.
+- **The messages.** The chat opens at its bottom, its newest messages
+  there, each under its sender's name (with Display Members' Nicknames on)
+  and the times between them centred. A message is found by a part of its
+  text; a card (a link, a channel's video, a mini program) shows its title,
+  summary and source, cut short at the bubble's edge with an ellipsis read
+  as `.`; emoji are read as anything (`🍁` as `17`, `🇻🇳🇨🇳` as `★圓`), so they
+  are folded away, and a line is found with a quarter of it read otherwise.
+  An image or a sticker is found by its sender's name or its minute. A
+  message read on several lines is passed whole, so a notice posted again
+  is not found inside the one after it.
+- **The search's list.** The chat opened is the one whose name reads
+  closest: `智能通信定位圈一广域物联.` for 智能通信定位圈—广域物联②群 (its `—` read as
+  `一`, cut short), `★圓中越防失联交流群` for 🇻🇳🇨🇳中越防失联交流群.
+- **The run.** `--dry-run` over the 17 told every one, 1.8 to 5.2 s a
+  group, 61.4 s in all, 1.8 s of it reading the databases; reading the 18
+  groups without touching the window took 16.3 s before, 2.9 s after. Two
+  of the groups, 智能通信定位圈—广域物联①群 and ②群, have 500 members each,
+  and were told apart by their messages; 周边游🚩户外旅行交友美食5群 (255)
+  and 19群 (325), fed the same ads, by their counts.
+- **The leave.** `--yes` left 智能通信定位圈—广域物联②群 (5308573596@chatroom):
+  search 1.0 s, identify 1.2 s, its chat info and the confirmation 3.2 s;
+  the databases wrote the notice `You've left the group chat` (type 10000,
+  sent by the account, no server id) about a second after OK, and no longer
+  listed the account among its members 11 s after it; the group then had
+  499. That run waited for the membership, 17.6 s in all; since, the
+  notice confirms the leave as well, which the code was changed to after it
+  (not yet run on a real group).
