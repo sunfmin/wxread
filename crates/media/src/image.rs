@@ -123,9 +123,27 @@ pub enum Refusal {
 /// the account's image key when one was found: a JPEG, a PNG, a GIF or
 /// WeChat's own wxgf.
 pub fn decrypt(dat: &[u8], key: Option<&ImageKey>) -> Result<Vec<u8>, Refusal> {
-    let Some(v) = version(dat) else {
+    if version(dat).is_none() {
         return xored(dat).ok_or(Refusal::NotWechats);
-    };
+    }
+    let out = unseal(dat, key)?;
+    if !is_image(&out) {
+        return Err(Refusal::KeyDoesNotOpen);
+    }
+    Ok(out)
+}
+
+/// Whether `dat` is sealed in V1 or V2, whatever file it holds.
+pub fn is_sealed(dat: &[u8]) -> bool {
+    version(dat).is_some()
+}
+
+/// The file `dat` holds sealed in V1 or V2, whatever file it is (a
+/// favorite's note or PDF is sealed as an image is), `key` the account's
+/// image key when one was found. Only its padding tells the key opens it:
+/// what it holds is the caller's to check.
+pub fn unseal(dat: &[u8], key: Option<&ImageKey>) -> Result<Vec<u8>, Refusal> {
+    let v = version(dat).ok_or(Refusal::NotWechats)?;
     let (aes, xor) = if v == V2 {
         let key = key.ok_or(Refusal::NoKey)?;
         (key.aes, key.xor)
@@ -155,9 +173,6 @@ pub fn decrypt(dat: &[u8], key: Option<&ImageKey>) -> Result<Vec<u8>, Refusal> {
     out.truncate(keep);
     out.extend_from_slice(middle);
     out.extend(tail.iter().map(|b| b ^ xor));
-    if !is_image(&out) {
-        return Err(Refusal::KeyDoesNotOpen);
-    }
     Ok(out)
 }
 
@@ -343,7 +358,37 @@ mod tests {
         assert_eq!(decrypt(&wrong, Some(&key)), Err(Refusal::KeyDoesNotOpen));
     }
 
+    #[test]
+    fn a_sealed_file_of_any_kind_unseals_and_only_under_its_key() {
+        let key = ImageKey::derive(9, "wxid_me");
+        let note = b"<html><body>a note</body></html>".to_vec();
+        let dat = seal(&note, Format::V2(key));
+        assert!(is_sealed(&dat));
+        assert_eq!(unseal(&dat, Some(&key)), Ok(note.clone()));
+        assert_eq!(decrypt(&dat, Some(&key)), Err(Refusal::KeyDoesNotOpen));
+        let pdf = b"%PDF-1.7 topo".to_vec();
+        assert_eq!(unseal(&seal(&pdf, Format::V1 { xor: 0 }), None), Ok(pdf));
+        assert_eq!(unseal(&dat, None), Err(Refusal::NoKey));
+        // Only the last sealed block's padding tells a wrong key.
+        let mut wrong = dat;
+        wrong[HEADER + note.len()] ^= 1;
+        assert_eq!(unseal(&wrong, Some(&key)), Err(Refusal::KeyDoesNotOpen));
+        assert!(!is_sealed(b"%PDF-1.7 as it is"));
+        assert_eq!(unseal(b"%PDF-1.7 as it is", None), Err(Refusal::NotWechats));
+    }
+
     proptest! {
+        #[test]
+        fn every_file_seals_and_unseals_back(
+            file in proptest::collection::vec(any::<u8>(), 0..3000),
+            code in any::<u32>(),
+            v2 in any::<bool>(),
+        ) {
+            let key = ImageKey::derive(code, "wxid_p");
+            let format = if v2 { Format::V2(key) } else { Format::V1 { xor: key.xor } };
+            prop_assert_eq!(unseal(&seal(&file, format), Some(&key)), Ok(file));
+        }
+
         #[test]
         fn every_image_seals_and_decrypts_back(
             len in 0usize..4000,
