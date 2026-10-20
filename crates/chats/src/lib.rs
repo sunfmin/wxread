@@ -641,7 +641,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn a_folder_is_its_own_kind_named_as_wechat_names_it_saying_what_reads_it() {
         let mut r = row("brandsessionholder", 3);
@@ -667,7 +666,10 @@ mod tests {
 
     #[test]
     fn a_chat_says_the_command_that_reads_its_messages() {
-        assert_eq!(chat(row("wxid_b", 1), &Rooms::new()).read_with, "wxread messages --chat wxid_b");
+        assert_eq!(
+            chat(row("wxid_b", 1), &Rooms::new()).read_with,
+            "wxread messages --chat wxid_b"
+        );
         assert_eq!(
             chat(row("9@chatroom", 1), &Rooms::new()).read_with,
             "wxread messages --chat 9@chatroom"
