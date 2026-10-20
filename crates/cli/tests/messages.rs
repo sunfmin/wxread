@@ -218,6 +218,15 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
             "link",
             json!({ "to": "web_page", "title": "Packed", "summary": null, "url": "https://e.com/z", "source": null }),
         ),
+        (
+            group(
+                0,
+                50,
+                "<voipmsg type=\"VoIPBubbleMsg\"><VoIPBubbleMsg><msg><![CDATA[通话时长 01:04:50]]></msg><room_type>1</room_type><msg_type>100</msg_type><duration>0</duration></VoIPBubbleMsg></voipmsg>",
+            ),
+            "call",
+            json!({ "medium": "voice", "state": "connected", "seconds": 3890, "text": "通话时长 01:04:50" }),
+        ),
     ]
 }
 

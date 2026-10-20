@@ -37,6 +37,7 @@ pub enum Kind {
     Renamed,
     Transfer,
     RedPacket,
+    Call,
     Image,
     Video,
     File,
@@ -48,7 +49,7 @@ pub enum Kind {
 
 impl Kind {
     /// Every kind, as the answer names them.
-    pub const ALL: [Kind; 20] = [
+    pub const ALL: [Kind; 21] = [
         Kind::Text,
         Kind::Link,
         Kind::Quote,
@@ -62,6 +63,7 @@ impl Kind {
         Kind::Renamed,
         Kind::Transfer,
         Kind::RedPacket,
+        Kind::Call,
         Kind::Image,
         Kind::Video,
         Kind::File,
@@ -86,6 +88,7 @@ impl Kind {
             Kind::Renamed => "renamed",
             Kind::Transfer => "transfer",
             Kind::RedPacket => "red_packet",
+            Kind::Call => "call",
             Kind::Image => "image",
             Kind::Video => "video",
             Kind::File => "file",

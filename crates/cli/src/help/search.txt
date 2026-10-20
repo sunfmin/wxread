@@ -71,8 +71,14 @@ WHAT A MESSAGE IS SEARCHED BY
   forward        its title and what each message in it says
   transfer, red_packet
                  its memo
-  The rest (images, videos, voice, stickers, WeChat's notices) are not
-  searched: find them with `wxread messages`.
+  The rest are not searched: find them with `wxread messages`:
+  image, video, voice, sticker
+                 media, whose words WeChat does not index
+  call           a voice or video call, {medium, state, seconds, text}:
+                 voice or video, connected, cancelled, declined or
+                 missed, and how many seconds a connected one lasted
+  recall, nudge, join, leave, renamed, system
+                 WeChat's notices
 
 TRIPS YOU UP
   - The text is found inside words, ignoring case: "crag" finds "Crags"

@@ -426,6 +426,79 @@ fn a_red_packet_has_its_memo_and_a_collection_is_unknown() {
     assert_eq!(read(app(2001), collection)["kind"], "unknown");
 }
 
+/// A call's bubble as WeChat for Mac 4.x keeps it (type 50): what it
+/// shows, its room type (0 video, 1 voice) and its `<duration>`.
+fn call(shown: &str, room_type: &str, duration: &str) -> String {
+    format!(
+        "<voipmsg type=\"VoIPBubbleMsg\"><VoIPBubbleMsg><msg><![CDATA[{shown}]]></msg><room_type>{room_type}</room_type><red_dot>false</red_dot><roomid>1393520413</roomid><roomkey>0</roomkey><inviteid>1760936582</inviteid><msg_type>100</msg_type><timestamp>1760940472498</timestamp><identity><![CDATA[6411462536521458416]]></identity><duration>{duration}</duration><inviteid64>1760936582394</inviteid64><business>1</business><caller_memberid>0</caller_memberid><callee_memberid>1</callee_memberid></VoIPBubbleMsg></voipmsg>"
+    )
+}
+
+#[test]
+fn a_connected_call_has_its_medium_and_its_duration() {
+    assert_eq!(
+        read(50, &call("通话时长 01:04:50", "1", "0")),
+        json!({ "kind": "call", "call": { "medium": "voice", "state": "connected", "seconds": 3890, "text": "通话时长 01:04:50" } })
+    );
+    assert_eq!(
+        read(50, &call("通话时长 05:30", "0", "330"))["call"],
+        json!({ "medium": "video", "state": "connected", "seconds": 330, "text": "通话时长 05:30" })
+    );
+    // Its text shows no time it reads: the bubble's own duration says it.
+    assert_eq!(
+        read(50, &call("Call duration", "1", "42"))["call"],
+        json!({ "medium": "voice", "state": "connected", "seconds": 42, "text": "Call duration" })
+    );
+    // Wrapped in <msg>, as some rows keep it.
+    let wrapped = format!("<msg>{}</msg>", call("通话时长 00:07", "1", "7"));
+    assert_eq!(read(50, &wrapped)["call"]["seconds"], 7);
+}
+
+#[test]
+fn a_call_that_did_not_connect_says_why_with_no_duration() {
+    for (shown, state) in [
+        ("已取消", "cancelled"),
+        ("对方已取消", "cancelled"),
+        ("已拒绝", "declined"),
+        ("对方已拒绝", "declined"),
+        ("已在其它设备拒绝", "declined"),
+        ("对方无应答", "missed"),
+        ("未应答", "missed"),
+        ("未接听", "missed"),
+        ("忙线未接听", "missed"),
+    ] {
+        assert_eq!(
+            read(50, &call(shown, "1", "0"))["call"],
+            json!({ "medium": "voice", "state": state, "seconds": null, "text": shown }),
+            "{shown}"
+        );
+    }
+    // What says none of them is a call all the same, its text kept.
+    assert_eq!(
+        read(50, &call("已在其它设备接听", "2", "0"))["call"],
+        json!({ "medium": null, "state": null, "seconds": null, "text": "已在其它设备接听" })
+    );
+}
+
+#[test]
+fn a_calls_duration_is_read_as_wechat_shows_it() {
+    use crate::kinds::call_seconds;
+    for (shown, seconds) in [
+        ("通话时长 01:04:50", Some(3890)),
+        ("通话时长 00:31", Some(31)),
+        ("通话时长 1:02", Some(62)),
+        ("通话时长 100:00:00", None),
+        ("通话时长 00:60", None),
+        ("通话时长 01:61:00", None),
+        ("通话时长 ", None),
+        ("通话时长 1:2:3:4", None),
+        ("通话时长 a:00", None),
+        ("已取消", None),
+    ] {
+        assert_eq!(call_seconds(shown), seconds, "{shown}");
+    }
+}
+
 #[test]
 fn fen_reads_yuan_as_wechat_shows_them() {
     assert_eq!(kinds::fen(Some("￥0.01")), Some(1));
