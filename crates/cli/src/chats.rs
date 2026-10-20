@@ -6,7 +6,8 @@ use std::collections::BTreeMap;
 use anyhow::anyhow;
 use rusqlite::Connection;
 use serde_json::{Value, json};
-use wxread_chats::{Contact, Cursor, Limit, Row};
+use wxread_answer::Limit;
+use wxread_chats::{Contact, Cursor, Row};
 use wxread_schema::{CONTACT_DB, SESSION_DB};
 
 use crate::account::Account;
@@ -21,14 +22,7 @@ pub struct Asked {
 
 /// What chats answers of `world`.
 pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
-    let limit = match &asked.limit {
-        None => Limit::default_limit(),
-        Some(text) => text
-            .parse()
-            .ok()
-            .and_then(Limit::new)
-            .ok_or_else(|| anyhow!(wxread_chats::limit_refused(text)))?,
-    };
+    let limit = Limit::parse(asked.limit.as_deref(), "chats").map_err(|e| anyhow!(e))?;
     let cursor = asked.cursor.as_deref().map(Cursor::parse).transpose().map_err(|e| anyhow!(e))?;
     let account = Account::open(world, asked.account.as_deref(), &[SESSION_DB, CONTACT_DB])?;
     let sessions = account.database(SESSION_DB)?;

@@ -722,7 +722,9 @@ dependencies = [
  "serde_json",
  "tempfile",
  "wxread-account",
+ "wxread-answer",
  "wxread-chats",
+ "wxread-contacts",
  "wxread-doctor",
  "wxread-keys",
  "wxread-schema",
@@ -739,11 +741,28 @@ dependencies = [
 ]
 
 [[package]]
-name = "wxread-chats"
+name = "wxread-answer"
 version = "0.1.0"
 dependencies = [
  "flux-rs",
  "proptest",
+]
+
+[[package]]
+name = "wxread-chats"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "wxread-answer",
+ "wxread-contacts",
+]
+
+[[package]]
+name = "wxread-contacts"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "wxread-answer",
 ]
 
 [[package]]
