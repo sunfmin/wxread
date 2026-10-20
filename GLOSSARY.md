@@ -42,7 +42,7 @@ What the account calls a contact, set by the account and seen only by it (备注
 _Avoid_: alias, nickname, note
 
 **Display name**:
-A contact's name as WeChat shows it: the account's remark, else their name in the group it is shown in, else their own name. A group with no remark or name of its own is shown by its members' display names, the account's left out, in the order WeChat lists them, joined by `、`.
+A contact's name as WeChat shows it: the account's remark, else their name in the group it is shown in, else their own name, else the name the message or post gives them. A group with no remark or name of its own is shown by its members' display names, the account's left out, in the order WeChat lists them, joined by `、`. Every answer names a person, group, official account or chat as `{id, display_name}` (docs/adr/0011-every-person-an-answer-names-is-id-and-display-name.md).
 _Avoid_: name, label, shown name
 
 **Official account**:
@@ -86,7 +86,7 @@ A voice or video call in a chat, as the bubble WeChat leaves of it: whether it c
 _Avoid_: VoIP, phone call
 
 **Sender**:
-The contact who said a message, by id, and shown as WeChat shows them: the account's remark for them, else their name in the group, else their own name. A recall's is who recalled it; WeChat's other notices have none.
+The contact who said a message, `{id, display_name}`: by id, and shown by their display name. A recall's is who recalled it; WeChat's other notices have none.
 _Avoid_: author, from, user
 
 **Notice**:
