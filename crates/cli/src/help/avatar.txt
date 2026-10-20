@@ -1,0 +1,48 @@
+wxread avatar: write the avatar WeChat holds of a contact, as the image
+it is.
+
+  wxread avatar <id> --out <path>
+
+WHEN TO RUN IT
+  To see or keep a contact's or a group's avatar, once `wxread contacts`
+  has answered its id and said, in its has_avatar, that WeChat holds one.
+  Run by you or an agent, once the keys are supplied.
+
+WHAT IT READS
+  head_image/head_image.db, where WeChat keeps the avatars it shows, and
+  contact/contact.db, each decrypted into memory with its key: the file
+  --keys names, else the contents of WXREAD_KEYS.
+
+WHAT IT WRITES
+  The one file, at --out, and nothing anywhere else. A file --out already
+  holds with the same bytes is left as it is, so running it again
+  changes nothing.
+
+OPTIONS
+  <id>              the contact's id: a wxid, a group's <n>@chatroom, an
+                    official account's gh_...; required
+  --out <path>      the file to write; required. Its directory must exist.
+  --account <id>    the account to read, as `wxread doctor` names it;
+                    with only one logged in, that one
+
+WHAT IT ANSWERS
+  Written:
+    path          where it was written: --out, made absolute
+    size          its bytes
+    sha256        the SHA-256 of them, in lowercase hex
+    content_type  what its first bytes say it is: image/jpeg, image/png,
+                  …; application/octet-stream for what they do not say
+  When WeChat holds no avatar of the contact, the answer, exit 0:
+    missing       true
+    thumbnail     null: an avatar has none
+    fix           what makes WeChat fetch it: open their profile in
+                  WeChat, then run this again
+
+TRIPS YOU UP
+  - The answer is written or missing: read its `missing` before its
+    `path`; nothing is written when it is missing.
+  - An id that is no contact of the account, and of which WeChat holds no
+    avatar, is an error pointing at `wxread contacts --query`.
+  - The keys must open head_image/head_image.db and contact/contact.db;
+    one missing is an error naming it, fixed by `sudo wxread keys`, then
+    supplying the keys again.

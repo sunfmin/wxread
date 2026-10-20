@@ -85,6 +85,22 @@ _Avoid_: system message, event
 A file a message carries rather than holds: an image, a video, a voice message, a file.
 _Avoid_: attachment, resource
 
+**Thumbnail**:
+The small copy WeChat keeps of an image or a video beside its file, often when it holds no file: an image's `_t.dat`, a video's `_thumb.jpg`.
+_Avoid_: preview, thumb
+
+**Missing**:
+A media message's file, or an avatar, that WeChat on this Mac does not hold (it never downloaded it, or cleared it): an answer, not an error, with the thumbnail when there is one and what makes WeChat fetch it.
+_Avoid_: not found, absent, deleted
+
+**Image key**:
+The key an account's V2 images are sealed under, derived from the code in WeChat's kvcomm files' names and the account's id, and told by the image it opens; unlike a database's key, it needs no memory read.
+_Avoid_: image password, dat key
+
+**Avatar**:
+The image WeChat shows for a contact or a group, as its head image database holds it.
+_Avoid_: profile picture, head image, icon
+
 **Finding**:
 One thing `wxread doctor` found wrong, and the line that fixes it.
 _Avoid_: issue, warning, check

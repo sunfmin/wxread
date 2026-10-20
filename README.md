@@ -11,6 +11,8 @@ wxread --keys <file> articles               # what official accounts sent, newes
 wxread --keys <file> contacts --query amy   # find a contact, and its id
 wxread --keys <file> group <n>@chatroom     # a group's notice and members
 wxread --keys <file> messages --chat <id>   # a chat's messages, each as its kind
+wxread --keys <file> file get <id> --out <path>  # a media message's file, as it is
+wxread --keys <file> avatar <id> --out <path>    # a contact's avatar
 wxread --help                               # the guide
 ```
 

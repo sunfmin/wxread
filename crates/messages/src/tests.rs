@@ -328,13 +328,60 @@ pub fn row(db: &str, local_id: i64, create_time: i64, sort_seq: i64) -> Row {
     }
 }
 
+/// What a test that holds no file says of every media message.
+fn none(_: &Media, _: &Row) -> Held {
+    Held::default()
+}
+
+#[test]
+fn a_media_message_says_whether_wechat_holds_its_file_and_thumbnail() {
+    let mut image = row("message_0", 1, 1_760_000_000, 0);
+    image.local_type = 3;
+    image.content = b"<msg><img md5=\"m\"/></msg>".to_vec();
+    let held = |m: &Media, r: &Row| {
+        assert_eq!((m, r.local_id), (&Media::Image { name: None }, 1));
+        Held { file: true, thumbnail: Some(false) }
+    };
+    let m = message(&chat("wxid_ann"), &Names::default(), &image, &held);
+    assert_eq!(
+        m["image"],
+        json!({ "name": null, "md5": "m", "file_present": true, "thumbnail_present": false })
+    );
+    let mut voice = image.clone();
+    voice.local_type = 34;
+    let m = message(&chat("wxid_ann"), &Names::default(), &voice, &none);
+    assert_eq!(
+        m["voice"],
+        json!({ "length_ms": null, "file_present": false, "thumbnail_present": null })
+    );
+    let text = row("message_0", 2, 1, 0);
+    assert_eq!(
+        message(&chat("wxid_ann"), &Names::default(), &text, &none)["text"],
+        json!({ "text": "m2" })
+    );
+}
+
+#[test]
+fn a_message_names_its_file_or_its_kind_when_it_carries_none() {
+    let mut r = row("message_0", 1, 1, 0);
+    assert_eq!(media_of(&chat("wxid_ann"), &r), Err(Kind::Text));
+    r.local_type = 49 | 6 << 32;
+    r.content =
+        b"wxid_bob:\n<msg><appmsg><title>a.pdf</title><type>6</type></appmsg></msg>".to_vec();
+    r.sender = None;
+    assert_eq!(
+        media_of(&chat("1@chatroom"), &r),
+        Ok(Media::File { name: Some("a.pdf".into()), size: None })
+    );
+}
+
 #[test]
 fn a_message_carries_its_id_time_sender_kind_content_and_type() {
     let mut names = Names::default();
     names
         .contacts
         .insert("wxid_ann".into(), Contact { remark: None, nick_name: Some("Ann".into()) });
-    let m = message(&chat("wxid_ann"), &names, &row("message_0", 1, 1_760_000_000, 0));
+    let m = message(&chat("wxid_ann"), &names, &row("message_0", 1, 1_760_000_000, 0), &none);
     assert_eq!(
         m,
         json!({
@@ -345,7 +392,7 @@ fn a_message_carries_its_id_time_sender_kind_content_and_type() {
     let mut local = row("message_0", 1, 0, 0);
     local.server_id = 0;
     local.sender = None;
-    let m = message(&chat("wxid_ann"), &names, &local);
+    let m = message(&chat("wxid_ann"), &names, &local, &none);
     assert_eq!(
         (&m["id"], &m["at"], &m["sender"], &m["sender_name"]),
         (&Value::Null, &Value::Null, &Value::Null, &Value::Null)
@@ -357,19 +404,19 @@ fn a_group_message_drops_its_sender_prefix() {
     let names = Names::default();
     let mut r = row("message_0", 1, 1, 0);
     r.content = b"wxid_ann:\nhello:\nthere".to_vec();
-    let m = message(&chat("1@chatroom"), &names, &r);
+    let m = message(&chat("1@chatroom"), &names, &r, &none);
     assert_eq!((&m["sender"], &m["content"]), (&json!("wxid_ann"), &json!("hello:\nthere")));
     r.sender = None;
-    let m = message(&chat("1@chatroom"), &names, &r);
+    let m = message(&chat("1@chatroom"), &names, &r, &none);
     assert_eq!((&m["sender"], &m["content"]), (&json!("wxid_ann"), &json!("hello:\nthere")));
     // A direct chat's content is its own, whatever it starts with.
     r.sender = Some("wxid_ann".into());
-    let m = message(&chat("wxid_ann"), &names, &r);
+    let m = message(&chat("wxid_ann"), &names, &r, &none);
     assert_eq!(m["content"], "wxid_ann:\nhello:\nthere");
     // The account's own message in a group has no prefix.
     r.sender = Some("wxid_me".into());
     r.content = b"hi all".to_vec();
-    let m = message(&chat("1@chatroom"), &names, &r);
+    let m = message(&chat("1@chatroom"), &names, &r, &none);
     assert_eq!((&m["sender"], &m["content"]), (&json!("wxid_me"), &json!("hi all")));
 }
 
@@ -384,12 +431,12 @@ fn zstd_content_is_decompressed() {
         ruzstd::encoding::CompressionLevel::Fastest,
     );
     r.compressed = Some(wxread_schema::ZSTD);
-    let m = message(&chat("wxid_ann"), &Names::default(), &r);
+    let m = message(&chat("wxid_ann"), &Names::default(), &r, &none);
     assert_eq!((&m["kind"], &m["content"]), (&json!("link"), &json!(xml)));
     assert_eq!(m["subtype"], 5);
     // Bytes that do not decompress are kept as they are.
     r.content = b"plain".to_vec();
-    assert_eq!(message(&chat("wxid_ann"), &Names::default(), &r)["content"], "plain");
+    assert_eq!(message(&chat("wxid_ann"), &Names::default(), &r, &none)["content"], "plain");
 }
 
 #[test]
@@ -461,13 +508,14 @@ fn messages_are_newest_first_and_by_their_order_in_one_second() {
         Range::default(),
         None,
         Limit::default_limit(),
+        none,
     );
     assert_eq!(ids(&all), [1, 2, 3, 1, 9]);
     assert_eq!(all.messages[0]["at"], rfc3339(200).unwrap());
     assert_eq!(all.next, None);
     let range = Range { from: Some(100), to: Some(200) };
     let some =
-        page(&chat("wxid_ann"), &Names::default(), rows, range, None, Limit::default_limit());
+        page(&chat("wxid_ann"), &Names::default(), rows, range, None, Limit::default_limit(), none);
     assert_eq!(ids(&some), [2, 3, 1]);
 }
 
@@ -485,7 +533,7 @@ proptest! {
             .map(|(i, &(db, at, seq))| row(&format!("message_{db}"), i as i64, at, seq))
             .collect();
         let read = |after: Option<&Cursor>, limit: usize| {
-            page(&chat("wxid_ann"), &Names::default(), rows.clone(), Range::default(), after, Limit::new(limit).unwrap())
+            page(&chat("wxid_ann"), &Names::default(), rows.clone(), Range::default(), after, Limit::new(limit).unwrap(), none)
         };
         let whole = read(None, wxread_answer::MAX_LIMIT);
         prop_assert_eq!(whole.messages.len(), rows.len());
