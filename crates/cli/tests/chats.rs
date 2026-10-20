@@ -48,10 +48,10 @@ fn it_lists_every_chat_newest_first_the_wals_included() {
         json!({
             "account": "wxid_me_1a2b",
             "chats": [
-                {"id": "wxid_bob", "name": "Bob", "kind": "direct", "last_message_at": "2025-10-09T09:00:00Z", "unread": 1, "members": 2},
-                {"id": "wxid_amy", "name": "Amy W", "kind": "direct", "last_message_at": "2025-10-09T08:58:20Z", "unread": 2, "members": 2},
-                {"id": "123@chatroom", "name": "Hiking", "kind": "group", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null},
-                {"id": "wxid_stranger", "name": "", "kind": "direct", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2},
+                {"id": "wxid_bob", "name": "Bob", "kind": "direct", "read_with": "wxread messages --chat wxid_bob", "last_message_at": "2025-10-09T09:00:00Z", "unread": 1, "members": 2},
+                {"id": "wxid_amy", "name": "Amy W", "kind": "direct", "read_with": "wxread messages --chat wxid_amy", "last_message_at": "2025-10-09T08:58:20Z", "unread": 2, "members": 2},
+                {"id": "123@chatroom", "name": "Hiking", "kind": "group", "read_with": "wxread messages --chat 123@chatroom", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null},
+                {"id": "wxid_stranger", "name": "", "kind": "direct", "read_with": "wxread messages --chat wxid_stranger", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2},
             ],
             "next": null,
         })
@@ -105,8 +105,8 @@ fn with_two_contacts_it_answers_only_the_groups_holding_both_smallest_first() {
         json!({
             "account": "wxid_me_1a2b",
             "chats": [
-                {"id": "2@chatroom", "name": "Small", "kind": "group", "last_message_at": null, "unread": 0, "members": 3},
-                {"id": "1@chatroom", "name": "Big", "kind": "group", "last_message_at": "2025-10-09T09:00:00Z", "unread": 5, "members": 4},
+                {"id": "2@chatroom", "name": "Small", "kind": "group", "read_with": "wxread messages --chat 2@chatroom", "last_message_at": null, "unread": 0, "members": 3},
+                {"id": "1@chatroom", "name": "Big", "kind": "group", "read_with": "wxread messages --chat 1@chatroom", "last_message_at": "2025-10-09T09:00:00Z", "unread": 5, "members": 4},
             ],
             "next": null,
         })
@@ -148,6 +148,41 @@ fn with_an_id_that_is_no_contact_it_names_the_fix() {
     assert!(error.contains("wxread contacts --query"), "{error}");
     let error = world.run(&["chats", "--with", "1@chatroom"], &[("WXREAD_KEYS", &keys)]).error();
     assert!(error.contains("`wxread group 1@chatroom`"), "{error}");
+}
+
+/// An account whose chat list holds WeChat's three folders beside a chat:
+/// none of them a contact, as on a real account.
+fn with_folders(world: &World) -> Account {
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.contacts = vec![Contact("wxid_amy", "Amy", "")];
+    account.sessions = vec![
+        Session("@placeholder_foldgroup", 1_760_000_400, 0),
+        Session("brandsessionholder", 1_760_000_300, 3),
+        Session("brandservicesessionholder", 1_760_000_200, 0),
+        Session("wxid_amy", 1_760_000_100, 0),
+    ];
+    account.write();
+    account
+}
+
+#[test]
+fn a_folder_is_listed_as_a_folder_named_as_wechat_names_it_with_what_reads_it() {
+    let world = World::new();
+    let account = with_folders(&world);
+    let json = world.run(&["chats"], &[("WXREAD_KEYS", &account.keys(&DATABASES))]).ok();
+    assert_eq!(
+        json["chats"],
+        json!([
+            {"id": "@placeholder_foldgroup", "name": "折叠的群聊", "kind": "folder", "read_with": "wxread chats", "last_message_at": "2025-10-09T09:00:00Z", "unread": 0, "members": null},
+            {"id": "brandsessionholder", "name": "订阅号消息", "kind": "folder", "read_with": "wxread articles", "last_message_at": "2025-10-09T08:58:20Z", "unread": 3, "members": null},
+            {"id": "brandservicesessionholder", "name": "服务号", "kind": "folder", "read_with": "wxread articles", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null},
+            {"id": "wxid_amy", "name": "Amy", "kind": "direct", "read_with": "wxread messages --chat wxid_amy", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2},
+        ])
+    );
+    let found = world
+        .run(&["chats", "--query", "订阅号"], &[("WXREAD_KEYS", &account.keys(&DATABASES))])
+        .ok();
+    assert_eq!(ids(&found), ["brandsessionholder"]);
 }
 
 #[test]

@@ -555,6 +555,22 @@ fn a_chat_no_database_holds_points_at_chats() {
 }
 
 #[test]
+fn a_folder_is_refused_naming_the_command_that_reads_it() {
+    let world = World::new();
+    let account = account(&world);
+    let keys = account.all_keys();
+    for (folder, command) in [
+        ("brandsessionholder", "`wxread articles`"),
+        ("brandservicesessionholder", "`wxread articles`"),
+        ("@placeholder_foldgroup", "`wxread chats`"),
+    ] {
+        let error = world.run(&["messages", "--chat", folder], &[("WXREAD_KEYS", &keys)]).error();
+        assert!(error.contains("is WeChat's folder") && error.contains(command), "{error}");
+        assert!(!error.contains("an id `wxread chats` lists"), "{error}");
+    }
+}
+
+#[test]
 fn a_message_database_the_keys_lack_is_named_with_the_fix() {
     let world = World::new();
     let account = account(&world);
