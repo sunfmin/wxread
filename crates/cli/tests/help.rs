@@ -469,6 +469,15 @@ fn favorites_answers_exactly_the_keys_its_help_and_the_guide_name() {
 }
 
 #[test]
+fn search_help_says_whitespace_does_not_decide_a_match() {
+    let help = asked(&["search", "--help"]);
+    let trips = between(&help, "TRIPS YOU UP", "\u{0}").join("\n");
+    assert!(trips.contains("Whitespace does not decide a match"), "{help}");
+    assert!(trips.contains("\"15万行\" and \"15 万行\" both find"), "{help}");
+    assert!(help.contains("with or without spaces"), "{help}");
+}
+
+#[test]
 fn search_answers_exactly_the_keys_its_help_and_the_guide_name() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
