@@ -101,7 +101,7 @@ pub fn identity(screen: &Screen, target: &Target) -> Identity {
 /// comparable, top first: each older one above the one found before it.
 /// And how many were compared: those down to the oldest found, the older
 /// ones being above what the chat shows.
-fn in_order(recent: &[Said], lines: &[String]) -> (usize, usize) {
+pub(crate) fn in_order(recent: &[Said], lines: &[String]) -> (usize, usize) {
     let mut below = lines.len();
     let mut found: usize = 0;
     let mut compared: usize = 0;
@@ -112,7 +112,13 @@ fn in_order(recent: &[Said], lines: &[String]) -> (usize, usize) {
                 hit = Some(j);
             }
         }
-        if let Some(j) = hit {
+        if let Some(mut j) = hit {
+            // A message read on several lines: older ones are above them all.
+            while let Some(above) = j.checked_sub(1)
+                && lines.get(above).is_some_and(|line| shows(said, line))
+            {
+                j = above;
+            }
             below = j;
             found = found.saturating_add(1);
             compared = at.saturating_add(1);
@@ -122,12 +128,27 @@ fn in_order(recent: &[Said], lines: &[String]) -> (usize, usize) {
 }
 
 /// Whether `line`, made comparable, shows `said`: a part of its text, or,
-/// for a message with no text, its sender's name or its minute.
-fn shows(said: &Said, line: &str) -> bool {
+/// for a message with no text, its sender's name or its minute. A line is
+/// a part of the text when it is in it with at most a quarter of its
+/// characters read otherwise, an ellipsis it was cut short with left off;
+/// one of two or three characters must be in it as it is.
+pub(crate) fn shows(said: &Said, line: &str) -> bool {
     let text = said_text(&said.text);
     if !text.is_empty() {
-        let long = line.chars().count() >= 2;
-        return line == text || (long && (text.contains(line) || line.contains(&text)));
+        let read: Vec<char> = line.chars().collect();
+        let mut stem = read.as_slice();
+        while let Some((last, rest)) = stem.split_last() {
+            if !ELLIPSIS.contains(last) {
+                break;
+            }
+            stem = rest;
+        }
+        if stem.len() < 2 {
+            return line == text;
+        }
+        let text: Vec<char> = text.chars().collect();
+        return within(stem, &text).saturating_mul(4) <= stem.len()
+            || (text.len() >= 2 && read.windows(text.len()).any(|w| w == text.as_slice()));
     }
     let sender = fold(&said.sender);
     if !sender.is_empty() && names(line, &sender) {
@@ -237,6 +258,25 @@ pub fn closeness(read: &str, name: &str) -> Option<usize> {
     (apart.saturating_mul(4) <= against.len()).then_some(apart)
 }
 
+/// The fewest characters to insert, remove or change to make `part` into
+/// some stretch of `text`: how far `part` is from being in it.
+fn within(part: &[char], text: &[char]) -> usize {
+    // Where the stretch starts and ends in `text` is free.
+    let mut row: Vec<usize> = vec![0; text.len().saturating_add(1)];
+    for (i, cp) in part.iter().enumerate() {
+        let mut next: Vec<usize> = vec![i.saturating_add(1)];
+        for (j, ct) in text.iter().enumerate() {
+            let diagonal = row.get(j).copied().unwrap_or(usize::MAX);
+            let up = row.get(j.saturating_add(1)).copied().unwrap_or(usize::MAX);
+            let left = next.last().copied().unwrap_or(usize::MAX);
+            let change = if cp == ct { diagonal } else { diagonal.saturating_add(1) };
+            next.push(change.min(up.saturating_add(1)).min(left.saturating_add(1)));
+        }
+        row = next;
+    }
+    row.iter().copied().min().unwrap_or(0)
+}
+
 /// The characters to insert, remove or change to make `a` into `b`.
 fn distance(a: &[char], b: &[char]) -> usize {
     let mut row: Vec<usize> = vec![0];
@@ -259,7 +299,8 @@ fn distance(a: &[char], b: &[char]) -> usize {
 
 /// Text made comparable loosely, as [`normalize`] does and further: every
 /// dash, and `一` (which macOS reads a dash as), made `-`; a circled number
-/// made its digits; a text cursor `|` dropped. Both sides of a comparison
+/// made its digits; a text cursor `|` and every emoji (which macOS reads as
+/// whatever it likes) dropped. Both sides of a comparison
 /// are folded alike, so what folds together is only told apart by the
 /// member count and the messages.
 pub fn fold(text: &str) -> String {
@@ -268,6 +309,7 @@ pub fn fold(text: &str) -> String {
         match c {
             '—' | '–' | '―' | '‐' | '‑' | '一' | '－' | '﹣' => folded.push('-'),
             '|' | '｜' | '丨' => {}
+            c if emoji(c) => {}
             '①'..='⑳' => {
                 let n = u32::from(c).saturating_sub(u32::from('①')).saturating_add(1);
                 folded.push_str(&n.to_string());
@@ -276,4 +318,13 @@ pub fn fold(text: &str) -> String {
         }
     }
     folded
+}
+
+/// Whether `c` is drawn as an emoji, or is part of one: a flag's letters,
+/// a pictograph, a symbol, the selector or joiner between them.
+fn emoji(c: char) -> bool {
+    matches!(
+        u32::from(c),
+        0x1F000..=0x1FAFF | 0x2600..=0x27BF | 0x2B00..=0x2BFF | 0xFE00..=0xFE0F | 0x200D | 0x20E3
+    )
 }

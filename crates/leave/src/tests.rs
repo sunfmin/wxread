@@ -686,6 +686,57 @@ fn a_name_read_close_to_it_or_cut_short_is_listed_by_it() {
     }
 }
 
+#[test]
+fn two_messages_of_the_same_text_are_found_one_above_the_other() {
+    // 18294283211@chatroom posts its notice again and again: the older one
+    // is not found in the lines of the newer.
+    let notice = "周边游线路安排\n地铁集合友好\n10.25莫干山红叶季";
+    let lines: Vec<String> = [
+        "周边游线路安排",
+        "地铁集合友好",
+        "10.25莫干山红叶季",
+        "16:34",
+        "小V",
+        "周边游线路安排",
+        "地铁集合友好",
+        "10.25莫干山红叶季",
+    ]
+    .iter()
+    .map(|l| fold(l))
+    .collect();
+    let recent = vec![said("小V", None, notice), said("小V", None, notice), said("小V", None, "")];
+    assert_eq!(identify::in_order(&recent, &lines), (2, 2));
+}
+
+#[test]
+fn emoji_fold_away_so_a_name_read_with_them_misread_is_close() {
+    // 🇻🇳🇨🇳 read as ★圓 in the search's list on 2026-10-20.
+    let name = fold("🇻🇳🇨🇳中越防失联交流群");
+    assert_eq!(name, "中越防失联交流群");
+    assert!(closeness(&fold("★圓中越防失联交流群"), &name).is_some());
+    assert_eq!(fold("周边游🚩户外0️⃣元"), "周边游户外0元");
+}
+
+#[test]
+fn a_line_cut_short_or_misread_is_found_in_its_messages_text() {
+    let card = said(
+        "霍曼-小芬",
+        None,
+        "开着依维柯，带着全家去撒欢｜22.99万，威尔特芬C型房车，6座4卧\n苏州霍曼房车旗舰店",
+    );
+    // Cut short at the bubble's edge, its ellipsis read as `.`.
+    assert!(identify::shows(&card, &fold("22.99万,威尔特芬C型房车,6.")));
+    // An emoji read as `17` before a notice's line, 广 read as 厂.
+    let notice = said("小V", None, "🍁10.25莫干山红叶季68元起\n广域物联方案");
+    assert!(identify::shows(&notice, &fold("1710.25莫干山红叶季68元起")));
+    assert!(identify::shows(&notice, &fold("厂域物联方案")));
+    // A line of another message is not found in it.
+    assert!(!identify::shows(&notice, &fold("请问有没有做宠物定位器的公司")));
+    // Short lines must be found exactly.
+    assert!(!identify::shows(&notice, &fold("干活")));
+    assert!(identify::shows(&notice, &fold("莫干")));
+}
+
 proptest! {
     #[test]
     fn normalizing_twice_is_normalizing_once(text in "\\PC{0,40}") {

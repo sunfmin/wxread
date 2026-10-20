@@ -248,16 +248,17 @@ fn target(
 
 /// A message as `wxread messages` answers it, as its chat shows it: its
 /// sender's display name, the minute of the day it was sent at on this
-/// Mac's clock, and its text (a text's, a system message's, a link's
-/// title), if it has one.
+/// Mac's clock, and the text it shows, if any: a text's, a notice's, a
+/// system message's; a card's title, summary and source, one a line.
 fn said(message: &Value) -> Said {
     let kind = message["kind"].as_str().unwrap_or_default();
     let body = &message[kind];
-    let text = body["text"].as_str().or_else(|| body["title"].as_str()).unwrap_or_default();
+    let shown: Vec<&str> =
+        ["text", "title", "summary", "source"].iter().filter_map(|k| body[*k].as_str()).collect();
     Said {
         sender: message["sender"]["display_name"].as_str().unwrap_or_default().to_string(),
         minute: message["at"].as_str().and_then(local_minute),
-        text: text.to_string(),
+        text: shown.join("\n"),
     }
 }
 
