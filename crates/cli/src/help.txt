@@ -19,7 +19,12 @@ WHAT IT NEEDS
 RUN FIRST
   wxread doctor     what it found and what is missing, each with its fix
   wxread chats      the account's chats, newest first, once doctor is ok
-  wxread contacts   the account's contacts and groups, with their ids
+  wxread chats --with <id> [--with <id>]
+                    the chat with someone, and the groups that hold
+                    everyone given, smallest first: the way to find
+                    "the group of me, A and B"
+  wxread contacts   the account's contacts and groups, with their ids;
+                    --query <name> finds someone's id
   wxread messages --chat <id>
                     one chat's messages, each as its kind, newest first
   wxread search <text>

@@ -1,7 +1,11 @@
-wxread chats: the account's chats, newest first, a page at a time.
+wxread chats: the account's chats, newest first, a page at a time; with
+--with, only the chats that hold the contacts given, the smallest first.
 
 WHEN TO RUN IT
   To see which chats there are and pick one, before reading its messages.
+  To find the chat with someone, or the group of you, A and B:
+    wxread chats --with <A's id> --with <B's id>
+  `wxread contacts --query <name>` finds each one's id.
   Run by you or an agent, once the keys are supplied; it changes nothing.
 
 WHAT IT READS
@@ -15,12 +19,20 @@ WHAT IT READS
 OPTIONS
   --account <id>    the account to read, as `wxread doctor` names it;
                     with only one logged in, that one
+  --with <id>       only the chats that hold this contact (a person or an
+                    official account, by id); again for each one more, and
+                    a chat must hold them all. With one, the direct chat
+                    with them first; then every group they are all members
+                    of, the smallest first, newest first among the same
+                    size, whether or not the group has a chat in the list
   --limit <n>       how many chats a page holds, 1 to 1000; 100 unless given
-  --cursor <next>   start after the page that answered this `next`
+  --cursor <next>   start after the page that answered this `next`, asked
+                    with the same --with
 
 WHAT IT ANSWERS
     account   the account read: its directory's name, as doctor's id
-    chats     [{id, name, kind, last_message_at, unread}], newest first:
+    chats     [{id, name, kind, last_message_at, unread, members}], newest
+              first (with --with, the smallest first):
               id               its contact's id: a wxid, or a group's
                                <n>@chatroom
               name             as WeChat shows the chat: the account's
@@ -35,6 +47,9 @@ WHAT IT ANSWERS
               last_message_at  when its last message was, RFC 3339 in UTC;
                                null for none
               unread           its messages not yet read
+              members          how many are in it, the account included:
+                               2 for a direct chat; null for a group
+                               WeChat keeps no record of the members of
     next      pass it as --cursor for the next page; null on the last one
 
 TRIPS YOU UP
@@ -42,6 +57,12 @@ TRIPS YOU UP
     a new message since moves to the front, so it is not on a later page,
     and a fresh run from the newest shows it.
   - An official account (gh_...) is a "direct" chat.
+  - --with takes ids, not names: an id that is no contact is an error
+    naming `wxread contacts --query`, and a group's id is an error naming
+    `wxread group <id>`, which answers its members.
+  - A group --with answers that has no chat in the list (it was deleted
+    from WeChat's list, or never had a message) has last_message_at null
+    and unread 0; `wxread messages --chat <id>` reads what it holds.
   - The keys must open both databases. One missing, or one that no longer
     opens its database (WeChat created its databases again: logging out
     and in, some updates), is an error naming the database; its fix is

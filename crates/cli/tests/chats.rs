@@ -48,14 +48,132 @@ fn it_lists_every_chat_newest_first_the_wals_included() {
         json!({
             "account": "wxid_me_1a2b",
             "chats": [
-                {"id": "wxid_bob", "name": "Bob", "kind": "direct", "last_message_at": "2025-10-09T09:00:00Z", "unread": 1},
-                {"id": "wxid_amy", "name": "Amy W", "kind": "direct", "last_message_at": "2025-10-09T08:58:20Z", "unread": 2},
-                {"id": "123@chatroom", "name": "Hiking", "kind": "group", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0},
-                {"id": "wxid_stranger", "name": "", "kind": "direct", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0},
+                {"id": "wxid_bob", "name": "Bob", "kind": "direct", "last_message_at": "2025-10-09T09:00:00Z", "unread": 1, "members": 2},
+                {"id": "wxid_amy", "name": "Amy W", "kind": "direct", "last_message_at": "2025-10-09T08:58:20Z", "unread": 2, "members": 2},
+                {"id": "123@chatroom", "name": "Hiking", "kind": "group", "last_message_at": "2025-10-09T08:56:40Z", "unread": 0, "members": null},
+                {"id": "wxid_stranger", "name": "", "kind": "direct", "last_message_at": "2025-10-09T08:55:00Z", "unread": 0, "members": 2},
             ],
             "next": null,
         })
     );
+}
+
+/// A group of `members`, the account among them, none named in it.
+fn group(id: &'static str, members: &[&'static str]) -> Group {
+    Group {
+        id,
+        owner: "wxid_me",
+        members: members.iter().map(|m| (*m, "")).collect(),
+        notice: None,
+    }
+}
+
+/// The account, Amy and Bob: a chat with Amy; a big group of all three
+/// and a stranger, whose chat is in the WAL; a small one of the three with
+/// no chat; and one of the account and Amy alone.
+fn with_groups(world: &World) -> Account {
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.contacts = vec![
+        Contact("wxid_me", "Me", ""),
+        Contact("wxid_amy", "Amy", "Amy W"),
+        Contact("wxid_bob", "Bob", ""),
+        Contact("1@chatroom", "Big", ""),
+        Contact("2@chatroom", "Small", ""),
+        Contact("3@chatroom", "Amy's", ""),
+    ];
+    account.groups = vec![
+        group("1@chatroom", &["wxid_me", "wxid_amy", "wxid_bob", "wxid_stranger"]),
+        group("2@chatroom", &["wxid_me", "wxid_amy", "wxid_bob"]),
+        group("3@chatroom", &["wxid_me", "wxid_amy"]),
+    ];
+    account.sessions =
+        vec![Session("wxid_amy", 1_760_000_300, 2), Session("3@chatroom", 1_760_000_200, 0)];
+    account.recent = vec![Session("1@chatroom", 1_760_000_400, 5)];
+    account.write();
+    account
+}
+
+#[test]
+fn with_two_contacts_it_answers_only_the_groups_holding_both_smallest_first() {
+    let world = World::new();
+    let account = with_groups(&world);
+    let keys = account.keys(&DATABASES);
+    let args = ["chats", "--with", "wxid_amy", "--with", "wxid_bob"];
+    let json = world.run(&args, &[("WXREAD_KEYS", &keys)]).ok();
+    assert_eq!(
+        json,
+        json!({
+            "account": "wxid_me_1a2b",
+            "chats": [
+                {"id": "2@chatroom", "name": "Small", "kind": "group", "last_message_at": null, "unread": 0, "members": 3},
+                {"id": "1@chatroom", "name": "Big", "kind": "group", "last_message_at": "2025-10-09T09:00:00Z", "unread": 5, "members": 4},
+            ],
+            "next": null,
+        })
+    );
+}
+
+#[test]
+fn with_one_contact_it_answers_the_direct_chat_and_their_groups() {
+    let world = World::new();
+    let account = with_groups(&world);
+    let keys = account.keys(&DATABASES);
+    let json = world.run(&["chats", "--with", "wxid_amy"], &[("WXREAD_KEYS", &keys)]).ok();
+    assert_eq!(ids(&json), ["wxid_amy", "3@chatroom", "2@chatroom", "1@chatroom"]);
+    assert_eq!(json["chats"][0]["members"], json!(2));
+    let mut paged = Vec::new();
+    let mut args = vec!["chats", "--with", "wxid_amy", "--limit", "1"];
+    let mut cursor;
+    loop {
+        let json = world.run(&args, &[("WXREAD_KEYS", &keys)]).ok();
+        paged.extend(ids(&json));
+        match json["next"].as_str() {
+            Some(next) => {
+                cursor = next.to_string();
+                args = vec!["chats", "--with", "wxid_amy", "--limit", "1", "--cursor", &cursor];
+            }
+            None => break,
+        }
+    }
+    assert_eq!(paged, ["wxid_amy", "3@chatroom", "2@chatroom", "1@chatroom"]);
+}
+
+#[test]
+fn with_an_id_that_is_no_contact_it_names_the_fix() {
+    let world = World::new();
+    let account = with_groups(&world);
+    let keys = account.keys(&DATABASES);
+    let error = world.run(&["chats", "--with", "wxid_nobody"], &[("WXREAD_KEYS", &keys)]).error();
+    assert!(error.contains("no contact wxid_nobody"), "{error}");
+    assert!(error.contains("wxread contacts --query"), "{error}");
+    let error = world.run(&["chats", "--with", "1@chatroom"], &[("WXREAD_KEYS", &keys)]).error();
+    assert!(error.contains("`wxread group 1@chatroom`"), "{error}");
+}
+
+#[test]
+fn with_hundreds_of_groups_it_answers_well_under_a_second() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    let leak = |s: String| -> &'static str { Box::leak(s.into_boxed_str()) };
+    let people: Vec<&'static str> = (0..300).map(|n| leak(format!("wxid_p{n}"))).collect();
+    account.contacts = people.iter().map(|p| Contact(p, "P", "")).collect();
+    for g in 0..600 {
+        let id = leak(format!("{g}@chatroom"));
+        account.contacts.push(Contact(id, "G", ""));
+        let members: Vec<&'static str> =
+            (0..40).map(|m| people[(g * 7 + m) % people.len()]).collect();
+        account.groups.push(group(id, &members));
+        account.sessions.push(Session(id, 1_760_000_000 + g as i64, 0));
+    }
+    account.write();
+    let keys = account.keys(&DATABASES);
+    let started = std::time::Instant::now();
+    let json = world
+        .run(&["chats", "--with", "wxid_p0", "--with", "wxid_p1"], &[("WXREAD_KEYS", &keys)])
+        .ok();
+    let took = started.elapsed();
+    assert!(!ids(&json).is_empty(), "{json}");
+    assert!(took < std::time::Duration::from_millis(1000), "took {took:?}");
 }
 
 #[test]

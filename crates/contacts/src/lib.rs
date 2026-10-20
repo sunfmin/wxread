@@ -4,7 +4,7 @@
 //! with their name in it. The effect crate reads the rows out of the
 //! contact and head image databases; nothing here reads or writes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
 
@@ -340,6 +340,12 @@ pub fn group(
     })
 }
 
+/// The id of every member of the group `room` is: those `chatroom_member`
+/// lists and those its `ext_buffer` does, each once, by id.
+pub fn members(room: &Room) -> BTreeSet<String> {
+    listed(room).into_iter().map(|(id, _)| id).collect()
+}
+
 /// Each member of the group `room` is, once, with their name in it (None
 /// for none set), in the order WeChat lists them: those its `ext_buffer`
 /// holds, then those only `chatroom_member` does.
@@ -599,6 +605,20 @@ mod tests {
         );
         assert_eq!(g.members[0].remark.as_deref(), Some("Auntie"));
         assert_eq!(g.members[3].name, "");
+    }
+
+    #[test]
+    fn a_groups_members_are_those_listed_and_those_its_buffer_holds_each_once() {
+        let room = Room {
+            owner: None,
+            ext_buffer: Some([member("wxid_b", "B"), member("wxid_c", "")].concat()),
+            members: vec!["wxid_a".into(), "wxid_b".into(), String::new()],
+        };
+        assert_eq!(
+            members(&room),
+            BTreeSet::from(["wxid_a".into(), "wxid_b".into(), "wxid_c".into()])
+        );
+        assert_eq!(members(&Room::default()), BTreeSet::new());
     }
 
     #[test]
