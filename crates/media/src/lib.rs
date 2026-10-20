@@ -15,7 +15,16 @@
 //!   share its name;
 //! - a voice message: its SILK bytes in `message/media_<n>.db`'s
 //!   `VoiceInfo`, by the message's server id;
-//! - a sticker: on WeChat's CDN, at its address, checked against its MD5.
+//! - a sticker: on WeChat's CDN, at its address, checked against its MD5;
+//! - a Moment's image: `cache/<YYYY-MM>/Sns/Img/<k[..2]>/<k[2..]>`, no
+//!   extension, sealed ([`image`]), `k` the MD5 in lowercase hex of
+//!   `<post id>_<media id>_2` (`_1` its thumbnail, `_6` a 240-pixel copy),
+//!   the ids as `sns/sns.db`'s XML says them (the post's `<id>`, which is
+//!   the row's `tid` read unsigned; the media's `<id>`) and the month the
+//!   one it was posted in; a Moment's video is
+//!   `cache/<YYYY-MM>/Sns/Video/<k[..2]>/<k[2..]>.mp4` by `_3`, its
+//!   thumbnail the `.jpg` beside it. Found on WeChat for Mac 4.1.5, as
+//!   docs/moment-cache.md records with the script that counts it again.
 
 pub mod image;
 
@@ -45,13 +54,19 @@ pub enum Media {
         url: Option<String>,
     },
     Voice,
+    /// A Moment's image, by the ids of its post and of its media, as
+    /// `sns/sns.db` says them.
+    MomentImage {
+        post: u64,
+        media: u64,
+    },
 }
 
 impl Media {
     /// Its kind, as `wxread messages` names it.
     pub fn kind(&self) -> &'static str {
         match self {
-            Media::Image { .. } => "image",
+            Media::Image { .. } | Media::MomentImage { .. } => "image",
             Media::Video { .. } => "video",
             Media::File { .. } => "file",
             Media::Sticker { .. } => "sticker",
@@ -62,17 +77,19 @@ impl Media {
     /// Whether WeChat keeps a thumbnail of its kind: an image's and a
     /// video's.
     pub fn has_thumbnail(&self) -> bool {
-        matches!(self, Media::Image { .. } | Media::Video { .. })
+        matches!(self, Media::Image { .. } | Media::Video { .. } | Media::MomentImage { .. })
     }
 
     /// The directory under the account's whose months (`YYYY-MM`) hold its
-    /// file, for a message of the chat whose [`chat_dir`] is `chat_dir`:
-    /// None for a voice message and a sticker, which are not kept in one.
+    /// file, for a message of the chat whose [`chat_dir`] is `chat_dir`
+    /// (a Moment's has none): None for a voice message and a sticker,
+    /// which are not kept in one.
     pub fn shelf(&self, chat_dir: &str) -> Option<String> {
         match self {
             Media::Image { .. } => Some(format!("msg/attach/{chat_dir}")),
             Media::Video { .. } => Some("msg/video".into()),
             Media::File { .. } => Some("msg/file".into()),
+            Media::MomentImage { .. } => Some("cache".into()),
             Media::Sticker { .. } | Media::Voice => None,
         }
     }
@@ -89,6 +106,10 @@ impl Media {
             (Media::Video { name: Some(n) }, false) => vec![format!("{n}.mp4")],
             (Media::Video { name: Some(n) }, true) => vec![format!("{n}_thumb.jpg")],
             (Media::File { name: Some(n), .. }, false) if is_one_name(n) => vec![n.clone()],
+            (Media::MomentImage { post, media }, false) => vec![moment_image(*post, *media, 2)],
+            (Media::MomentImage { post, media }, true) => {
+                vec![moment_image(*post, *media, 1), moment_image(*post, *media, 6)]
+            }
             _ => Vec::new(),
         }
     }
@@ -97,7 +118,7 @@ impl Media {
     /// as an image is ([`image`]), so are decrypted before they are
     /// written.
     pub fn sealed(&self) -> bool {
-        matches!(self, Media::Image { .. })
+        matches!(self, Media::Image { .. } | Media::MomentImage { .. })
     }
 
     /// Of the files found, each with its size, the one to take: a file's of
@@ -121,6 +142,14 @@ impl Media {
 pub struct Held {
     pub file: bool,
     pub thumbnail: Option<bool>,
+}
+
+/// The path in a month of `cache` of the copy `copy` (2 the image, 1 and
+/// 6 smaller ones) WeChat caches of media `media` of Moment `post`.
+fn moment_image(post: u64, media: u64, copy: u8) -> String {
+    let k = format!("{:x}", md5::compute(format!("{post}_{media}_{copy}")));
+    let (dir, name) = k.split_at(2);
+    format!("Sns/Img/{dir}/{name}")
 }
 
 /// Whether `name` is one name in a directory, not a path out of it.
@@ -289,6 +318,24 @@ mod tests {
         assert!(file.names(true).is_empty() && !file.has_thumbnail());
         assert_eq!(Media::Voice.shelf("x"), None);
         assert!(Media::Image { name: None }.names(false).is_empty());
+    }
+
+    #[test]
+    fn a_moments_image_is_named_by_its_post_and_media_ids() {
+        // md5("18000000000000000001_18000000000000000777_<n>"), n 2 the
+        // image, 1 and 6 its smaller copies.
+        let image = Media::MomentImage { post: 18000000000000000001, media: 18000000000000000777 };
+        assert_eq!(image.shelf("ignored"), Some("cache".into()));
+        assert_eq!(image.names(false), ["Sns/Img/cb/47aea569075262588e3e05eb6a268c"]);
+        assert_eq!(
+            image.names(true),
+            [
+                "Sns/Img/99/0defbbcd85aab7389447c3d08bec42",
+                "Sns/Img/9f/38ac6f3323d5c8922c7c963d0a5f52"
+            ]
+        );
+        assert!(image.sealed() && image.has_thumbnail());
+        assert_eq!(image.kind(), "image");
     }
 
     #[test]
