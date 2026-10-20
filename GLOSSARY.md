@@ -116,8 +116,12 @@ _Avoid_: not found, absent, deleted
 Something the account saved in WeChat's Favorites (收藏), by its own id: a text, a link, an image, a video, a file, a voice message, a place, a chat history, a note and the like, with where it was saved from and the tags the account gave it.
 _Avoid_: bookmark, collection, saved item, star
 
+**Note**:
+A page of paragraphs, places, images and files written in WeChat (笔记), saved as a favorite or sent into a chat; its parts are its items, read the same either way.
+_Avoid_: memo, document, record
+
 **Item**:
-One part of a favorite, as WeChat keeps it in its data list: a chat history's messages, a note's paragraphs and images, or the one image or file a favorite is; an item that carries a file is fetched by its file id, `fav:<favorite>:<item>`.
+One part of a favorite or of a note sent into a chat, as WeChat keeps it in its data list: a chat history's messages, a note's paragraphs and images, or the one image or file a favorite is; an item that carries a file is fetched by its file id, `fav:<favorite>:<item>`, or a note's in a chat `note:<message>:<item>`.
 _Avoid_: data item, element, entry
 
 **Image key**:
