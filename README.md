@@ -22,7 +22,7 @@ brew install sunfmin/tap/wxread
 
 `wxread --version` prints the release you have. The keys of WeChat's
 databases are the one thing the installer cannot get: `wxread keys --help`
-says how.
+says how, and when macOS refuses, `wxread resign --help` says how to let it.
 
 **For an AI agent**: a skill that sends an agent to `wxread --help` installs
 with:
