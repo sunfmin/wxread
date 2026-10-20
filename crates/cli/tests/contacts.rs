@@ -157,6 +157,40 @@ fn group_answers_its_name_notice_owner_and_every_member_named_in_it() {
 }
 
 #[test]
+fn an_unnamed_group_answers_its_members_names_and_no_name_of_its_own() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.contacts = vec![
+        Contact("wxid_me", "Me", ""),
+        Contact("wxid_qin", "秦俊斌 @qinjunbin", ""),
+        Contact("wxid_sun", "Sun", "孙凤君"),
+        Contact("1@chatroom", "", ""),
+    ];
+    account.groups = vec![Group {
+        id: "1@chatroom",
+        owner: "wxid_me",
+        members: vec![("wxid_sun", ""), ("wxid_me", ""), ("wxid_qin", "")],
+        notice: None,
+    }];
+    account.write();
+    let keys = keys(&account);
+    let json = world.run(&["group", "1@chatroom"], &[("WXREAD_KEYS", &keys)]).ok();
+    let group = &json["group"];
+    assert_eq!(
+        (&group["display_name"], &group["name"], &group["remark"]),
+        (&json!("孙凤君、秦俊斌 @qinjunbin"), &json!(""), &json!(null))
+    );
+    let json = world.run(&["contact", "1@chatroom"], &[("WXREAD_KEYS", &keys)]).ok();
+    assert_eq!(
+        (&json["contact"]["display_name"], &json["contact"]["name"]),
+        (&json!("孙凤君、秦俊斌 @qinjunbin"), &json!(""))
+    );
+    let json = world.run(&["contacts", "--query", "孙凤君"], &[("WXREAD_KEYS", &keys)]).ok();
+    assert_eq!(ids(&json), ["1@chatroom", "wxid_sun"]);
+    assert_eq!(json["contacts"][0]["display_name"], json!("孙凤君、秦俊斌 @qinjunbin"));
+}
+
+#[test]
 fn a_group_with_no_notice_answers_null() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
