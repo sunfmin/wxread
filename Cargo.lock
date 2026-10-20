@@ -759,6 +759,7 @@ dependencies = [
  "wxread-contacts",
  "wxread-doctor",
  "wxread-keys",
+ "wxread-messages",
  "wxread-schema",
  "wxread-sqlcipher",
 ]
@@ -787,6 +788,7 @@ dependencies = [
  "proptest",
  "roxmltree",
  "wxread-answer",
+ "wxread-messages",
 ]
 
 [[package]]
@@ -822,6 +824,20 @@ dependencies = [
  "flux-rs",
  "proptest",
  "serde_json",
+]
+
+[[package]]
+name = "wxread-messages"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "roxmltree",
+ "ruzstd",
+ "serde_json",
+ "wxread-answer",
+ "wxread-chats",
+ "wxread-contacts",
+ "wxread-schema",
 ]
 
 [[package]]

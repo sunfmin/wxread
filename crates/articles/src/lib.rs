@@ -7,8 +7,9 @@
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
-use roxmltree::{Document, Node};
+use roxmltree::Node;
 use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
+use wxread_messages::kinds::{child, named, split, text, xml};
 
 /// The option that picks one official account's articles.
 pub const OFFICIAL_ACCOUNT_FLAG: &str = "--official-account";
@@ -29,8 +30,10 @@ pub struct Message {
     pub local_type: i64,
     /// When it was sent, in seconds since the epoch.
     pub create_time: Option<i64>,
-    /// Its XML, as WeChat wrote it.
-    pub content: String,
+    /// `message_content` as stored: its XML, compressed when `compressed`
+    /// (`WCDB_CT_message_content`) says.
+    pub content: Vec<u8>,
+    pub compressed: Option<i64>,
 }
 
 /// One article, as `wxread articles` lists it.
@@ -137,15 +140,16 @@ pub fn page(
     Page { articles: placed.into_iter().map(|(_, article)| article).collect(), next }
 }
 
-/// The articles of `message`, in its push's order; `named` the name of
+/// The articles of `message`, in its push's order; `contact` the name of
 /// its official account the account's contact of it has. None when it is
 /// no push of articles.
-pub fn articles(message: &Message, named: Option<&str>) -> Vec<Article> {
-    let (kind, sub) = (message.local_type & 0xffff_ffff, message.local_type >> 32);
+pub fn articles(message: &Message, contact: Option<&str>) -> Vec<Article> {
+    let (kind, sub) = split(message.local_type);
     if kind != APP {
         return Vec::new();
     }
-    xml(&message.content, |root| {
+    let content = wxread_messages::content_text(&message.content, message.compressed);
+    xml(&content, |root| {
         let app = child(root, "appmsg")?;
         let sub = if sub != 0 { sub } else { text(app, "type")?.parse().ok()? };
         if sub != LINK {
@@ -154,7 +158,7 @@ pub fn articles(message: &Message, named: Option<&str>) -> Vec<Article> {
         let reader = child(app, "mmreader");
         let pushed =
             reader.and_then(|r| text(r, "publisher/nickname").or_else(|| text(r, "category/name")));
-        let name = [named, pushed.as_deref()]
+        let name = [contact, pushed.as_deref()]
             .into_iter()
             .flatten()
             .find(|n| !n.is_empty())
@@ -170,10 +174,8 @@ pub fn articles(message: &Message, named: Option<&str>) -> Vec<Article> {
             url,
             cover,
         };
-        let items: Vec<Node> = reader
-            .and_then(|r| child(r, "category"))
-            .map(|c| c.children().filter(|n| n.has_tag_name("item")).collect())
-            .unwrap_or_default();
+        let items: Vec<Node> =
+            reader.and_then(|r| child(r, "category")).map(|c| named(c, "item")).unwrap_or_default();
         let own = |name| text(app, name).unwrap_or_default();
         if items.is_empty() {
             return Some(vec![article(own("title"), own("des"), own("url"), own("thumburl"))]);
@@ -186,91 +188,6 @@ pub fn articles(message: &Message, named: Option<&str>) -> Vec<Article> {
         Some(read.collect())
     })
     .unwrap_or_default()
-}
-
-/// What `read` makes of the XML document `content`, read as WeChat writes
-/// it: with an XML declaration inside it, which WeChat puts in some
-/// messages after their `<msg>`, and an `&` that starts no entity, as in
-/// some links' addresses. None when it is not XML even then.
-fn xml<R>(content: &str, read: impl FnOnce(Node) -> Option<R>) -> Option<R> {
-    let text = without_declarations(content.trim());
-    let escaped;
-    let doc = match Document::parse(&text) {
-        Ok(doc) => doc,
-        Err(_) => {
-            escaped = bare_ampersands_escaped(&text);
-            Document::parse(&escaped).ok()?
-        }
-    };
-    read(doc.root_element())
-}
-
-/// `text` without the XML declarations (`<?xml …?>`) in it.
-fn without_declarations(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some((before, after)) = rest.split_once("<?xml") {
-        out.push_str(before);
-        rest = after.split_once("?>").map_or("", |(_, tail)| tail);
-    }
-    out.push_str(rest);
-    out
-}
-
-/// `text` with each `&` that starts no entity (`&amp;`, `&#38;`) written
-/// `&amp;`.
-fn bare_ampersands_escaped(text: &str) -> String {
-    let mut pieces = text.split('&');
-    let mut out = pieces.next().unwrap_or_default().to_string();
-    for piece in pieces {
-        out.push_str(if starts_entity(piece) { "&" } else { "&amp;" });
-        out.push_str(piece);
-    }
-    out
-}
-
-/// Whether `rest`, what follows an `&`, is an entity's name and its `;`:
-/// a name of letters and digits, or a character XML allows by its number.
-fn starts_entity(rest: &str) -> bool {
-    let Some((name, _)) = rest.split_once(';') else {
-        return false;
-    };
-    let short = |s: &str| !s.is_empty() && s.len() <= 8;
-    let allowed = |n: Option<u32>| {
-        n.and_then(char::from_u32)
-            .is_some_and(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r'))
-    };
-    match (name.strip_prefix("#x"), name.strip_prefix('#')) {
-        (Some(hex), _) => {
-            short(hex)
-                && hex.chars().all(|c| c.is_ascii_hexdigit())
-                && allowed(u32::from_str_radix(hex, 16).ok())
-        }
-        (None, Some(decimal)) => {
-            short(decimal)
-                && decimal.chars().all(|c| c.is_ascii_digit())
-                && allowed(decimal.parse().ok())
-        }
-        (None, None) => {
-            short(name)
-                && name.starts_with(|c: char| c.is_ascii_alphabetic())
-                && name.chars().all(|c| c.is_ascii_alphanumeric())
-        }
-    }
-}
-
-/// `node`'s child named `path`'s last part, through each part before it:
-/// `child(n, "publisher/nickname")`.
-fn child<'a, 'i>(node: Node<'a, 'i>, path: &str) -> Option<Node<'a, 'i>> {
-    path.split('/').try_fold(node, |n, name| n.children().find(|c| c.has_tag_name(name)))
-}
-
-/// The text of `path` under `node`, CDATA or not, trimmed: None when it is
-/// absent or empty.
-fn text(node: Node, path: &str) -> Option<String> {
-    let found = child(node, path)?;
-    let t: String = found.children().filter(Node::is_text).filter_map(|n| n.text()).collect();
-    Some(t.trim().to_string()).filter(|t| !t.is_empty())
 }
 
 #[cfg(test)]
@@ -286,7 +203,8 @@ mod tests {
             local_id,
             local_type: PUSH,
             create_time: Some(at),
-            content: content.to_string(),
+            content: content.as_bytes().to_vec(),
+            compressed: None,
         }
     }
 
@@ -346,9 +264,9 @@ mod tests {
 
     #[test]
     fn what_is_no_push_of_articles_has_none() {
-        let mut text = message("gh_a", 1, 1, "Thanks for following");
-        text.local_type = 1;
-        assert_eq!(articles(&text, None), []);
+        let mut said = message("gh_a", 1, 1, "Thanks for following");
+        said.local_type = 1;
+        assert_eq!(articles(&said, None), []);
         let mut file = message("gh_a", 1, 1, &push(1));
         file.local_type = APP | 6 << 32;
         assert_eq!(articles(&file, None), []);

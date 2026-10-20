@@ -1,6 +1,6 @@
 [package]
 name = "wxread-answer"
-description = "What every wxread answer is written with: how many things a page holds, and a time as RFC 3339: pure functions, checked by Flux (docs/adr/0002-pure-crates-checked-by-flux.md)"
+description = "What every wxread answer is written with: how many things a page holds, and a time written and read as RFC 3339: pure functions, checked by Flux (docs/adr/0002-pure-crates-checked-by-flux.md)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

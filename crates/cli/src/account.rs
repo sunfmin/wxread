@@ -18,8 +18,8 @@ use crate::world::World;
 pub struct Account {
     id: String,
     storage: PathBuf,
+    databases: Result<Vec<String>, String>,
     keys: Keys,
-    matching: Vec<String>,
 }
 
 impl Account {
@@ -27,46 +27,26 @@ impl Account {
     /// supplied; `needed` the databases the command reads, which a refusal
     /// of missing keys names.
     pub fn open(world: &World, wanted: Option<&str>, needed: &[&str]) -> anyhow::Result<Account> {
-        Account::open_with(world, wanted, needed, None)
-    }
-
-    /// [`Account::open`], the command reading too each database of the
-    /// account's that `also` picks by its path: [`Account::matching`], which
-    /// a refusal of missing keys names beside `needed`.
-    pub fn open_with(
-        world: &World,
-        wanted: Option<&str>,
-        needed: &[&str],
-        also: Option<fn(&str) -> bool>,
-    ) -> anyhow::Result<Account> {
         let (dir, from) = world.data_dir();
         let listing = world.listing();
         let seen = wxread_account::choose(&dir, from, &listing, wanted).map_err(|e| anyhow!(e))?;
-        let matching: Vec<String> = match (also, &seen.databases) {
-            (None, _) => Vec::new(),
-            (Some(also), Ok(all)) => all.iter().filter(|d| also(d)).cloned().collect(),
-            (Some(_), Err(why)) => return Err(anyhow!(wxread_account::unlisted(&seen.id, why))),
-        };
-        let mut named: Vec<&str> = matching.iter().map(String::as_str).collect();
-        named.extend(needed);
-        let keys = wxread_account::keys(&world.keys(), &named).map_err(|e| anyhow!(e))?;
+        let keys = wxread_account::keys(&world.keys(), needed).map_err(|e| anyhow!(e))?;
         Ok(Account {
             id: seen.id.clone(),
             storage: PathBuf::from(&seen.db_storage),
+            databases: seen.databases.clone(),
             keys,
-            matching,
         })
-    }
-
-    /// The databases of the account's that `open_with`'s `also` picked, by
-    /// their paths, sorted.
-    pub fn matching(&self) -> &[String] {
-        &self.matching
     }
 
     /// The account's id: its directory's name.
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    /// Every database under its db_storage, by its path there.
+    pub fn databases(&self) -> anyhow::Result<Vec<String>> {
+        self.databases.clone().map_err(|why| anyhow!(wxread_account::unlisted(&self.id, &why)))
     }
 
     /// Database `path` (`session/session.db`), as it is on disk now with

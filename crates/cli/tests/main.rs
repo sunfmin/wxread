@@ -9,6 +9,7 @@ mod contacts;
 mod doctor;
 mod errors;
 mod help;
+mod messages;
 mod release;
 mod synthetic;
 mod version;

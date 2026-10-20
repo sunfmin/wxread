@@ -1,0 +1,375 @@
+//! What `wxread messages` answers of the rows it read: each message of a
+//! chat as its kind, its sender named, newest first, a page at a time. The
+//! effect crate reads the rows out of the account's message databases and
+//! the names out of its contacts; nothing here reads or writes.
+
+use std::io::Read as _;
+
+use serde_json::{Map, Value, json};
+use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
+
+pub mod kinds;
+pub mod media;
+pub mod names;
+mod proto;
+
+pub use names::{Contact, Names};
+
+/// The options that pick a chat and a stretch of time.
+pub const CHAT_FLAG: &str = "--chat";
+pub const FROM_FLAG: &str = "--from";
+pub const TO_FLAG: &str = "--to";
+
+/// What a message is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Text,
+    Link,
+    Quote,
+    Location,
+    Card,
+    Forward,
+    Recall,
+    Nudge,
+    Join,
+    Leave,
+    Renamed,
+    Transfer,
+    RedPacket,
+    Image,
+    Video,
+    File,
+    Sticker,
+    Voice,
+    System,
+    Unknown,
+}
+
+impl Kind {
+    /// Every kind, as the answer names them.
+    pub const ALL: [Kind; 20] = [
+        Kind::Text,
+        Kind::Link,
+        Kind::Quote,
+        Kind::Location,
+        Kind::Card,
+        Kind::Forward,
+        Kind::Recall,
+        Kind::Nudge,
+        Kind::Join,
+        Kind::Leave,
+        Kind::Renamed,
+        Kind::Transfer,
+        Kind::RedPacket,
+        Kind::Image,
+        Kind::Video,
+        Kind::File,
+        Kind::Sticker,
+        Kind::Voice,
+        Kind::System,
+        Kind::Unknown,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Kind::Text => "text",
+            Kind::Link => "link",
+            Kind::Quote => "quote",
+            Kind::Location => "location",
+            Kind::Card => "card",
+            Kind::Forward => "forward",
+            Kind::Recall => "recall",
+            Kind::Nudge => "nudge",
+            Kind::Join => "join",
+            Kind::Leave => "leave",
+            Kind::Renamed => "renamed",
+            Kind::Transfer => "transfer",
+            Kind::RedPacket => "red_packet",
+            Kind::Image => "image",
+            Kind::Video => "video",
+            Kind::File => "file",
+            Kind::Sticker => "sticker",
+            Kind::Voice => "voice",
+            Kind::System => "system",
+            Kind::Unknown => "unknown",
+        }
+    }
+}
+
+/// One row of a chat's messages table, as one message database holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Row {
+    /// The database it is in, by its name: `message_0`, `biz_message_1`.
+    pub db: String,
+    pub local_id: i64,
+    /// WeChat's id of it: 0 for one the server never saw.
+    pub server_id: i64,
+    pub local_type: i64,
+    pub sort_seq: i64,
+    /// When it was sent, in seconds since the epoch.
+    pub create_time: i64,
+    /// Its sender's id, from `real_sender_id` through `Name2Id`.
+    pub sender: Option<String>,
+    /// `message_content`, as stored.
+    pub content: Vec<u8>,
+    /// `WCDB_CT_message_content`: [`wxread_schema::ZSTD`] for compressed.
+    pub compressed: Option<i64>,
+    /// `packed_info_data`.
+    pub packed: Vec<u8>,
+}
+
+/// The stretch of time the messages are read from: at or after `from`,
+/// before `to`, each in seconds since the epoch, None for no bound.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Range {
+    pub from: Option<i64>,
+    pub to: Option<i64>,
+}
+
+impl Range {
+    /// The stretch `--from` and `--to` say, or what fixes them.
+    pub fn parse(from: Option<&str>, to: Option<&str>) -> Result<Range, String> {
+        let at = |flag: &str, text: Option<&str>| {
+            text.map(|text| {
+                wxread_answer::seconds(text).ok_or_else(|| {
+                    format!(
+                        "{flag} {text} is not a time: pass RFC 3339 with its offset (2026-10-20T09:30:00+08:00, 2026-10-20T01:30:00Z), or a date (2026-10-20), its midnight in UTC"
+                    )
+                })
+            })
+            .transpose()
+        };
+        let range = Range { from: at(FROM_FLAG, from)?, to: at(TO_FLAG, to)? };
+        match (range.from, range.to) {
+            (Some(f), Some(t)) if f >= t => Err(format!(
+                "{FROM_FLAG} {} is not before {TO_FLAG} {}: {FROM_FLAG} is the first time read, {TO_FLAG} the time reading stops before; pass a {FROM_FLAG} earlier than {TO_FLAG}",
+                from.unwrap_or_default(),
+                to.unwrap_or_default()
+            )),
+            _ => Ok(range),
+        }
+    }
+
+    fn holds(&self, at: i64) -> bool {
+        self.from.is_none_or(|f| at >= f) && self.to.is_none_or(|t| at < t)
+    }
+}
+
+/// Where a page ended: the last message it holds, by when it was sent,
+/// its order in that second, and its row. Its text is the `next` an answer
+/// gives and `--cursor` takes back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cursor {
+    create_time: i64,
+    sort_seq: i64,
+    db: String,
+    local_id: i64,
+}
+
+impl Cursor {
+    /// The cursor `text` writes, or what fixes it.
+    pub fn parse(text: &str) -> Result<Cursor, String> {
+        let parts: Vec<&str> = text.split('.').collect();
+        let cursor = match parts.as_slice() {
+            [create_time, sort_seq, db, local_id] if !db.is_empty() => {
+                match (create_time.parse(), sort_seq.parse(), local_id.parse()) {
+                    (Ok(create_time), Ok(sort_seq), Ok(local_id)) => {
+                        Some(Cursor { create_time, sort_seq, db: db.to_string(), local_id })
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        cursor.ok_or_else(|| {
+            format!(
+                "{CURSOR_FLAG} {text} is not a `next` that wxread messages answered: pass the `next` of the answer before, with the same {CHAT_FLAG}, or leave {CURSOR_FLAG} out to start at the newest message"
+            )
+        })
+    }
+
+    /// What `next` says of it.
+    pub fn text(&self) -> String {
+        format!("{}.{}.{}.{}", self.create_time, self.sort_seq, self.db, self.local_id)
+    }
+
+    fn of(row: &Row) -> Cursor {
+        Cursor {
+            create_time: row.create_time,
+            sort_seq: row.sort_seq,
+            db: row.db.clone(),
+            local_id: row.local_id,
+        }
+    }
+
+    /// The bound of a row of database `db` that comes after this cursor:
+    /// its `(create_time, sort_seq, local_id)` is below the one answered.
+    pub fn below_in(&self, db: &str) -> (i64, i64, i64) {
+        let local_id = match db.cmp(self.db.as_str()) {
+            std::cmp::Ordering::Less => i64::MAX,
+            std::cmp::Ordering::Equal => self.local_id,
+            std::cmp::Ordering::Greater => i64::MIN,
+        };
+        (self.create_time, self.sort_seq, local_id)
+    }
+
+    /// Whether `row` comes after the message this cursor names.
+    fn before(&self, row: &Row) -> bool {
+        order(&Cursor::of(row), self) == std::cmp::Ordering::Less
+    }
+}
+
+/// Where messages stand, oldest first: by when each was sent, then by its
+/// order in that second, then by its database and row, so each has one
+/// place.
+fn order(a: &Cursor, b: &Cursor) -> std::cmp::Ordering {
+    (a.create_time, a.sort_seq, a.db.as_str(), a.local_id).cmp(&(
+        b.create_time,
+        b.sort_seq,
+        b.db.as_str(),
+        b.local_id,
+    ))
+}
+
+/// One page of a chat's messages.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Page {
+    pub messages: Vec<Value>,
+    /// Where the next page starts, when there are messages past this one.
+    pub next: Option<Cursor>,
+}
+
+/// What a chat is, to read its messages: its id, and the account's own id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Chat {
+    pub id: String,
+    pub account: String,
+}
+
+impl Chat {
+    fn is_group(&self) -> bool {
+        wxread_chats::Kind::of(&self.id) == wxread_chats::Kind::Group
+    }
+}
+
+/// The page of `chat`'s messages in `rows` within `range` that starts
+/// after `after` (at the newest, for none) and holds at most `limit`:
+/// newest first, by when each was sent and its order in that second, so a
+/// cursor names one place and each message is on one page; each named by
+/// `names`.
+pub fn page(
+    chat: &Chat,
+    names: &Names,
+    rows: Vec<Row>,
+    range: Range,
+    after: Option<&Cursor>,
+    limit: Limit,
+) -> Page {
+    let mut rows: Vec<Row> = rows
+        .into_iter()
+        .filter(|r| range.holds(r.create_time) && after.is_none_or(|c| c.before(r)))
+        .collect();
+    rows.sort_by(|a, b| order(&Cursor::of(b), &Cursor::of(a)));
+    let more = rows.len() > limit.get();
+    rows.truncate(limit.get());
+    let next = if more { rows.last().map(Cursor::of) } else { None };
+    Page { messages: rows.iter().map(|r| message(chat, names, r)).collect(), next }
+}
+
+/// `row` as the answer has it: its id, time and sender, its kind and that
+/// kind's fields, and beside them WeChat's content and type.
+pub fn message(chat: &Chat, names: &Names, row: &Row) -> Value {
+    let (sender, content) = said(chat, row);
+    let parsed = kinds::parse(&chat.account, row.local_type, &content, &row.packed);
+    let sender = parsed.sender.or(sender);
+    let (t, sub) = kinds::split(row.local_type);
+    let mut out = Map::new();
+    out.insert("id".into(), json!((row.server_id != 0).then(|| row.server_id.to_string())));
+    out.insert("at".into(), json!(rfc3339(row.create_time)));
+    out.insert("sender".into(), json!(sender));
+    out.insert("sender_name".into(), json!(sender.as_deref().and_then(|s| names.of(s))));
+    out.insert("kind".into(), json!(parsed.kind.name()));
+    out.insert(parsed.kind.name().into(), Value::Object(parsed.fields));
+    out.insert("type".into(), json!(t));
+    out.insert("subtype".into(), json!(sub));
+    out.insert("content".into(), json!(content));
+    Value::Object(out)
+}
+
+/// Who said `row` in `chat`, and what: its content decompressed, a
+/// group's without the `<sender>:\n` WeChat starts it with, its sender
+/// from that prefix when the row names none.
+fn said(chat: &Chat, row: &Row) -> (Option<String>, String) {
+    let content = text_of(row);
+    if !chat.is_group() {
+        return (row.sender.clone(), content);
+    }
+    match (&row.sender, content.split_once(":\n")) {
+        (Some(s), Some((prefix, rest))) if prefix == s => (Some(s.clone()), rest.to_string()),
+        (None, Some((prefix, rest)))
+            if !prefix.is_empty()
+                && !prefix.contains(char::is_whitespace)
+                && !prefix.contains('<') =>
+        {
+            (Some(prefix.to_string()), rest.to_string())
+        }
+        _ => (row.sender.clone(), content),
+    }
+}
+
+/// A row's content as text: [`content_text`] of it.
+fn text_of(row: &Row) -> String {
+    content_text(&row.content, row.compressed)
+}
+
+/// `content`, a message's `message_content` as stored, as text:
+/// zstd-decompressed when `compressed` (its `WCDB_CT_message_content`) says
+/// it is, bytes that are not UTF-8 replaced.
+pub fn content_text(content: &[u8], compressed: Option<i64>) -> String {
+    let unzstd = |bytes: &[u8]| {
+        let mut out = Vec::new();
+        ruzstd::decoding::StreamingDecoder::new(bytes).ok()?.read_to_end(&mut out).ok()?;
+        Some(out)
+    };
+    let bytes = match compressed {
+        Some(wxread_schema::ZSTD) => unzstd(content).unwrap_or_else(|| content.to_vec()),
+        _ => content.to_vec(),
+    };
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// The message databases `databases` (each a path under `db_storage`)
+/// holds, by name (`message_0`), in order: those of people and groups,
+/// then those of official accounts, each by its number.
+pub fn message_dbs(databases: &[String]) -> Vec<String> {
+    let mut found: Vec<(usize, u32, String)> = databases
+        .iter()
+        .filter_map(|path| {
+            wxread_schema::MESSAGE_DBS.iter().enumerate().find_map(|(at, prefix)| {
+                let n = path.strip_prefix(prefix)?.strip_suffix(".db")?;
+                if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
+                    return None;
+                }
+                let name = path.strip_prefix("message/")?.strip_suffix(".db")?;
+                Some((at, n.parse().ok()?, name.to_string()))
+            })
+        })
+        .collect();
+    found.sort();
+    found.into_iter().map(|(_, _, name)| name).collect()
+}
+
+/// The path under `db_storage` of the message database named `name`.
+pub fn db_path(name: &str) -> String {
+    format!("message/{name}.db")
+}
+
+/// What fixes a chat none of the account's message databases has.
+pub fn no_such_chat(chat: &str, account: &str) -> String {
+    format!(
+        "account {account} has no messages of chat {chat}: pass {CHAT_FLAG} an id `wxread chats` lists (a wxid, or a group's <n>@chatroom)"
+    )
+}
+
+#[cfg(test)]
+mod tests;

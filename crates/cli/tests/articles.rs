@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use wxread_schema::CONTACT_DB;
 
 use crate::common::{World, snapshot};
-use crate::synthetic::{Account, Article, Biz, Contact};
+use crate::synthetic::{Account, Article, Contact, Said};
 
 const ROUTES: Article = Article(
     "Route of the week",
@@ -44,28 +44,25 @@ fn account(world: &World, id: &'static str) -> Account {
         Contact("gh_tea", "Tea Daily", "Tea!"),
         Contact("gh_quiet", "Quiet Co", ""),
     ];
-    let mut recent = Biz::push("gh_crag", "Crag News", 1_760_000_400, &[ROUTES]);
-    recent.in_wal = true;
-    let mut tea = Biz::push("gh_tea", "Tea Daily", 1_760_000_200, &[TEA]);
-    (tea.store, tea.zstd) = (1, true);
-    let mut text = Biz::push("gh_crag", "Crag News", 1_760_000_300, &[ROUTES]);
+    let recent = Said::push("gh_crag", "Crag News", 1_760_000_400, &[ROUTES]);
+    let mut tea = Said::push("gh_tea", "Tea Daily", 1_760_000_200, &[TEA]);
+    (tea.db, tea.zstd) = ("biz_message_1", true);
+    let mut text = Said::push("gh_crag", "Crag News", 1_760_000_300, &[ROUTES]);
     (text.local_type, text.content) = (1, "Thanks for following".to_string());
-    account.biz = vec![
-        Biz::push("gh_crag", "Crag News", 1_760_000_100, &[GEAR, KNOTS]),
-        Biz::push("gh_stranger", "Stranger Press", 1_760_000_050, &[PRESS]),
+    account.messages = vec![
+        Said::push("gh_crag", "Crag News", 1_760_000_100, &[GEAR, KNOTS]),
+        Said::push("gh_stranger", "Stranger Press", 1_760_000_050, &[PRESS]),
         tea,
         text,
-        recent,
     ];
+    account.recent_messages = vec![recent];
     account.write();
     account
 }
 
-/// The keys of every database `account` has that articles reads.
+/// The keys of every database `account` has.
 fn keys(account: &Account) -> String {
-    let mut databases = account.biz_databases();
-    databases.push(CONTACT_DB.to_string());
-    account.keys(&databases.iter().map(String::as_str).collect::<Vec<_>>())
+    account.all_keys()
 }
 
 fn article(id: &str, name: &str, at: &str, a: &Article) -> Value {
@@ -190,12 +187,7 @@ fn a_store_the_keys_lack_is_named_with_the_fix() {
     assert!(error.contains("no key of message/biz_message_1.db"), "{error}");
     assert!(error.contains("sudo wxread keys"), "{error}");
     let error = world.run(&["articles"], &[]).error();
-    assert!(
-        error.contains("message/biz_message_0.db")
-            && error.contains("message/biz_message_1.db")
-            && error.contains(CONTACT_DB),
-        "{error}"
-    );
+    assert!(error.contains("message/biz_message_<n>.db") && error.contains(CONTACT_DB), "{error}");
 }
 
 #[test]

@@ -10,6 +10,7 @@ publish = false
 wxread-answer = { path = "../answer" }
 # The XML WeChat keeps an app message in.
 roxmltree = "0.21"
+wxread-messages = { path = "../messages" }
 
 [dev-dependencies]
 proptest.workspace = true

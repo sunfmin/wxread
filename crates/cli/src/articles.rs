@@ -10,10 +10,13 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use wxread_answer::Limit;
 use wxread_articles::{Cursor, Message};
-use wxread_schema::{CONTACT_DB, ZSTD, is_biz_message_db, messages_table};
+use wxread_schema::{CONTACT_DB, MESSAGE_DBS, messages_table};
 
 use crate::account::Account;
 use crate::world::World;
+
+/// The official accounts' stores, as a refusal of missing keys names them.
+const BIZ_MESSAGE_DBS: &str = "message/biz_message_<n>.db";
 
 /// What `--account`, `--official-account`, `--limit` and `--cursor` said.
 pub struct Asked {
@@ -27,15 +30,14 @@ pub struct Asked {
 pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let limit = Limit::parse(asked.limit.as_deref(), "articles").map_err(|e| anyhow!(e))?;
     let cursor = asked.cursor.as_deref().map(Cursor::parse).transpose().map_err(|e| anyhow!(e))?;
-    let account = Account::open_with(
-        world,
-        asked.account.as_deref(),
-        &[CONTACT_DB],
-        Some(is_biz_message_db),
-    )?;
+    let account = Account::open(world, asked.account.as_deref(), &[CONTACT_DB, BIZ_MESSAGE_DBS])?;
     let mut sent = Vec::new();
-    for path in account.matching() {
-        sent.extend(messages(&account.database(path)?, path, asked.official_account.as_deref())?);
+    for db in wxread_messages::message_dbs(&account.databases()?) {
+        let path = wxread_messages::db_path(&db);
+        if path.starts_with(MESSAGE_DBS[1]) {
+            let only = asked.official_account.as_deref();
+            sent.extend(messages(&account.database(&path)?, &path, only)?);
+        }
     }
     let names = names(&account.database(CONTACT_DB)?)?;
     let page = wxread_articles::page(&sent, &names, cursor.as_ref(), limit);
@@ -97,7 +99,8 @@ fn messages(db: &Connection, path: &str, only: Option<&str>) -> anyhow::Result<V
                     local_id: r.get(0)?,
                     local_type: r.get::<_, Option<i64>>(1)?.unwrap_or(0),
                     create_time: r.get(2)?,
-                    content: content(r.get(3)?, r.get(4)?),
+                    content: crate::messages::bytes(r.get(3)?),
+                    compressed: r.get(4)?,
                 })
             })
             .and_then(Iterator::collect::<Result<Vec<_>, _>>)
@@ -125,26 +128,4 @@ fn names(db: &Connection) -> anyhow::Result<BTreeMap<String, String>> {
         .and_then(Iterator::collect)
         .map_err(sql)?;
     Ok(rows)
-}
-
-/// A message's content as text: zstd-decompressed when `compressed` says
-/// it is, bytes that are not UTF-8 replaced.
-fn content(raw: rusqlite::types::Value, compressed: Option<i64>) -> String {
-    use rusqlite::types::Value as Sql;
-    let bytes = match raw {
-        Sql::Text(s) => s.into_bytes(),
-        Sql::Blob(b) => b,
-        Sql::Integer(n) => n.to_string().into_bytes(),
-        Sql::Real(x) => x.to_string().into_bytes(),
-        Sql::Null => Vec::new(),
-    };
-    let bytes = if compressed == Some(ZSTD) { unzstd(&bytes).unwrap_or(bytes) } else { bytes };
-    String::from_utf8_lossy(&bytes).into_owned()
-}
-
-fn unzstd(bytes: &[u8]) -> Option<Vec<u8>> {
-    use std::io::Read as _;
-    let mut out = Vec::new();
-    ruzstd::decoding::StreamingDecoder::new(bytes).ok()?.read_to_end(&mut out).ok()?;
-    Some(out)
 }

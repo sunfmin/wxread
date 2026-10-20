@@ -10,6 +10,7 @@ wxread --keys <file> chats                  # the account's chats, newest first
 wxread --keys <file> articles               # what official accounts sent, newest first
 wxread --keys <file> contacts --query amy   # find a contact, and its id
 wxread --keys <file> group <n>@chatroom     # a group's notice and members
+wxread --keys <file> messages --chat <id>   # a chat's messages, each as its kind
 wxread --help                               # the guide
 ```
 

@@ -7,7 +7,7 @@ use std::process::Command;
 use serde_json::Value;
 
 use crate::common::World;
-use crate::synthetic::{Account, Article, Biz, Contact, DATABASES, Group, Session};
+use crate::synthetic::{Account, Article, Contact, DATABASES, Group, Said, Session};
 use wxread_doctor::{DATA_DIR_FLAG, DATA_DIR_VAR, KEYS_FLAG, KEYS_VAR};
 
 /// What the binary prints for `args`, which must exit 0 and leave stderr empty.
@@ -59,7 +59,7 @@ fn run_in(text: &str) -> BTreeSet<String> {
 #[test]
 fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
     let existing = existing();
-    let names = ["articles", "chats", "contact", "contacts", "doctor", "group", "keys"];
+    let names = ["articles", "chats", "contact", "contacts", "doctor", "group", "keys", "messages"];
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
     let short = asked(&["-h"]);
@@ -149,6 +149,40 @@ fn chats_answers_exactly_the_keys_its_help_and_the_guide_name() {
     }
 }
 
+#[test]
+fn messages_answers_exactly_the_keys_its_help_and_the_guide_name() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.messages = vec![Said::text("wxid_amy", 1, 1_760_000_000, "wxid_amy", "hi")];
+    account.write();
+    let json = world
+        .run(&["messages", "--chat", "wxid_amy"], &[("WXREAD_KEYS", &account.all_keys())])
+        .ok();
+    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(answered("messages"), keys);
+    assert_eq!(guide_row("messages"), keys);
+    let help = asked(&["messages", "--help"]);
+    let fields: BTreeSet<String> =
+        json["messages"][0].as_object().unwrap().keys().cloned().collect();
+    for field in fields.iter().filter(|f| *f != "text") {
+        assert!(
+            help.contains(&format!("              {field} ")),
+            "messages --help says what {field} is"
+        );
+    }
+    // Every kind there is, and only those, has its line in the help.
+    let kinds: BTreeSet<String> = between(&help, "THE KINDS AND THEIR FIELDS", "TRIPS YOU UP")
+        .into_iter()
+        .filter(|line| line.len() - line.trim_start().len() == 2)
+        .filter_map(|line| line.split_whitespace().next())
+        .filter(|word| word.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+        .map(str::to_string)
+        .collect();
+    let all: BTreeSet<String> =
+        wxread_messages::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
+    assert_eq!(kinds, all);
+}
+
 /// Every key of each object in `value`, and of the objects and lists of
 /// objects inside it, after the first level.
 fn fields(value: &Value) -> BTreeSet<String> {
@@ -202,10 +236,9 @@ fn articles_answers_exactly_the_keys_its_help_and_the_guide_name() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     let article = Article("Knots", "Eight ways", "https://e.com/k", "https://e.com/k.jpg");
-    account.biz = vec![Biz::push("gh_crag", "Crag News", 1_760_000_000, &[article])];
+    account.messages = vec![Said::push("gh_crag", "Crag News", 1_760_000_000, &[article])];
     account.write();
-    let keys = account.keys(&[wxread_schema::CONTACT_DB, "message/biz_message_0.db"]);
-    let json = world.run(&["articles"], &[("WXREAD_KEYS", &keys)]).ok();
+    let json = world.run(&["articles"], &[("WXREAD_KEYS", &account.all_keys())]).ok();
     let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
     assert_eq!(answered("articles"), keys);
     assert_eq!(guide_row("articles"), keys);
