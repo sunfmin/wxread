@@ -1,0 +1,105 @@
+# The gate: ./gate.sh, the one definition of "may land", run on every pull
+# request and every push to main, on macOS, the one platform wxread is for
+# (docs/adr/0001-macos-only-and-apache-2.md).
+#
+# gate.sh needs the checker Cargo.toml pins (docs/adr/0002): cargo-flux built
+# from the Flux revision, fixpoint built at its commit, z3 at its version.
+# None has a release at its pin a runner can install, so each is built or
+# downloaded once, keyed by its pin, and cached; a new pin builds it again.
+# verify.sh still asks each tool what it is, and refuses any other.
+
+name: gate
+
+"on":
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gate:
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # build.rs stamps --version from the commits since the last tag.
+          fetch-depth: 0
+
+      - name: The pins
+        id: pins
+        run: |
+          flux=$(sed -n 's/^flux-rs = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
+          fixpoint=$(sed -n 's/^fixpoint = ".* (\([0-9a-f]*\))"$/\1/p' Cargo.toml)
+          z3=$(sed -n 's/^z3 = "\(.*\)"$/\1/p' Cargo.toml)
+          toolchain=$(sed -n 's/^RUSTUP_TOOLCHAIN=//p' gate.sh)
+          for pin in flux fixpoint z3 toolchain; do
+            [ -n "${!pin}" ] || { echo "::error::no $pin pin is read from Cargo.toml or gate.sh"; exit 1; }
+            echo "$pin=${!pin}" >> "$GITHUB_OUTPUT"
+          done
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/z3/bin" >> "$GITHUB_PATH"
+
+      - name: The toolchain gate.sh runs on
+        run: rustup toolchain install ${{ steps.pins.outputs.toolchain }} --profile minimal --component rustfmt,clippy
+
+      - name: cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      - name: Cached cargo-flux
+        id: flux
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-flux
+            ~/.flux
+          key: flux-${{ runner.os }}-${{ runner.arch }}-${{ steps.pins.outputs.flux }}
+      - name: Build cargo-flux at its pin
+        if: steps.flux.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/flux-rs/flux "$RUNNER_TEMP/flux"
+          cd "$RUNNER_TEMP/flux"
+          git checkout ${{ steps.pins.outputs.flux }}
+          cargo xtask install
+
+      - name: Cached fixpoint
+        id: fixpoint
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/fixpoint
+          key: fixpoint-${{ runner.os }}-${{ runner.arch }}-${{ steps.pins.outputs.fixpoint }}
+      - name: Haskell, to build fixpoint
+        if: steps.fixpoint.outputs.cache-hit != 'true'
+        uses: haskell-actions/setup@v2
+        with:
+          enable-stack: true
+          stack-no-global: true
+      - name: Build fixpoint at its pin
+        if: steps.fixpoint.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/ucsd-progsys/liquid-fixpoint "$RUNNER_TEMP/liquid-fixpoint"
+          cd "$RUNNER_TEMP/liquid-fixpoint"
+          git checkout ${{ steps.pins.outputs.fixpoint }}
+          mkdir -p ~/.local/bin
+          stack install --local-bin-path ~/.local/bin
+
+      - name: Cached z3
+        id: z3
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/z3
+          key: z3-${{ runner.os }}-${{ runner.arch }}-${{ steps.pins.outputs.z3 }}
+      - name: Download z3 at its pin
+        if: steps.z3.outputs.cache-hit != 'true'
+        run: |
+          z3=${{ steps.pins.outputs.z3 }}
+          gh release download "z3-$z3" --repo Z3Prover/z3 --pattern "z3-$z3-arm64-osx-*.zip" --dir "$RUNNER_TEMP"
+          unzip -q "$RUNNER_TEMP"/z3-*.zip -d "$RUNNER_TEMP/z3"
+          mkdir -p ~/.local
+          mv "$RUNNER_TEMP"/z3/z3-* ~/.local/z3
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: ./gate.sh
+        run: ./gate.sh
