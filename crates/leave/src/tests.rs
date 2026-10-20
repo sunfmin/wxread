@@ -383,11 +383,106 @@ fn the_leave_is_told_by_membership_alone() {
 
 #[test]
 fn the_retry_line_keeps_the_account_asked_for() {
-    assert_eq!(line(ID, None), RETRY);
+    assert_eq!(line(&[ID], None), RETRY);
     assert_eq!(
-        line(ID, Some("a_1")),
+        line(&[ID], Some("a_1")),
         "wxread group leave 58872695997@chatroom --account a_1 --yes"
     );
+}
+
+#[test]
+fn the_retry_line_names_every_group_in_order() {
+    assert_eq!(
+        line(&["1@chatroom", "2@chatroom"], None),
+        "wxread group leave 1@chatroom 2@chatroom --yes"
+    );
+}
+
+/// A group of the account's, `n`th of a run.
+fn nth(n: usize) -> Target {
+    Target {
+        id: format!("{n}@chatroom"),
+        display_name: format!("G{n}"),
+        name: String::new(),
+        members: 3,
+    }
+}
+
+#[test]
+fn without_yes_nothing_is_left_and_each_group_is_planned() {
+    let groups = [Some(nth(1)), None, Some(nth(3))];
+    let mut tried = 0;
+    let (outcomes, stop) = run(&groups, false, |_: &Target| -> Result<u64, ()> {
+        tried += 1;
+        Ok(1)
+    });
+    assert_eq!(tried, 0);
+    assert_eq!(outcomes, [Outcome::Planned, Outcome::NotMember, Outcome::Planned]);
+    assert_eq!(stop, None);
+}
+
+#[test]
+fn a_failure_on_the_second_of_three_stops_the_run_there() {
+    let groups = [Some(nth(1)), Some(nth(2)), Some(nth(3))];
+    let mut tried = Vec::new();
+    let (outcomes, stop) = run(&groups, true, |t: &Target| {
+        tried.push(t.id.clone());
+        if t.id == "2@chatroom" { Err("its title did not read G2") } else { Ok(4) }
+    });
+    assert_eq!(tried, ["1@chatroom", "2@chatroom"]);
+    assert_eq!(outcomes, [Outcome::Left(4), Outcome::Stopped, Outcome::NotTried]);
+    assert_eq!(stop, Some("its title did not read G2"));
+    assert_eq!(
+        rest(&["1@chatroom", "2@chatroom", "3@chatroom"], &outcomes),
+        ["2@chatroom", "3@chatroom"]
+    );
+    // Run again, the databases no longer list the account in the first:
+    // only the rest are tried.
+    let again = [None, Some(nth(2)), Some(nth(3))];
+    let mut tried = Vec::new();
+    let (outcomes, stop) = run(&again, true, |t: &Target| -> Result<u64, &str> {
+        tried.push(t.id.clone());
+        Ok(2)
+    });
+    assert_eq!(tried, ["2@chatroom", "3@chatroom"]);
+    assert_eq!(outcomes, [Outcome::NotMember, Outcome::Left(2), Outcome::Left(2)]);
+    assert_eq!(stop, None);
+    assert!(rest(&["1@chatroom", "2@chatroom", "3@chatroom"], &outcomes).is_empty());
+}
+
+#[test]
+fn each_outcome_has_its_name() {
+    let names: Vec<&str> = [
+        Outcome::Planned,
+        Outcome::NotMember,
+        Outcome::Left(1),
+        Outcome::Stopped,
+        Outcome::NotTried,
+    ]
+    .iter()
+    .map(|o| o.name())
+    .collect();
+    assert_eq!(names, ["planned", "not_member", "left", "stopped", "not_tried"]);
+    assert_eq!((Outcome::Left(7).confirmed_in(), Outcome::Planned.confirmed_in()), (Some(7), None));
+}
+
+#[test]
+fn next_says_what_to_run_now() {
+    let ids = ["1@chatroom", "2@chatroom"];
+    let planned = next(&ids, &[Outcome::Planned, Outcome::NotMember], None, false);
+    assert!(
+        planned.starts_with("nothing was changed: run `wxread group leave 1@chatroom --yes`"),
+        "{planned}"
+    );
+    let blocked = next(&ids, &[Outcome::Planned, Outcome::Planned], None, true);
+    assert!(blocked.starts_with("nothing was changed: fix each of blockers"), "{blocked}");
+    let none = next(&ids, &[Outcome::NotMember, Outcome::NotMember], None, false);
+    assert!(none.starts_with("nothing to leave: the account is in none of them"), "{none}");
+    let done = next(&ids, &[Outcome::Left(1), Outcome::NotMember], Some("a_1"), false);
+    assert!(done.contains("`wxread group 1@chatroom`"), "{done}");
+    let stopped = next(&ids, &[Outcome::Left(1), Outcome::Stopped], Some("a_1"), false);
+    assert!(stopped.contains("`wxread group leave 2@chatroom --account a_1 --yes`"), "{stopped}");
+    assert!(stopped.contains("the same command again"), "{stopped}");
 }
 
 #[test]

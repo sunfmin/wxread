@@ -1,29 +1,35 @@
-wxread group leave: leaves one of the account's groups, the way a person
-does, in WeChat's own window. It cannot be undone: to rejoin, a member of
-the group must invite the account back. Without --yes it says what it would
-do and changes nothing.
+wxread group leave: leaves the account's groups given, one after another,
+the way a person does, in WeChat's own window. It cannot be undone: to
+rejoin, a member of the group must invite the account back. Without --yes
+it says what it would do and changes nothing. It stops at the first group
+it fails to leave; run the same command again and it leaves only the rest.
 
 WHEN TO RUN IT
-  To leave a group the account no longer wants, found by reading it with
-  wxread (an ad group: `wxread group <id>`, `wxread messages --chat <id>`).
-  Run by the person whose Mac it is, or by an agent they told to leave that
-  group: first `wxread group leave <id>` to see what it would do, then
-  `wxread group leave <id> --yes`.
+  To leave groups the account no longer wants, found by reading them with
+  wxread (ad groups: `wxread chats` answers of each group who sent most of
+  its newest messages and whether the account spoke in it; then
+  `wxread group <id>`, `wxread messages --chat <id>`). An agent suggests
+  them; the person whose Mac it is picks which to leave.
+  Run by that person, or by an agent they told to leave those groups:
+  first `wxread group leave <id> <id>...` to see what it would do, then
+  the same with --yes.
 
 WHAT IT READS AND DOES
-  - The group, out of contact/contact.db (its display name, its own name,
-    its members) and its newest message, out of the message databases,
-    with their keys: the file --keys names, else WXREAD_KEYS. It refuses
-    a group the account is not in, and a group another group the account
-    is in is shown the same as: nothing in WeChat's window tells two such
-    groups apart.
+  - Each group, out of contact/contact.db (its display name, its own
+    name, its members) and its newest message, out of the message
+    databases, with their keys: the file --keys names, else WXREAD_KEYS.
+    A group the account is not in is passed over (not_member): there is
+    nothing to leave. It refuses a group another group the account is in
+    is shown the same as (nothing in WeChat's window tells two such
+    groups apart), and an id that is no group; any group refused stops
+    the whole run before anything is touched, every one named at once.
   - What stops it before the window is touched, answered as blockers:
     WeChat not running, or logged in as another account (told by which
     account's databases the running WeChat has open), and either
     permission below missing.
-  - With --yes only, WeChat's window, for about ten seconds, once the
-    keyboard and mouse have been left alone for 3 s (waited for at most
-    a minute): WeChat is brought to the front, its search given the
+  - With --yes only, WeChat's window, group after group in the order
+    given, for about ten seconds each, once the keyboard and mouse have
+    been left alone for 3 s (waited for at most a minute): WeChat is brought to the front, its search given the
     group's name through the pasteboard (put back right after), the chat
     it lists by that name opened, its title checked to read the name and
     the member count, its chat info (···) opened and its Group Name
@@ -35,7 +41,7 @@ WHAT IT READS AND DOES
     messages stay.
   - Then the databases, once a second for at most 30 s, until they no
     longer list the account among the group's members: only then does it
-    answer that it left.
+    answer that it left, and go on to the next group.
 
 WHAT MACOS MUST ALLOW
   The app running wxread (a terminal, an agent's host) needs, in System
@@ -47,31 +53,55 @@ WHAT MACOS MUST ALLOW
   `wxread doctor` says whether each is allowed.
 
 USAGE
-  wxread group leave <id> [--account <id>] [--yes]
+  wxread group leave <id>... [--account <id>] [--yes]
+  ... | wxread group leave - [--account <id>] [--yes]
 
-  <id>              the group's id, <n>@chatroom, as `wxread contacts`
-                    answers it
+  <id>...           each group's id, <n>@chatroom, as `wxread contacts`
+                    and `wxread chats` answer it; one given twice is left
+                    once
+  -                 the ids read from stdin, split by whitespace (one a
+                    line), in their place among the others
   --account <id>    the account to read, as `wxread doctor` names it;
                     with only one logged in, that one
-  --yes             leave it; without it, nothing is changed
+  --yes             leave them; without it, nothing is changed
 
 WHAT IT ANSWERS
     account       the account read: its directory's name, as doctor's id
-    group         {id, display_name, name, members, last_message}: the
-                  group as it was read before leaving it; members is how
-                  many it had, the account among them; last_message its
-                  newest message as `wxread messages` answers it, null
-                  for none
-    applied       true when this run left the group; false without --yes
-    confirmed_in  the seconds after OK the databases took to no longer
-                  list the account among its members; null without --yes
-    plan          the steps it takes, in order
+    groups        [{id, display_name, name, members, last_message,
+                  outcome, confirmed_in, plan}], in the order given:
+                id            the group's id
+                display_name  what WeChat shows it as
+                name          its own name; "" for none
+                members       how many it had before, the account among
+                              them
+                last_message  its newest message as `wxread messages`
+                              answers it; null for none
+                outcome       "planned" (without --yes: it would be
+                              left), "not_member" (the account is not in
+                              it: nothing to leave), "left" (this run left
+                              it), "stopped" (leaving it failed: error
+                              says why) or "not_tried" (a group before it
+                              stopped the run)
+                confirmed_in  the seconds after OK the databases took to
+                              no longer list the account among its
+                              members; null unless left
+                plan          the steps it takes for it, in order; [] for
+                              one not_member
     blockers      [line]: what stops --yes before the window is touched,
-                  each with its fix; [] when nothing does
-    next          what to do now
+                  each with its fix; [] when nothing does, or nothing is
+                  to be left
+    next          what to do now: after a stop, the command that leaves
+                  only the groups still to leave
+  A run that stops at a group answers the same object, error added (the
+  group it stopped at, and why), and exits 1.
 
 TRIPS YOU UP
   - Without --yes nothing changes: read plan and blockers, then add --yes.
+  - It stops at the first group it fails to leave: the groups before it
+    are left, it is stopped, and the ones after it are not tried. Run the
+    same command again (or the one next names) once the cause is fixed:
+    a group the account has left is not_member, so only the rest are
+    left.
   - Anything in the window that does not read as expected stops it where
     it is, naming the screen it stopped on and what it read there, with
     nothing clicked after it; a confirmation already up is cancelled.

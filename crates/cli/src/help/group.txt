@@ -1,6 +1,6 @@
 wxread group: one group of the account, with its notice, its owner and
 every member, each named as the group shows them. `wxread group leave
-<id>` leaves one: `wxread group leave --help` says how.
+<id>...` leaves groups: `wxread group leave --help` says how.
 
 WHEN TO RUN IT
   To see who is in a group, what its notice (群公告) says, and what each
@@ -16,7 +16,7 @@ WHAT IT READS
 
 USAGE
   wxread group <id> [--account <id>]
-  wxread group leave <id> [--account <id>] [--yes]
+  wxread group leave <id>... [--account <id>] [--yes]
 
   <id>              the group's id, <n>@chatroom, as `wxread contacts`
                     answers it

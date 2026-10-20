@@ -250,15 +250,15 @@ enum Command {
 
 #[derive(Subcommand)]
 enum GroupAction {
-    /// Leave the group through WeChat's window, checked before and after; only with --yes
+    /// Leave groups through WeChat's window, one after another, each checked before and after; only with --yes
     Leave {
-        /// The group's id: <n>@chatroom
-        #[arg(value_name = "ID")]
-        id: String,
+        /// Each group's id: <n>@chatroom; - for the ids on stdin
+        #[arg(value_name = "ID", required = true)]
+        ids: Vec<String>,
         /// The account to read, by its id, when several are logged in
         #[arg(long, value_name = "ID")]
         account: Option<String>,
-        /// Leave it; without this, only say what it would do and change nothing
+        /// Leave them; without this, only say what it would do and change nothing
         #[arg(long)]
         yes: bool,
     },
@@ -403,8 +403,9 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| favorites::run(&w, &favorites::Asked { account, limit, cursor }))
         }
-        Command::Group { action: Some(GroupAction::Leave { id, account, yes }), .. } => {
-            world::World::from_env(cli.data_dir, cli.keys).and_then(|w| leave(&w, id, account, yes))
+        Command::Group { action: Some(GroupAction::Leave { ids, account, yes }), .. } => {
+            world::World::from_env(cli.data_dir, cli.keys)
+                .and_then(|w| leave(&w, ids, account, yes))
         }
         Command::Group { action: None, id, account } => {
             world::World::from_env(cli.data_dir, cli.keys)
@@ -441,15 +442,15 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
 /// (docs/adr/0001-macos-only-and-apache-2.md).
 fn leave(
     w: &world::World,
-    id: String,
+    ids: Vec<String>,
     account: Option<String>,
     yes: bool,
 ) -> anyhow::Result<Value> {
     #[cfg(target_os = "macos")]
-    return leave::run(w, &leave::Asked { id, account, yes });
+    return leave::run(w, &leave::Asked { ids, account, yes });
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (w, id, account, yes);
+        let _ = (w, ids, account, yes);
         anyhow::bail!(
             "`wxread group leave` drives WeChat for Mac's window: run it on the Mac WeChat is logged in on"
         )
@@ -475,6 +476,19 @@ fn help(args: &[OsString]) -> Option<&'static str> {
     }
 }
 
+/// A failure that answers more than its error: what was done before it,
+/// its `error` among its keys.
+#[derive(Debug)]
+pub struct Failed(pub Value);
+
+impl std::fmt::Display for Failed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0["error"].as_str().unwrap_or_default())
+    }
+}
+
+impl std::error::Error for Failed {}
+
 /// Prints `result` as the one JSON object of the run; a failure exits `code`.
 fn answer(result: anyhow::Result<Value>, code: u8) -> ExitCode {
     match result {
@@ -483,7 +497,10 @@ fn answer(result: anyhow::Result<Value>, code: u8) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            println!("{}", json!({"error": format!("{e:#}")}));
+            match e.downcast::<Failed>() {
+                Ok(Failed(answer)) => println!("{answer}"),
+                Err(e) => println!("{}", json!({"error": format!("{e:#}")})),
+            }
             ExitCode::from(code)
         }
     }

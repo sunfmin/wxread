@@ -2,7 +2,7 @@
 //! running wxread, the running WeChat and the accounts it has open, its
 //! window and the text macOS recognizes in a screenshot of it, and the
 //! keys, menus, clicks and pasteboard a leave goes through
-//! (docs/adr/0011-a-group-is-left-by-driving-wechats-window-only-with-yes.md,
+//! (docs/adr/0015-a-group-is-left-by-driving-wechats-window-only-with-yes.md,
 //! docs/leave-group.md). Vision, CoreGraphics, Accessibility, IOKit and
 //! AppKit are called through their C and Objective-C interfaces, with no
 //! helper beside the binary; [`wxread_leave`] decides what is done with
