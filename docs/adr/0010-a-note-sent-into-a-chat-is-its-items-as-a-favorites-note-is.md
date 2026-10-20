@@ -6,7 +6,7 @@ WeChat for Mac 4.1 keeps the files of a note's items under the note's own direct
 
 ## Consequences
 
-- No note of that account held a downloaded video or voice message, so where WeChat keeps one is not known: such an item answers `file_id` and `file_present` null rather than a guess, and `wxread file get` of one is an error saying so. When a note with one is seen, its rule is added here and its file named.
+- No note of that account held a downloaded video or voice message, so where WeChat keeps one is not known: such an item answers `file_id` and `file_present` null rather than a guess, and `wxread file get` of one is an error saying so. Finding it from a real note is #59 (https://github.com/sunfmin/wxread/issues/59).
 - A note's own id is not a file's: `wxread file get <its id>` is an error saying to pass one of its items' file_id.
 - A note the server never saw (server id 0) names no file, since its file id is its message's.
 - A note keeps no sender or time for its items, so theirs are null; WeChat's `<des>` summary of it is kept in `content`.
