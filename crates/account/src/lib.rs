@@ -97,6 +97,13 @@ pub fn unreadable(account: &str, path: &str, why: &str) -> String {
     )
 }
 
+/// Why the databases of `account` could not be listed, as the system said.
+pub fn unlisted(account: &str, why: &str) -> String {
+    format!(
+        "account {account}'s databases cannot be listed ({why}): run `wxread doctor`, which names the fix of macOS refusing to let them be read"
+    )
+}
+
 /// Why database `path`, decrypted, is not the database wxread reads.
 pub fn not_wechats(path: &str, why: &str) -> String {
     format!(

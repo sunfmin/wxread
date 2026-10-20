@@ -16,6 +16,7 @@ wxread-contacts = { path = "../contacts" }
 wxread-doctor = { path = "../doctor" }
 wxread-keys = { path = "../keys" }
 wxread-crack = { path = "../crack" }
+wxread-messages = { path = "../messages" }
 wxread-schema = { path = "../schema" }
 wxread-sqlcipher = { path = "../sqlcipher" }
 anyhow = "1"
@@ -31,6 +32,8 @@ mach2 = "0.4.3"
 
 [dev-dependencies]
 tempfile = "3"
+# Content compressed as WeChat compresses it, in the synthetic accounts.
+ruzstd = "0.8"
 
 [[test]]
 name = "cli"
