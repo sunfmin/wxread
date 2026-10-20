@@ -11,8 +11,9 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, DatabaseName, params};
 use wxread_doctor::DB_STORAGE;
 use wxread_schema::{
-    CHAT_ROOM, CHAT_ROOM_INFO_DETAIL, CHATROOM_MEMBER, CONTACT, CONTACT_DB, HEAD_IMAGE,
-    HEAD_IMAGE_DB, NAME2ID, SESSION, SESSION_DB, ZSTD,
+    CHAT_ROOM, CHAT_ROOM_INFO_DETAIL, CHATROOM_MEMBER, CONTACT, CONTACT_DB, FTS_NAME2ID, FTS_RANGE,
+    HEAD_IMAGE, HEAD_IMAGE_DB, MESSAGE_FTS_DB, NAME2ID, SESSION, SESSION_DB, TIMESTAMP, ZSTD,
+    fts_content,
 };
 use wxread_sqlcipher::{PAGE, RESERVE};
 
@@ -39,7 +40,8 @@ pub struct Session(pub &'static str, pub i64, pub i64);
 /// A message of chat `chat`, in message database `db` (`message_0`): its
 /// server id, type, when it was sent, its order in that second, its
 /// sender, its content as WeChat keeps it (zstd-compressed when `zstd`
-/// says), and its `packed_info_data`.
+/// says), its `packed_info_data`, and the text WeChat's full-text index
+/// holds of it, where a range of the index covers it (None for none).
 #[derive(Clone)]
 pub struct Said {
     pub db: &'static str,
@@ -52,6 +54,7 @@ pub struct Said {
     pub content: String,
     pub zstd: bool,
     pub packed: Vec<u8>,
+    pub indexed: Option<String>,
 }
 
 impl Said {
@@ -75,6 +78,7 @@ impl Said {
             content: content.to_string(),
             zstd: false,
             packed: Vec::new(),
+            indexed: None,
         }
     }
 
@@ -110,13 +114,28 @@ pub struct Article(pub &'static str, pub &'static str, pub &'static str, pub &'s
 /// (49) of a link (its appmsg type 5).
 pub const ARTICLES: i64 = 49 | 5 << 32;
 
+/// What WeChat's full-text index covers: chat `chat`'s messages `first` to
+/// `last` (their `local_id`) in message database `db`.
+pub struct Indexed {
+    pub chat: &'static str,
+    pub db: &'static str,
+    pub first: i64,
+    pub last: i64,
+}
+
+/// An entry of the index whose message is gone: its chat, its `local_id`,
+/// its text and when it was sent.
+pub struct Stale(pub &'static str, pub i64, pub &'static str, pub i64);
+
 /// One account's directory under a data directory, and what its databases
 /// hold: `contacts`, `sessions` and `messages` in the databases
 /// themselves, `recent` sessions and `recent_messages` only in committed
 /// frames of their database's WAL, and `uncommitted` sessions in frames
 /// after them that no commit ended; `profiles` more of some contacts,
 /// `avatars` the contacts WeChat holds an avatar of, and `groups` each
-/// group's record and notice.
+/// group's record and notice; `index` what WeChat's full-text index covers
+/// (None for an account it keeps none for), and `stale` its entries whose
+/// messages are gone.
 pub struct Account {
     pub id: &'static str,
     pub storage: PathBuf,
@@ -129,6 +148,8 @@ pub struct Account {
     pub groups: Vec<Group>,
     pub messages: Vec<Said>,
     pub recent_messages: Vec<Said>,
+    pub index: Option<Vec<Indexed>>,
+    pub stale: Vec<Stale>,
 }
 
 /// The databases a synthetic account has.
@@ -148,6 +169,8 @@ impl Account {
             groups: Vec::new(),
             messages: Vec::new(),
             recent_messages: Vec::new(),
+            index: None,
+            stale: Vec::new(),
         }
     }
 
@@ -190,7 +213,8 @@ impl Account {
     }
 
     /// Every database it has: the contact and session databases, and each
-    /// message database its messages are in.
+    /// message database its messages are in, and the full-text index when
+    /// it has one.
     pub fn databases(&self) -> Vec<String> {
         let mut all: Vec<String> = DATABASES.iter().map(|d| d.to_string()).collect();
         for said in self.messages.iter().chain(&self.recent_messages) {
@@ -198,6 +222,9 @@ impl Account {
             if !all.contains(&path) {
                 all.push(path);
             }
+        }
+        if self.index.is_some() {
+            all.push(MESSAGE_FTS_DB.to_string());
         }
         all
     }
@@ -270,15 +297,21 @@ impl Account {
             self.messages.iter().chain(&self.recent_messages).map(|s| s.db).collect();
         dbs.sort();
         dbs.dedup();
+        let mut placed = Vec::new();
         for db in dbs {
             let conn = plain(NAME2ID);
+            conn.execute_batch(TIMESTAMP).unwrap();
+            conn.execute("INSERT INTO TimeStamp(timestamp) VALUES (?1)", [stamp(db)]).unwrap();
             let of = |all: &[Said]| all.iter().filter(|s| s.db == db).cloned().collect::<Vec<_>>();
-            said(&conn, &of(&self.messages));
+            placed.extend(said(&conn, &of(&self.messages)));
             let before = bytes(&conn);
-            said(&conn, &of(&self.recent_messages));
+            placed.extend(said(&conn, &of(&self.recent_messages)));
             let after = bytes(&conn);
             let path = format!("message/{db}.db");
             self.seal(&path, &before, &[(&before, &after, true)]);
+        }
+        if let Some(index) = &self.index {
+            self.seal(MESSAGE_FTS_DB, &bytes(&self.fts(index, &placed)), &[]);
         }
         let sessions = plain(SESSION);
         insert(&sessions, &self.sessions);
@@ -288,6 +321,51 @@ impl Account {
         insert(&sessions, &self.uncommitted);
         let after = bytes(&sessions);
         self.seal(SESSION_DB, &before, &[(&before, &committed, true), (&committed, &after, false)]);
+    }
+
+    /// WeChat's full-text index of `placed` (each message with its
+    /// `local_id`), as WeChat writes one: each chat in its `name2id`, each
+    /// range of `index`, and an entry of each message a range covers that
+    /// has its indexed text, the entries spread over two of its tables;
+    /// then the `stale` entries.
+    fn fts(&self, index: &[Indexed], placed: &[(Said, i64)]) -> Connection {
+        let fts = plain(FTS_NAME2ID);
+        fts.execute_batch(&format!("{FTS_RANGE}; {}; {};", fts_content(0), fts_content(1)))
+            .unwrap();
+        let session = |chat: &str| -> i64 {
+            fts.execute("INSERT OR IGNORE INTO name2id(username) VALUES (?1)", [chat]).unwrap();
+            fts.query_row("SELECT rowid FROM name2id WHERE username = ?1", [chat], |r| r.get(0))
+                .unwrap()
+        };
+        for range in index {
+            fts.execute(
+                "INSERT INTO message_fts_v4_range(db_time_stamp, start_local_id, end_local_id, session_id) VALUES (?1, ?2, ?3, ?4)",
+                params![stamp(range.db), range.first, range.last, session(range.chat)],
+            )
+            .unwrap();
+        }
+        let mut entries: Vec<(&str, i64, i64, i64, i64, &str)> = Vec::new();
+        for (said, local_id) in placed {
+            let covered = index.iter().any(|r| {
+                r.chat == said.chat && r.db == said.db && (r.first..=r.last).contains(local_id)
+            });
+            if let (true, Some(text)) = (covered, &said.indexed) {
+                let t = said.local_type;
+                entries.push((said.chat, *local_id, said.sort_seq, t, said.create_time, text));
+            }
+        }
+        for Stale(chat, local_id, text, at) in &self.stale {
+            entries.push((chat, *local_id, at * 1000, 1, *at, text));
+        }
+        for (i, (chat, local_id, sort_seq, local_type, at, text)) in entries.into_iter().enumerate()
+        {
+            fts.execute(
+                &format!("INSERT INTO message_fts_v4_{}_content(c0, c1, c2, c3, c4, c5, c6) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6)", i % 2),
+                params![text, local_id, sort_seq, local_type, session(chat), at],
+            )
+            .unwrap();
+        }
+        fts
     }
 
     /// Writes database `path`, `plain` encrypted, and a WAL of each change
@@ -356,7 +434,8 @@ fn insert(db: &Connection, sessions: &[Session]) {
 /// Writes `messages` into the message database `db`: each chat's table,
 /// made the first time one of its messages is written, and each sender in
 /// `Name2Id`.
-fn said(db: &Connection, messages: &[Said]) {
+fn said(db: &Connection, messages: &[Said]) -> Vec<(Said, i64)> {
+    let mut placed = Vec::new();
     for m in messages {
         let table = wxread_schema::messages_table(m.chat);
         db.execute_batch(
@@ -383,7 +462,16 @@ fn said(db: &Connection, messages: &[Said]) {
             params![m.server_id, m.local_type, m.sort_seq, sender, m.create_time, content, m.packed, m.zstd.then_some(ZSTD)],
         )
         .unwrap();
+        placed.push((m.clone(), db.last_insert_rowid()));
     }
+    placed
+}
+
+/// The `TimeStamp` of message database `db`: its number's, so that
+/// `message_0` and `biz_message_0` share one, as WeChat's do.
+fn stamp(db: &str) -> i64 {
+    let n: i64 = db.rsplit('_').next().unwrap().parse().unwrap();
+    1_700_000_000 + n * 1000
 }
 
 /// Protobuf field `number` holding `value`, length-delimited.

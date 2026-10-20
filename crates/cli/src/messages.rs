@@ -41,7 +41,8 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let cursor = asked.cursor.as_deref().map(Cursor::parse).transpose().map_err(|e| anyhow!(e))?;
     let account = Account::open(world, asked.account.as_deref(), &[CONTACT_DB, MESSAGE_DBS])?;
     let contacts_db = account.database(CONTACT_DB)?;
-    let names = names(&contacts_db, &chat)?;
+    let names =
+        Names { contacts: contacts(&contacts_db)?, in_group: in_group(&contacts_db, &chat)? };
     let table = wxread_schema::messages_table(&chat);
     let mut rows = Vec::new();
     let mut found = false;
@@ -94,7 +95,7 @@ fn read(
 ) -> rusqlite::Result<Vec<Row>> {
     let below = cursor.map(|c| c.below_in(db));
     let mut query = conn.prepare(&format!(
-        "SELECT m.local_id, IFNULL(m.server_id, 0), IFNULL(m.local_type, 0), IFNULL(m.sort_seq, 0), IFNULL(m.create_time, 0), n.user_name, m.message_content, m.WCDB_CT_message_content, m.packed_info_data
+        "SELECT {COLUMNS}
          FROM {table} m LEFT JOIN Name2Id n ON n.rowid = m.real_sender_id
          WHERE (?1 IS NULL OR IFNULL(m.create_time, 0) >= ?1) AND (?2 IS NULL OR IFNULL(m.create_time, 0) < ?2)
            AND (?3 IS NULL OR (IFNULL(m.create_time, 0), IFNULL(m.sort_seq, 0), m.local_id) < (?3, ?4, ?5))
@@ -111,22 +112,31 @@ fn read(
                 below.map(|b| b.2),
                 more
             ],
-            |r| {
-                Ok(Row {
-                    db: db.to_string(),
-                    local_id: r.get(0)?,
-                    server_id: r.get(1)?,
-                    local_type: r.get(2)?,
-                    sort_seq: r.get(3)?,
-                    create_time: r.get(4)?,
-                    sender: r.get::<_, Option<String>>(5)?.filter(|s| !s.is_empty()),
-                    content: bytes(r.get(6)?),
-                    compressed: r.get(7)?,
-                    packed: bytes(r.get(8)?),
-                })
-            },
+            row_of(db),
         )?
         .collect()
+}
+
+/// The columns a message's [`Row`] is read from, of its table `m` and its
+/// sender's `Name2Id` row `n`, in the order [`row_of`] reads them.
+pub(crate) const COLUMNS: &str = "m.local_id, IFNULL(m.server_id, 0), IFNULL(m.local_type, 0), IFNULL(m.sort_seq, 0), IFNULL(m.create_time, 0), n.user_name, m.message_content, m.WCDB_CT_message_content, m.packed_info_data";
+
+/// What reads a row of [`COLUMNS`] in message database `db`.
+pub(crate) fn row_of(db: &str) -> impl Fn(&rusqlite::Row) -> rusqlite::Result<Row> + '_ {
+    move |r| {
+        Ok(Row {
+            db: db.to_string(),
+            local_id: r.get(0)?,
+            server_id: r.get(1)?,
+            local_type: r.get(2)?,
+            sort_seq: r.get(3)?,
+            create_time: r.get(4)?,
+            sender: r.get::<_, Option<String>>(5)?.filter(|s| !s.is_empty()),
+            content: bytes(r.get(6)?),
+            compressed: r.get(7)?,
+            packed: bytes(r.get(8)?),
+        })
+    }
 }
 
 /// A column's value as the bytes it holds.
@@ -141,18 +151,17 @@ pub(crate) fn bytes(value: Sql) -> Vec<u8> {
 }
 
 /// Every id a message database's `Name2Id` names.
-fn ids(conn: &Connection) -> rusqlite::Result<Vec<String>> {
+pub(crate) fn ids(conn: &Connection) -> rusqlite::Result<Vec<String>> {
     let mut query = conn.prepare("SELECT user_name FROM Name2Id")?;
     let ids = query.query_map([], |r| r.get::<_, Option<String>>(0))?;
     ids.filter_map(Result::transpose).collect()
 }
 
-/// What the account calls each contact, and, in a group, what each member
-/// calls themselves in `chat`.
-fn names(db: &Connection, chat: &str) -> anyhow::Result<Names> {
+/// What the account calls each contact, by its id.
+pub(crate) fn contacts(db: &Connection) -> anyhow::Result<BTreeMap<String, Contact>> {
     let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(CONTACT_DB, &e.to_string()));
     let mut query = db.prepare("SELECT username, remark, nick_name FROM contact").map_err(sql)?;
-    let contacts: BTreeMap<String, Contact> = query
+    let contacts = query
         .query_map([], |r| {
             Ok((
                 r.get::<_, Option<String>>(0)?.unwrap_or_default(),
@@ -161,17 +170,21 @@ fn names(db: &Connection, chat: &str) -> anyhow::Result<Names> {
         })
         .and_then(Iterator::collect)
         .map_err(sql)?;
-    let in_group = if wxread_chats::Kind::of(chat) == wxread_chats::Kind::Group {
-        let buffer: Option<Vec<u8>> = db
-            .query_row("SELECT ext_buffer FROM chat_room WHERE username = ?1", [chat], |r| r.get(0))
-            .optional()
-            .map_err(sql)?
-            .flatten();
-        buffer
-            .map(|b| wxread_contacts::names_in_group(&b).into_iter().collect())
-            .unwrap_or_default()
-    } else {
-        BTreeMap::new()
-    };
-    Ok(Names { contacts, in_group })
+    Ok(contacts)
+}
+
+/// What each member of `chat` calls themselves in it, when it is a group.
+pub(crate) fn in_group(db: &Connection, chat: &str) -> anyhow::Result<BTreeMap<String, String>> {
+    if wxread_chats::Kind::of(chat) != wxread_chats::Kind::Group {
+        return Ok(BTreeMap::new());
+    }
+    let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(CONTACT_DB, &e.to_string()));
+    let buffer: Option<Vec<u8>> = db
+        .query_row("SELECT ext_buffer FROM chat_room WHERE username = ?1", [chat], |r| r.get(0))
+        .optional()
+        .map_err(sql)?
+        .flatten();
+    Ok(buffer
+        .map(|b| wxread_contacts::names_in_group(&b).into_iter().collect())
+        .unwrap_or_default())
 }

@@ -18,6 +18,7 @@ pub mod doctor;
 pub mod keys;
 mod memory;
 pub mod messages;
+pub mod search;
 pub mod world;
 
 /// What this binary was built from, as `--version` says it: stamped by
@@ -126,6 +127,30 @@ enum Command {
         #[arg(long, value_name = "NEXT")]
         cursor: Option<String>,
     },
+    /// Find messages across every chat, newest first, a page at a time
+    Search {
+        /// The text to find, in any case
+        #[arg(value_name = "TEXT")]
+        text: Option<String>,
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+        /// Only this chat's messages, by its id as `wxread chats` lists it
+        #[arg(long, value_name = "ID")]
+        chat: Option<String>,
+        /// The first time read: RFC 3339, or a date
+        #[arg(long, value_name = "TIME")]
+        from: Option<String>,
+        /// The time reading stops before: RFC 3339, or a date
+        #[arg(long, value_name = "TIME")]
+        to: Option<String>,
+        /// How many messages a page holds, 1 to 1000 (100 unless given)
+        #[arg(long, value_name = "N")]
+        limit: Option<String>,
+        /// Where the page starts: the `next` of the answer before
+        #[arg(long, value_name = "NEXT")]
+        cursor: Option<String>,
+    },
     /// Read every database key from the running WeChat
     Keys,
 }
@@ -141,6 +166,7 @@ fn help_of(name: &str) -> Option<&'static str> {
         "group" => Some(include_str!("help/group.txt")),
         "keys" => Some(include_str!("help/keys.txt")),
         "messages" => Some(include_str!("help/messages.txt")),
+        "search" => Some(include_str!("help/search.txt")),
         _ => None,
     }
 }
@@ -213,6 +239,12 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
         Command::Messages { account, chat, from, to, limit, cursor } => {
             world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
                 messages::run(&w, &messages::Asked { account, chat, from, to, limit, cursor })
+            })
+        }
+        Command::Search { text, account, chat, from, to, limit, cursor } => {
+            world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
+                let asked = search::Asked { text, account, chat, from, to, limit, cursor };
+                search::run(&w, &asked)
             })
         }
         Command::Keys => keys::run(cli.data_dir),

@@ -19,6 +19,7 @@ wxread-keys = { path = "../keys" }
 wxread-crack = { path = "../crack" }
 wxread-messages = { path = "../messages" }
 wxread-schema = { path = "../schema" }
+wxread-search = { path = "../search" }
 wxread-sqlcipher = { path = "../sqlcipher" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

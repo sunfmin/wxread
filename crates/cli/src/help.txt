@@ -22,6 +22,8 @@ RUN FIRST
   wxread contacts   the account's contacts and groups, with their ids
   wxread messages --chat <id>
                     one chat's messages, each as its kind, newest first
+  wxread search <text>
+                    the messages of every chat that hold a text
 
 WHAT A COMMAND ANSWERS
   One JSON object on stdout. A failure is {"error": "…"} with a non-zero
@@ -37,12 +39,13 @@ WHAT A COMMAND ANSWERS
     keys      each database's path under db_storage, to its enc_key and
               salt
     messages  account chat messages next
+    search    account query searched messages next
 
 THE COMMANDS
   Setting up, run by you or an agent:
       doctor
   Reading the account, run by you or an agent:
-      chats messages
+      chats messages search
       contacts contact group
       articles
   Getting the keys, run by the person whose Mac it is, with sudo:
