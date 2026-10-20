@@ -227,6 +227,43 @@ fn a_channels_feed_is_found_by_its_description_when_wechat_has_not_indexed_it() 
 }
 
 #[test]
+fn the_spaces_between_words_do_not_decide_a_match_in_the_index_or_message_by_message() {
+    // Amy's chat in message_0 is indexed; Bob's in message_1 is read
+    // message by message.
+    for indexed in [false, true] {
+        let world = World::new();
+        let mut account = unwritten(&world, indexed);
+        let spaced = "这两天 claude 写了 15 万行代码";
+        let packed = "又写了15万行";
+        account.messages.push(said(
+            "message_0",
+            "wxid_amy",
+            10,
+            "wxid_amy",
+            1,
+            spaced,
+            Some(spaced),
+        ));
+        account.messages.push(said(
+            "message_1",
+            "wxid_bob",
+            11,
+            "wxid_bob",
+            1,
+            packed,
+            Some(packed),
+        ));
+        account.write();
+        for query in ["15万行", "15 万行", " 1 5万 行 ", "Claude写了"] {
+            let json = search(&world, &account, &[query]);
+            let want: &[&str] = if query == "Claude写了" { &["9010"] } else { &["9011", "9010"] };
+            assert_eq!(ids(&json), want, "indexed {indexed}, {query:?}: {json}");
+            assert_eq!(json["query"], query, "the query is answered as given");
+        }
+    }
+}
+
+#[test]
 fn chat_from_and_to_narrow_it() {
     let world = World::new();
     let account = account(&world, true);
