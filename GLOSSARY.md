@@ -33,6 +33,10 @@ _Avoid_: chatroom, room, group chat
 A person in a group, whether or not the account has them as a contact, with the name they set in that group, if any.
 _Avoid_: participant, user
 
+**Leave**:
+The account ceasing to be a member of a group (退出群聊), by its own choice; it cannot rejoin unless a member invites it back. The group's chat stays, and WeChat writes a notice into it.
+_Avoid_: quit, exit, unsubscribe
+
 **Notice**:
 What a group pins for its members (群公告): its text, who posted it and when. Posted into the group's chat, it is a message of the kind `group_notice`.
 _Avoid_: announcement, bulletin

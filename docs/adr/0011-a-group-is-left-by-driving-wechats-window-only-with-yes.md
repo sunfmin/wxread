@@ -1,0 +1,24 @@
+# A group is left by driving WeChat's window, only with --yes, checked before and after
+
+The account's owner wants to leave the groups that are only ads, found by reading them with wxread. Leaving a group is the first thing wxread does that changes the account: `wxread resign` changes WeChat's app (0006), and every other command only reads (0003, 0005). A group left cannot be rejoined by the account alone; someone in it has to invite it back. So wxread leaves a group the way a person does, in WeChat's own window, and only when it has proved the group is the one asked for.
+
+## How
+
+- **It acts only with `--yes`.** Without it, the command answers the group it would leave (its id, display name and members, as `wxread group` answers them) and the steps it would take, and touches nothing. wxread prompts for nothing, so the go-ahead is a flag, as `resign`'s is.
+- **It never acts on a guess.** Each step is found and checked on a fresh screenshot of WeChat's window, by the text macOS recognizes in it, as docs/leave-group.md records the path. Before Leave is clicked, the opened chat must be the group: its title reads its display name and member count, and its chat info's Group Name its own name. Before OK is clicked, the confirmation must quote the display name. A display name that more than one of the account's groups has is refused before the window is touched, since nothing in the window tells two same-named groups apart. Anything not read as expected stops the path, and a confirmation already up is cancelled.
+- **What it answers it did is what the databases say afterwards.** The account has left when its id is no longer among the group's members, which on WeChat 4.1.15 the databases show within seconds; the notice WeChat writes into the chat comes with it. Not seen within the time it waits, the answer says the leave is not confirmed and what the window last showed, never that it worked.
+- **The person at the Mac comes first.** It starts only after the keyboard and mouse have been left alone for a few seconds, holds WeChat in front for the seconds the path takes, and gives the front back to the app that had it. Text goes in through the pasteboard, put back after, so the input source the person uses does not matter.
+- **What macOS must allow it names.** The app running wxread needs Accessibility (to press WeChat's menus and send its keys and clicks) and Screen Recording (to take the window's screenshot); without either, the command refuses before touching the window, naming the setting in Privacy & Security.
+
+## Why the window, and not WeChat's code
+
+WeChat for Mac has no API for leaving a group. Since 4.0 it draws its window itself (Qt), and on 4.1.15 Accessibility reaches only its menus and three window buttons; asking for more (`AXManualAccessibility`, `AXEnhancedUserInterface`) is refused (-25205, -25208). So no control can be pressed by name. The other way in is WeChat's own code: calling its leave-group function inside its process. That means finding the function again in every WeChat build, injecting code into an app the account's chats run through, and doing something WeChat can tell from its own client, which puts the account at risk. Driving the window does what a person does, survives any build whose screens read the same, and when a screen changes it stops instead of doing something else.
+
+## Consequences
+
+- wxread changes the account: `wxread resign --yes` and leaving a group with `--yes` are the two commands that change anything, each only when told.
+- The path is bound to how WeChat's screens read: the labels (in English and in Chinese), the title with the member count, the `···` at the title row's right end. A WeChat whose screens read otherwise is refused at the step that no longer matches, and the path is found again, as it was for 4.1.15.
+- Opening the group's chat marks its messages read, as a person opening it would.
+- A group the account shares a display name with another of its groups cannot be left by wxread; WeChat itself, or a remark that tells them apart, can.
+- It is built into wxread, in Rust, like every other command: macOS's Vision (text recognition), CoreGraphics (the window list, keys and clicks) and Accessibility (the menus, the front app) are called from Rust through their Objective-C and C interfaces, with no helper beside the binary. The Swift prototype under docs/leave-group/ found the path and is not shipped.
+- What decides (the text compared, the checks, the order of the steps) is pure and checked by Flux (0002); what touches the window is a thin layer around it. The gate cannot drive a WeChat window, so that the path still works on a real Mac is checked by hand, on a group made for it, as `resign` is.
