@@ -1,0 +1,108 @@
+wxread favorites: what the account saved (收藏), each as its kind, newest
+first, a page at a time.
+
+WHEN TO RUN IT
+  To read what the account kept in WeChat's Favorites: texts, links,
+  images, videos, files, voice messages, places, chat histories, notes.
+  Run by you or an agent, once the keys are supplied; it changes nothing.
+
+WHAT IT READS
+  The account's favorite/favorite.db under its db_storage, WeChat's store
+  of its favorites, and its contact/contact.db, for the names of whom a
+  favorite was saved from, each with the WAL beside it (what WeChat wrote
+  last), with their keys: the file --keys names, else the contents of
+  WXREAD_KEYS. Each is decrypted into memory and read there, after its key
+  is checked against its first page; whether WeChat holds a favorite's
+  file and thumbnail is read from the files it keeps under the account's
+  directory, business/favorite/. It writes nothing, anywhere: no decrypted
+  byte reaches the disk.
+
+OPTIONS
+  --account <id>    the account to read, as `wxread doctor` names it;
+                    with only one logged in, that one
+  --limit <n>       how many favorites a page holds, 1 to 1000; 100
+                    unless given
+  --cursor <next>   start after the page that answered this `next`
+
+WHAT IT ANSWERS
+    account    the account read: its directory's name, as doctor's id
+    favorites  [{id, saved_at, kind, <kind>, source, tags, type,
+               content}], the newest saved (or edited) first:
+               id        WeChat's local id of it, a string
+               saved_at  when it was saved, or last edited (a note), RFC
+                         3339 in UTC
+               kind      what it is, one of the kinds below
+               <kind>    an object named by its kind, of the fields
+                         below: "kind": "link" comes with "link": {…}
+               source    {from, from_name, chat, chat_name, at,
+                         message_id, link}: who said what was saved (a
+                         wxid; in a group the member) and the chat it was
+                         said in (a group's <n>@chatroom, else the other
+                         person), each with its name as WeChat shows it
+                         (the account's remark, else their own name);
+                         when it was said (RFC 3339 in UTC); the id of
+                         the message it was saved from, as `wxread
+                         messages` answers ids; the page it was saved
+                         from. Each is null when WeChat does not say it
+               tags      the tags the account gave it, in its order
+               type      WeChat's number for it (1 text, 2 image, 5 link,
+                         14 chat history, 18 note, …)
+               content   what WeChat keeps of it, as it keeps it: its
+                         <favitem> XML
+    next       pass it as --cursor for the next page; null on the last
+               one
+
+THE KINDS AND THEIR FIELDS
+  Every field is null when the favorite does not say it.
+  Each media kind (image, video, voice, file) names its file and says
+      whether WeChat on this Mac holds it: file_id what `wxread file get
+      <file_id> --out <path>` writes (fav:<favorite>:<item>); size its
+      bytes; file_present its file, true or false; thumbnail_present its
+      thumbnail, an image's or a video's (null for the kinds that have
+      none).
+  text          {text}
+  link          {title, summary, url, cover, source}: source the site or
+                official account it is from
+  image         {file_id, size, file_present, thumbnail_present}
+  video         {file_id, size, seconds, file_present, thumbnail_present}
+  voice         {file_id, size, length_ms, file_present,
+                thumbnail_present}: its file as WeChat recorded it
+  file          {file_id, size, name, extension, file_present,
+                thumbnail_present}
+  location      {latitude, longitude, name, address}
+  music         {title, summary, url, audio_url}
+  chat_history  {title, summary, items: [{kind, <kind>, sender,
+                sender_name, at, type}]}: each message saved, in order,
+                as its kind with the fields above (a chat history saved
+                in it with its own items); sender a wxid, sender_name the
+                name WeChat showed, at when it was said, type WeChat's
+                number for it
+  note          {items: [{kind, <kind>, sender, sender_name, at, type}]}:
+                each part of the note, in order: its paragraphs (text),
+                images, files, places; its body as WeChat renders it is a
+                file of extension htm, written by `wxread file get`
+  mini_program  {title, app, app_id, path}
+  channels      {title, author, summary}: a post of 视频号
+  unknown       {}: anything else, read from content and type; a favorite
+                whose XML does not read is its kind by its type with its
+                fields null, never an error
+
+TRIPS YOU UP
+  - Favorites are newest first, by when they were saved or last edited:
+    an edited note moves to the top. Paging is by where each was when the
+    page was read: one saved since is not on a later page, and a fresh
+    run from the newest shows it.
+  - Media is named, not fetched: `wxread file get <file_id> --out <path>`
+    writes a favorite's file, unsealed. Its file_present says whether
+    WeChat holds it; WeChat downloads a favorite's file only when it is
+    opened in WeChat's Favorites, so most are not held.
+  - The keys must open favorite/favorite.db and contact/contact.db. WeChat
+    may hold the key of favorite/favorite.db only once its Favorites (收藏)
+    has been opened: keys without it are an error saying to open
+    Favorites in WeChat and run `sudo wxread keys` again. One that no
+    longer opens its database (WeChat created its databases again:
+    logging out and in, some updates) is an error naming it; its fix is
+    `sudo wxread keys`, then supplying the keys again.
+  - An account that has no favorite/favorite.db has no favorites: an
+    empty list, exit 0.
+  - Several accounts logged in is an error naming them: pass --account.

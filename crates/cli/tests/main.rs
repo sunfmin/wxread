@@ -8,6 +8,7 @@ mod common;
 mod contacts;
 mod doctor;
 mod errors;
+mod favorites;
 mod file;
 mod help;
 mod messages;
