@@ -409,6 +409,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
+name = "mach2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d640282b302c0bb0a2a8e0233ead9035e3bed871f0b7e81fe4a1ec829765db44"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "md5"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -748,6 +757,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "libc",
+ "mach2",
  "md5",
  "rusqlite",
  "ruzstd",
@@ -756,8 +767,10 @@ dependencies = [
  "tempfile",
  "wxread-account",
  "wxread-answer",
+ "wxread-articles",
  "wxread-chats",
  "wxread-contacts",
+ "wxread-crack",
  "wxread-doctor",
  "wxread-keys",
  "wxread-media",
@@ -784,6 +797,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wxread-articles"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "roxmltree",
+ "wxread-answer",
+ "wxread-messages",
+]
+
+[[package]]
 name = "wxread-chats"
 version = "0.1.0"
 dependencies = [
@@ -798,6 +821,16 @@ version = "0.1.0"
 dependencies = [
  "proptest",
  "wxread-answer",
+]
+
+[[package]]
+name = "wxread-crack"
+version = "0.1.0"
+dependencies = [
+ "flux-rs",
+ "proptest",
+ "wxread-keys",
+ "wxread-sqlcipher",
 ]
 
 [[package]]

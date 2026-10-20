@@ -144,7 +144,7 @@ fn read(
 }
 
 /// A column's value as the bytes it holds.
-pub fn bytes(value: Sql) -> Vec<u8> {
+pub(crate) fn bytes(value: Sql) -> Vec<u8> {
     match value {
         Sql::Text(s) => s.into_bytes(),
         Sql::Blob(b) => b,

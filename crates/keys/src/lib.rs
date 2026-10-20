@@ -9,7 +9,12 @@
 use std::collections::BTreeMap;
 
 use flux_rs::attrs::*;
-use serde_json::Value;
+use serde_json::{Value, json};
+
+/// How many hex digits a key is (32 bytes) and a salt is (16 bytes), in the
+/// shape the keys are written and read.
+pub const KEY_HEX: usize = 64;
+pub const SALT_HEX: usize = 32;
 
 /// One database's key, and the salt its first page starts with when the
 /// keys say it.
@@ -19,12 +24,41 @@ pub struct Key {
     pub salt: Option<[u8; 16]>,
 }
 
+impl Key {
+    /// A key of these bytes, with this salt (as `wxread keys` answers it,
+    /// always knowing the salt) or without one.
+    pub fn new(enc_key: [u8; 32], salt: Option<[u8; 16]>) -> Key {
+        Key { enc_key, salt }
+    }
+
+    /// This key as one `{"enc_key", "salt"}` object: the salt is left out
+    /// when there is none.
+    pub fn to_value(&self) -> Value {
+        match self.salt {
+            Some(salt) => json!({"enc_key": encode(&self.enc_key), "salt": encode(&salt)}),
+            None => json!({"enc_key": encode(&self.enc_key)}),
+        }
+    }
+}
+
 /// Every database the keys open, by its path under `db_storage`, `/`
 /// between its parts.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Keys(BTreeMap<String, Key>);
 
 impl Keys {
+    /// The keys of these databases, each by its path under `db_storage`;
+    /// the last of any one path wins.
+    pub fn of(entries: impl IntoIterator<Item = (String, Key)>) -> Keys {
+        Keys(entries.into_iter().collect())
+    }
+
+    /// The keys as one JSON object of each database's path to its key, the
+    /// shape `parse` reads and `wechat-cli init` writes its `all_keys.json`.
+    pub fn to_value(&self) -> Value {
+        Value::Object(self.0.iter().map(|(path, key)| (path.clone(), key.to_value())).collect())
+    }
+
     /// The keys in `text`, or every fault in it at once, each saying which
     /// entry and what is wrong with it.
     pub fn parse(text: &str) -> Result<Keys, Vec<String>> {
@@ -82,22 +116,34 @@ fn entry_key(entry: &Value) -> Result<Key, &'static str> {
     Ok(Key { enc_key, salt })
 }
 
-/// A database key written as 64 hex digits.
+/// A database key written as 64 hex digits (a string).
 fn key32(hex: &str) -> Option<[u8; 32]> {
+    decode_key(hex.as_bytes())
+}
+
+/// A salt written as 32 hex digits (a string).
+fn salt16(hex: &str) -> Option<[u8; 16]> {
+    let mut out = [0u8; 16];
+    unhex(hex.as_bytes(), &mut out).then_some(out)
+}
+
+/// A database key written as 64 hex digits, from the bytes of those digits:
+/// the shape the running WeChat holds it in. `None` for anything else.
+pub fn decode_key(hex: &[u8]) -> Option<[u8; 32]> {
     let mut out = [0u8; 32];
     unhex(hex, &mut out).then_some(out)
 }
 
-/// A salt written as 32 hex digits.
-fn salt16(hex: &str) -> Option<[u8; 16]> {
-    let mut out = [0u8; 16];
-    unhex(hex, &mut out).then_some(out)
+/// `bytes` written as hex, two lower-case digits a byte: how a key and a
+/// salt are answered.
+pub fn encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Fills `out` from `hex`, two digits a byte, and says whether `hex` was
-/// exactly that: as many digit pairs as `out` has bytes, and nothing else.
-fn unhex(hex: &str, out: &mut [u8]) -> bool {
-    let digits = hex.as_bytes();
+/// Fills `out` from the hex digits `digits`, two a byte, and says whether
+/// `digits` was exactly that: as many digit pairs as `out` has bytes, and
+/// nothing else.
+fn unhex(digits: &[u8], out: &mut [u8]) -> bool {
     if !digits.len().is_multiple_of(2) || digits.len() / 2 != out.len() {
         return false;
     }
@@ -173,12 +219,28 @@ mod tests {
         }
     }
 
+    #[test]
+    fn found_keys_are_answered_in_the_shape_parse_reads_back() {
+        let keys = Keys::of([
+            ("message/message_0.db".to_string(), Key::new([0x11; 32], Some([0x22; 16]))),
+            ("contact/contact.db".to_string(), Key::new([0x33; 32], None)),
+        ]);
+        let value = keys.to_value();
+        assert_eq!(value["message/message_0.db"]["enc_key"], "11".repeat(32));
+        assert_eq!(value["message/message_0.db"]["salt"], "22".repeat(16));
+        assert_eq!(value["contact/contact.db"]["enc_key"], "33".repeat(32));
+        assert_eq!(value["contact/contact.db"].get("salt"), None);
+        // What `wxread keys` answers is exactly what `parse` reads back.
+        assert_eq!(Keys::parse(&value.to_string()).unwrap(), keys);
+    }
+
     proptest! {
         #[test]
         fn a_key_written_in_hex_reads_back(key: [u8; 32], upper: bool) {
-            let hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
+            let hex: String = encode(&key);
             let hex = if upper { hex.to_uppercase() } else { hex };
             prop_assert_eq!(key32(&hex), Some(key));
+            prop_assert_eq!(decode_key(hex.as_bytes()), Some(key));
         }
 
         #[test]

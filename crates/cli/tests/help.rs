@@ -7,7 +7,7 @@ use std::process::Command;
 use serde_json::Value;
 
 use crate::common::World;
-use crate::synthetic::{Account, Contact, DATABASES, Group, Said, Session};
+use crate::synthetic::{Account, Article, Contact, DATABASES, Group, Said, Session};
 use wxread_doctor::{DATA_DIR_FLAG, DATA_DIR_VAR, KEYS_FLAG, KEYS_VAR};
 
 /// What the binary prints for `args`, which must exit 0 and leave stderr empty.
@@ -59,8 +59,10 @@ fn run_in(text: &str) -> BTreeSet<String> {
 #[test]
 fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
     let existing = existing();
-    let names =
-        ["avatar", "chats", "contact", "contacts", "doctor", "file", "group", "keys", "messages"];
+    let names = [
+        "articles", "avatar", "chats", "contact", "contacts", "doctor", "file", "group", "keys",
+        "messages",
+    ];
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
     let short = asked(&["-h"]);
@@ -264,5 +266,29 @@ fn file_get_and_avatar_answer_exactly_the_keys_their_help_and_the_guide_name() {
         }
         assert_eq!(answered(command), keys_answered, "{command}");
         assert_eq!(guide_row(command), keys_answered, "{command}");
+    }
+}
+
+#[test]
+fn articles_answers_exactly_the_keys_its_help_and_the_guide_name() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    let article = Article("Knots", "Eight ways", "https://e.com/k", "https://e.com/k.jpg");
+    account.messages = vec![Said::push("gh_crag", "Crag News", 1_760_000_000, &[article])];
+    account.write();
+    let json = world.run(&["articles"], &[("WXREAD_KEYS", &account.all_keys())]).ok();
+    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(answered("articles"), keys);
+    assert_eq!(guide_row("articles"), keys);
+    let help = asked(&["articles", "--help"]);
+    let article = json["articles"][0].as_object().unwrap();
+    for field in article.keys() {
+        assert!(
+            help.contains(&format!("              {field} ")),
+            "articles --help says what {field} is"
+        );
+    }
+    for field in json["articles"][0]["official_account"].as_object().unwrap().keys() {
+        assert!(help.contains("{id, name}") && help.contains(field), "{field}");
     }
 }

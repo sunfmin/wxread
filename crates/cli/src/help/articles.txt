@@ -1,0 +1,64 @@
+wxread articles: the articles official accounts sent, newest first, a
+page at a time.
+
+WHEN TO RUN IT
+  To read what the official accounts (公众号) the account follows sent:
+  each article's title, digest, url and cover. Run by you or an agent,
+  once the keys are supplied; it changes nothing.
+
+WHAT IT READS
+  The account's message/biz_message_<n>.db under its db_storage, WeChat's
+  store of what official accounts sent apart from the chats (every one
+  there is), and its contact/contact.db, for the official accounts'
+  names, each with the WAL beside it (what WeChat wrote last), with their
+  keys: the file --keys names, else the contents of WXREAD_KEYS. Each is
+  decrypted into memory and read there, after its key is checked against
+  its first page. It writes nothing, anywhere: no decrypted byte reaches
+  the disk.
+
+OPTIONS
+  --account <id>           the account to read, as `wxread doctor` names
+                           it; with only one logged in, that one
+  --official-account <id>  only the articles of this official account,
+                           by its gh_... id, as `wxread contacts` names it
+  --limit <n>              how many articles a page holds, 1 to 1000; 100
+                           unless given
+  --cursor <next>          start after the page that answered this `next`
+
+WHAT IT ANSWERS
+    account   the account read: its directory's name, as doctor's id
+    articles  [{official_account, sent_at, title, digest, url, cover}],
+              newest first, a push's articles in its order:
+              official_account  {id, name}: the official account's gh_...
+                                id, and its name as WeChat shows it (the
+                                account's remark for it, else its own
+                                name, else the name its push gives; ""
+                                for none)
+              sent_at           when its push was sent, RFC 3339 in UTC;
+                                null for no time
+              title             the article's title
+              digest            what the push says it is about; "" for
+                                nothing
+              url               where the article is read
+              cover             its cover image's url; "" for none
+    next      pass it as --cursor for the next page; null on the last one
+
+TRIPS YOU UP
+  - A push of several articles is listed as each of them, sharing its
+    official account and sent_at.
+  - Only what an official account pushed is listed: its other messages
+    (a text, an image, a reply to the account) are not articles.
+  - An official account that sent nothing, or an id that is no official
+    account's, is an empty list, exit 0, not an error. So is an account
+    WeChat keeps no store of official accounts for yet.
+  - --account picks the account logged in, as for every command;
+    --official-account picks whose articles.
+  - Paging is by where each article was when the page was read: one
+    pushed since is not on a later page, and a fresh run from the newest
+    shows it.
+  - The keys must open every one of those databases. One missing, or one
+    that no longer opens its database (WeChat created its databases
+    again: logging out and in, some updates), is an error naming the
+    database; its fix is `sudo wxread keys`, then supplying the keys
+    again.
+  - Several accounts logged in is an error naming them: pass --account.

@@ -11,10 +11,12 @@ autotests = false
 [dependencies]
 wxread-account = { path = "../account" }
 wxread-answer = { path = "../answer" }
+wxread-articles = { path = "../articles" }
 wxread-chats = { path = "../chats" }
 wxread-contacts = { path = "../contacts" }
 wxread-doctor = { path = "../doctor" }
 wxread-keys = { path = "../keys" }
+wxread-crack = { path = "../crack" }
 wxread-media = { path = "../media" }
 wxread-messages = { path = "../messages" }
 wxread-schema = { path = "../schema" }
@@ -22,10 +24,15 @@ wxread-sqlcipher = { path = "../sqlcipher" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde_json.workspace = true
+libc = "0.2.191"
 # The SHA-256 a written file is answered with.
 sha2 = "0.10"
 # WeChat's databases, decrypted, opened from memory.
 rusqlite = { version = "0.32", features = ["bundled", "serialize"] }
+
+# Reading the running WeChat's memory is a macOS job (docs/adr/0001).
+[target.'cfg(target_os = "macos")'.dependencies]
+mach2 = "0.4.3"
 
 [dev-dependencies]
 tempfile = "3"
