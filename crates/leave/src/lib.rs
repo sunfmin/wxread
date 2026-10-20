@@ -118,7 +118,13 @@ pub fn run<E>(
 /// The groups of `ids` whose `outcomes` leave them still to leave, in
 /// order.
 pub fn rest<'a>(ids: &[&'a str], outcomes: &[Outcome]) -> Vec<&'a str> {
-    ids.iter().zip(outcomes).filter(|(_, o)| o.remains()).map(|(id, _)| *id).collect()
+    let mut rest = Vec::new();
+    for (at, id) in ids.iter().enumerate() {
+        if outcomes.get(at).is_some_and(|o| o.remains()) {
+            rest.push(*id);
+        }
+    }
+    rest
 }
 
 /// What to do once a run of `ids` ended in `outcomes`, asked with
@@ -138,12 +144,12 @@ pub fn next(ids: &[&str], outcomes: &[Outcome], account: Option<&str>, blocked: 
         }
         return format!("nothing was changed: run `{retry}` to leave them; it cannot be undone");
     }
-    let left: Vec<String> = ids
-        .iter()
-        .zip(outcomes)
-        .filter(|(_, o)| o.confirmed_in().is_some())
-        .map(|(id, _)| format!("`wxread group {id}`"))
-        .collect();
+    let mut left = Vec::new();
+    for (at, id) in ids.iter().enumerate() {
+        if outcomes.get(at).is_some_and(|o| o.confirmed_in().is_some()) {
+            left.push(format!("`wxread group {id}`"));
+        }
+    }
     if left.is_empty() {
         return "nothing to leave: the account is in none of them; `wxread group <id>` answers who is"
             .to_string();
