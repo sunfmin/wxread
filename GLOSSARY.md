@@ -78,7 +78,7 @@ What a message is (text, image, voice, file, link, and so on), whatever number W
 _Avoid_: type, msg type
 
 **Sender**:
-The contact who said a message, by id, and shown as WeChat shows them: the account's remark for them, else their name in the group, else their own name. WeChat's own notices have none.
+The contact who said a message, by id, and shown as WeChat shows them: the account's remark for them, else their name in the group, else their own name. A recall's is who recalled it; WeChat's other notices have none.
 _Avoid_: author, from, user
 
 **Notice**:
