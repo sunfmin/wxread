@@ -41,8 +41,8 @@ WHAT IT ANSWERS
               id           WeChat's server id of it, a string; null for one
                            the server never saw (some notices)
               at           when it was sent, RFC 3339 in UTC
-              sender       who said it: a wxid; null for WeChat's own
-                           notices
+              sender       who said it: a wxid; a recall's, who recalled
+                           it; null for WeChat's other notices
               sender_name  what WeChat shows them as: the account's remark
                            for them, else their name in the group, else
                            their own name; null when nothing names them
@@ -84,8 +84,13 @@ THE KINDS AND THEIR FIELDS
               inside}]}: each message forwarded, in order; one forwarded
               inside another follows it, its inside the position in this
               list of the forward it sits in (null at the top)
-  recall      {text}: a message its sender recalled, which WeChat rewrites
-              into this notice in its place
+  recall      {text, recalled}: a message its sender recalled, which
+              WeChat rewrites into this notice in its place; its sender
+              is who recalled it: the account for its own, else the
+              member who goes by the name in quotes the text shows them
+              by (null when none does, or several), in a direct chat the
+              other; recalled the id of the message recalled, when
+              WeChat's notice holds it (most do not: null)
   nudge       {from, to, text}: who nudged whom
   join        {contacts, by, text}: who joined the group, and who brought
               them in

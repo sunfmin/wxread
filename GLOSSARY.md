@@ -82,7 +82,7 @@ A voice or video call in a chat, as the bubble WeChat leaves of it: whether it c
 _Avoid_: VoIP, phone call
 
 **Sender**:
-The contact who said a message, by id, and shown as WeChat shows them: the account's remark for them, else their name in the group, else their own name. WeChat's own notices have none.
+The contact who said a message, by id, and shown as WeChat shows them: the account's remark for them, else their name in the group, else their own name. A recall's is who recalled it; WeChat's other notices have none.
 _Avoid_: author, from, user
 
 **Notice**:

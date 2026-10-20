@@ -49,8 +49,9 @@ const NUDGE: i64 = 62;
 const TRANSFER: i64 = 2000;
 const RED_PACKET: i64 = 2001;
 
-/// How a recall's notice ends when it is plain text, in Chinese and in
-/// English: the account's own ("你撤回了一条消息"), or someone else's
+/// How a recall's notice ends, in Chinese and in English, before any full
+/// stop: the account's own ("你撤回了一条消息", "You recalled a message."),
+/// or someone else's, by the name WeChat showed them by, in quotes
 /// ("\"Ann\" 撤回了一条消息").
 const RECALLED: [&str; 2] = ["撤回了一条消息", "recalled a message"];
 /// How the account's own recall's notice starts.
@@ -93,6 +94,9 @@ pub struct Parsed {
     /// Who said it, when the content says so and the row does not: the
     /// account, for its own recall.
     pub sender: Option<String>,
+    /// The name alone the content gives who said it by, when it names them
+    /// only so: whoever recalled a recall that is not the account's.
+    pub named: Option<String>,
 }
 
 impl Parsed {
@@ -101,7 +105,7 @@ impl Parsed {
             Value::Object(map) => map,
             _ => Map::new(),
         };
-        Parsed { kind, fields, sender: None }
+        Parsed { kind, fields, sender: None, named: None }
     }
 
     fn unknown() -> Parsed {
@@ -516,12 +520,8 @@ fn flatten(record: Node, inside: Option<usize>, out: &mut Vec<Value>) {
 fn system(account: &str, content: &str) -> Parsed {
     let notice = content.trim();
     if !notice.starts_with('<') {
-        if RECALLED.iter().any(|r| notice.ends_with(r)) {
-            let own = OWN.iter().any(|o| notice.starts_with(o));
-            return Parsed {
-                sender: own.then(|| account.to_string()),
-                ..Parsed::of(Kind::Recall, json!({ "text": notice }))
-            };
+        if let Some(by) = recaller(notice) {
+            return recall(account, notice, by, None);
         }
         if notice.is_empty() {
             return Parsed::unknown();
@@ -530,12 +530,41 @@ fn system(account: &str, content: &str) -> Parsed {
     }
     xml(notice, |root| match root.attribute("type")? {
         "revokemsg" => {
-            Some(Parsed::of(Kind::Recall, json!({ "text": text(root, "revokemsg/content")? })))
+            let revoke = child(root, "revokemsg")?;
+            let notice = text(revoke, "content").or_else(|| text(revoke, "replacemsg"))?;
+            let notice = notice.trim();
+            // WeChat's server id of the message recalled, when it kept it.
+            let recalled = text(revoke, "newmsgid")
+                .map(|id| id.trim().to_string())
+                .filter(|id| !id.is_empty() && id != "0");
+            Some(recall(account, notice, recaller(notice).unwrap_or_default(), recalled))
         }
         "sysmsgtemplate" => template(account, child(root, "sysmsgtemplate/content_template")?),
         _ => None,
     })
     .unwrap_or_else(Parsed::unknown)
+}
+
+/// Who `notice` says recalled a message, as it says it ("你", "\"Ann\""):
+/// what comes before how a recall's notice ends; None when it does not
+/// end so.
+fn recaller(notice: &str) -> Option<&str> {
+    let said = notice.trim_end_matches(['.', '。']);
+    RECALLED.iter().find_map(|r| said.strip_suffix(r)).map(str::trim_end)
+}
+
+/// The recall whose notice is `notice`, its recaller as the notice says
+/// them `by`, and the message recalled by its id when WeChat kept it
+/// `recalled`: the account's own is the account's; anyone else's is named
+/// by the name in quotes the notice shows them by.
+fn recall(account: &str, notice: &str, by: &str, recalled: Option<String>) -> Parsed {
+    let own = OWN.iter().any(|o| by.starts_with(o));
+    let named = by.strip_prefix('"').and_then(|n| n.strip_suffix('"')).filter(|n| !n.is_empty());
+    Parsed {
+        sender: own.then(|| account.to_string()),
+        named: named.filter(|_| !own).map(String::from),
+        ..Parsed::of(Kind::Recall, json!({ "text": notice, "recalled": recalled }))
+    }
 }
 
 /// A link of a template: its name, its members' ids and what it shows.
