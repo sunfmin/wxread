@@ -298,6 +298,14 @@ pub fn commands() -> Vec<String> {
     Cli::command().get_subcommands().map(|c| c.get_name().to_string()).collect()
 }
 
+/// The subcommands of subcommand `command`, as the parser knows them:
+/// `group leave` is `group`'s.
+pub fn subcommands(command: &str) -> Vec<String> {
+    let cli = Cli::command();
+    let of = cli.get_subcommands().find(|c| c.get_name() == command);
+    of.map(|c| c.get_subcommands().map(|s| s.get_name().to_string()).collect()).unwrap_or_default()
+}
+
 /// Runs the command `args` names: prints its one JSON object, or for a
 /// failure `{"error": …}`, and says how it ended.
 pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
