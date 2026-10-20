@@ -172,10 +172,7 @@ pub fn page(
 /// listed, with its id, author and content.
 pub fn moment(row: &Row, names: &BTreeMap<String, String>) -> Moment {
     let id = row.id().to_string();
-    let person = |who: &str, given: Option<String>| Person {
-        id: who.to_string(),
-        name: names.get(who).filter(|n| !n.is_empty()).cloned().or(given).unwrap_or_default(),
-    };
+    let person = |who: &str, given| person(names, who, given);
     let bare = Moment {
         id: id.clone(),
         author: person(&row.author, None),
@@ -205,24 +202,6 @@ pub fn moment(row: &Row, names: &BTreeMap<String, String>) -> Moment {
             .enumerate()
             .map(|(n, m)| media_of(&id, &post, n, m))
             .collect();
-        let said = |list: &str| -> Vec<Said> {
-            let list = local.and_then(|l| child(l, list));
-            list.map(|l| named(l, "user_comment"))
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|c| text(*c, "b_deleted").is_none_or(|d| d == "0"))
-                .filter_map(|c| {
-                    let by = text(c, "username")?;
-                    let reply_to = text(c, "ref_username").map(|r| person(&r, None));
-                    Some(Said {
-                        by: person(&by, text(c, "nickname")),
-                        at: text(c, "create_time").and_then(|t| t.parse().ok()).and_then(rfc3339),
-                        text: field(Some(c), "content"),
-                        reply_to,
-                    })
-                })
-                .collect()
-        };
         let link = Some(field(object, "contentUrl")).filter(|u| !u.is_empty()).map(|url| Link {
             title: field(object, "title"),
             description: field(object, "description"),
@@ -235,13 +214,42 @@ pub fn moment(row: &Row, names: &BTreeMap<String, String>) -> Moment {
             location: child(timeline, "location").and_then(location),
             link,
             media,
-            likes: said("like_user_list"),
-            comments: said("comment_user_list"),
+            likes: said(local, "like_user_list", names),
+            comments: said(local, "comment_user_list", names),
             kind: object.and_then(|o| text(o, "type")).and_then(|t| t.parse().ok()),
             ..bare.clone()
         })
     })
     .unwrap_or(bare)
+}
+
+/// The contact `who`, named by `names`, else `given`.
+fn person(names: &BTreeMap<String, String>, who: &str, given: Option<String>) -> Person {
+    let known = names.get(who).filter(|n| !n.is_empty()).cloned();
+    Person { id: who.to_string(), name: known.or(given).unwrap_or_default() }
+}
+
+/// The likes or comments in `local`'s `list` that are not deleted, each
+/// person named by `names`.
+fn said(local: Option<Node>, list: &str, names: &BTreeMap<String, String>) -> Vec<Said> {
+    let mut all = Vec::new();
+    let Some(list) = local.and_then(|l| child(l, list)) else {
+        return all;
+    };
+    for c in named(list, "user_comment") {
+        let deleted = text(c, "b_deleted").is_some_and(|d| d != "0");
+        let Some(by) = text(c, "username").filter(|_| !deleted) else {
+            continue;
+        };
+        let at = text(c, "create_time").and_then(|t| t.parse().ok()).and_then(rfc3339);
+        all.push(Said {
+            by: person(names, &by, text(c, "nickname")),
+            at,
+            text: text(c, "content").unwrap_or_default(),
+            reply_to: text(c, "ref_username").map(|r| person(names, &r, None)),
+        });
+    }
+    all
 }
 
 /// The first element named `name` at or under `root`.
