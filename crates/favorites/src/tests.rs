@@ -374,24 +374,19 @@ proptest! {
         limit in 1usize..6,
     ) {
         let rows: Vec<Row> = saved.iter().enumerate().map(|(i, &at)| row(i as i64, 1, at, "<desc>x</desc>")).collect();
-        let names = BTreeMap::new();
-        let none = BTreeSet::new();
-        let seen = Seen { own: ME, names: &names, held: &none };
         let ids = |p: &Page| -> Vec<(i64, i64)> {
-            p.favorites.iter().map(|f| {
-                let id: i64 = f["id"].as_str().unwrap().parse().unwrap();
-                (rows[id as usize].update_time, id)
-            }).collect()
+            p.rows.iter().map(|r| (r.update_time, r.local_id)).collect()
         };
-        let whole = ids(&page(&rows, &seen, None, Limit::new(1000).unwrap()));
+        let whole = ids(&page(rows.clone(), None, Limit::new(1000).unwrap()));
         let mut sorted = whole.clone();
         sorted.sort_by(|a, b| b.cmp(a));
         prop_assert_eq!(&whole, &sorted);
+        prop_assert_eq!(whole.len(), rows.len());
         let mut paged = Vec::new();
         let mut after = None;
         loop {
-            let p = page(&rows, &seen, after.as_ref(), Limit::new(limit).unwrap());
-            prop_assert!(p.favorites.len() <= limit);
+            let p = page(rows.clone(), after.as_ref(), Limit::new(limit).unwrap());
+            prop_assert!(p.rows.len() <= limit);
             paged.extend(ids(&p));
             match p.next {
                 Some(next) => after = Some(Cursor::parse(&next.text()).unwrap()),

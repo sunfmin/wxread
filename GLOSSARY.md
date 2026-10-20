@@ -94,8 +94,16 @@ The small copy WeChat keeps of an image or a video beside its file, often when i
 _Avoid_: preview, thumb
 
 **Missing**:
-A media message's file, or an avatar, that WeChat on this Mac does not hold (it never downloaded it, or cleared it): an answer, not an error, with the thumbnail when there is one and what makes WeChat fetch it.
+A media message's or a favorite's file, or an avatar, that WeChat on this Mac does not hold (it never downloaded it, or cleared it): an answer, not an error, with the thumbnail when there is one and what makes WeChat fetch it.
 _Avoid_: not found, absent, deleted
+
+**Favorite**:
+Something the account saved in WeChat's Favorites (收藏), by its own id: a text, a link, an image, a video, a file, a voice message, a place, a chat history, a note and the like, with where it was saved from and the tags the account gave it.
+_Avoid_: bookmark, collection, saved item, star
+
+**Item**:
+One part of a favorite, as WeChat keeps it in its data list: a chat history's messages, a note's paragraphs and images, or the one image or file a favorite is; an item that carries a file is fetched by its file id, `fav:<favorite>:<item>`.
+_Avoid_: data item, element, entry
 
 **Image key**:
 The key an account's V2 images are sealed under, derived from the code in WeChat's kvcomm files' names and the account's id, and told by the image it opens; unlike a database's key, it needs no memory read.

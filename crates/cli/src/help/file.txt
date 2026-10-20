@@ -1,13 +1,15 @@
 wxread file get: write one media message's file (an image, a video, a
-file, a sticker or a voice message), or its thumbnail, as the file it is.
+file, a sticker or a voice message), or a favorite's, or its thumbnail,
+as the file it is.
 
   wxread file get <id> --out <path> [--thumbnail]
 
 WHEN TO RUN IT
   To see or keep what a message carries, once `wxread messages` has
   answered its id and said, in its file_present and thumbnail_present,
-  that WeChat holds it. Run by you or an agent, once the keys are
-  supplied.
+  that WeChat holds it; or what a favorite holds, once `wxread favorites`
+  has answered its file_id and said the same. Run by you or an agent,
+  once the keys are supplied.
 
 WHAT IT READS
   The message, by its id, in the account's message databases (message/
@@ -28,6 +30,13 @@ WHAT IT READS
     voice    its SILK bytes in message/media_<n>.db
     sticker  fetched from WeChat's CDN at its url, with macOS's own curl,
              into memory, and checked against its md5
+  A favorite's file (its file_id fav:<favorite>:<item>): the favorite in
+  favorite/favorite.db, then its item's file under the account's
+  directory, business/favorite/data/<h[..2]>/<h> (its thumbnail
+  business/favorite/thumb/<h[..2]>/<h>), h the MD5 of the item's id, its
+  MD5 and "_data" ("_thumb"), as WeChat names them. Sealed as an image is
+  (V1, or V2 under the account's image key), whatever file it is, and
+  unsealed in memory; one WeChat did not seal is written as it is.
   Each database is decrypted into memory, with its key: the file --keys
   names, else the contents of WXREAD_KEYS.
 
@@ -39,7 +48,9 @@ WHAT IT WRITES
 
 OPTIONS
   <id>              the message's id, its "id" as `wxread messages`
-                    answers it; required
+                    answers it, or a favorite's file_id as `wxread
+                    favorites` answers it (fav:<favorite>:<item>);
+                    required
   --out <path>      the file to write; required. Its directory must exist.
   --thumbnail       the thumbnail WeChat keeps of an image or a video,
                     instead of its file
@@ -62,8 +73,9 @@ WHAT IT ANSWERS
     thumbnail     the thumbnail written at --out in its place, as
                   {path, size, sha256, content_type}, when WeChat holds
                   one; else null, and nothing is written
-    fix           what makes WeChat fetch it: open the message in WeChat,
-                  which downloads it, then run this again
+    fix           what makes WeChat fetch it: open the message (or the
+                  favorite, in WeChat's Favorites) in WeChat, which
+                  downloads it, then run this again
 
 TRIPS YOU UP
   - The answer is written or missing: read its `missing` before its
@@ -71,7 +83,9 @@ TRIPS YOU UP
   - Only images and videos have thumbnails: --thumbnail on another kind
     is an error saying to leave it out.
   - A message that carries no file (a text, a link, …) is an error
-    naming its kind.
+    naming its kind; so is a favorite's item that carries none.
+  - A favorite's note body (extension htm) is HTML WeChat wrote without a
+    header, so its content_type is application/octet-stream.
   - Images sealed under the account's key need the kvcomm files WeChat
     for Mac writes on this Mac: with none that opens them, the error says
     to log in to WeChat for Mac here and run again.
@@ -80,5 +94,6 @@ TRIPS YOU UP
   - A voice message is SILK (audio/silk), as WeChat records it: convert
     it with a SILK decoder to play it elsewhere.
   - The keys must open every message database, and for a voice message
-    every message/media_<n>.db; one missing is an error naming it, fixed
-    by `sudo wxread keys`, then supplying the keys again.
+    every message/media_<n>.db, or for a favorite's file
+    favorite/favorite.db; one missing is an error naming it, fixed by
+    `sudo wxread keys`, then supplying the keys again.

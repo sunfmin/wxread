@@ -202,20 +202,21 @@ pub struct Seen<'a> {
     pub held: &'a BTreeSet<String>,
 }
 
-/// One page of the favorites.
-#[derive(Debug, Clone, PartialEq)]
+/// One page of the favorites: their rows, newest first, each answered as
+/// [`favorite`] answers it once the files of its [`paths`] are looked for.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Page {
-    pub favorites: Vec<Value>,
+    pub rows: Vec<Row>,
     /// Where the next page starts, when there are favorites past this one.
     pub next: Option<Cursor>,
 }
 
 /// The page of `rows` that starts after `after` (at the newest, for none)
-/// and holds at most `limit`, each favorite as [`favorite`] answers it.
-pub fn page(rows: &[Row], seen: &Seen, after: Option<&Cursor>, limit: Limit) -> Page {
-    let mut placed: Vec<(Place, &Row)> = Vec::new();
+/// and holds at most `limit`.
+pub fn page(rows: Vec<Row>, after: Option<&Cursor>, limit: Limit) -> Page {
+    let mut placed: Vec<(Place, Row)> = Vec::new();
     for row in rows {
-        let place = Place::of(row);
+        let place = Place::of(&row);
         if after.is_none_or(|c| place > c.0) {
             placed.push((place, row));
         }
@@ -224,11 +225,7 @@ pub fn page(rows: &[Row], seen: &Seen, after: Option<&Cursor>, limit: Limit) -> 
     let more = placed.len() > limit.get();
     placed.truncate(limit.get());
     let next = if more { placed.last().map(|(place, _)| Cursor(place.clone())) } else { None };
-    let mut favorites = Vec::new();
-    for (_, row) in placed {
-        favorites.push(favorite(row, seen));
-    }
-    Page { favorites, next }
+    Page { rows: placed.into_iter().map(|(_, row)| row).collect(), next }
 }
 
 /// A favorite as `wxread favorites` answers it: its id, when it was saved,
@@ -573,6 +570,14 @@ fn tags(root: Node) -> Vec<String> {
         }
     }
     out
+}
+
+/// What fixes keys that hold none of the favorites database `db` of
+/// `account`.
+pub fn no_key(db: &str, account: &str) -> String {
+    format!(
+        "the keys supplied have no key of {db}, which account {account} keeps its favorites in: WeChat may hold that key only once its Favorites (收藏) has been opened. Open Favorites in WeChat, then get the keys again with `sudo wxread keys` (`wxread keys --help` says how) and supply them to every command: --keys <file>, or their contents as WXREAD_KEYS"
+    )
 }
 
 /// What fixes a favorite's file id that is not one.

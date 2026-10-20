@@ -11,8 +11,9 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, DatabaseName, params};
 use wxread_doctor::DB_STORAGE;
 use wxread_schema::{
-    CHAT_ROOM, CHAT_ROOM_INFO_DETAIL, CHATROOM_MEMBER, CONTACT, CONTACT_DB, HEAD_IMAGE,
-    HEAD_IMAGE_DB, MEDIA_NAME2ID, NAME2ID, SESSION, SESSION_DB, VOICE_INFO, ZSTD,
+    CHAT_ROOM, CHAT_ROOM_INFO_DETAIL, CHATROOM_MEMBER, CONTACT, CONTACT_DB, FAV_DB_ITEM,
+    FAVORITE_DB, HEAD_IMAGE, HEAD_IMAGE_DB, MEDIA_NAME2ID, NAME2ID, SESSION, SESSION_DB,
+    VOICE_INFO, ZSTD,
 };
 use wxread_sqlcipher::{PAGE, RESERVE};
 
@@ -124,6 +125,17 @@ pub struct Article(pub &'static str, pub &'static str, pub &'static str, pub &'s
 /// (49) of a link (its appmsg type 5).
 pub const ARTICLES: i64 = 49 | 5 << 32;
 
+/// A favorite in `favorite/favorite.db`: its id, type, when it was saved,
+/// its `<favitem>`, and the `fromusr` and `realchatname` its row says.
+pub struct Saved {
+    pub id: i64,
+    pub fav_type: i64,
+    pub saved: i64,
+    pub content: String,
+    pub from: &'static str,
+    pub sender: &'static str,
+}
+
 /// One account's directory under a data directory, and what its databases
 /// hold: `contacts`, `sessions` and `messages` in the databases
 /// themselves, `recent` sessions and `recent_messages` only in committed
@@ -132,7 +144,9 @@ pub const ARTICLES: i64 = 49 | 5 << 32;
 /// `avatars` the contacts WeChat holds an avatar of, and `groups` each
 /// group's record and notice; `voices` its voice messages' sound, `files`
 /// the files under its directory (each by its path there), and `kvcomm`
-/// the codes of the kvcomm files WeChat wrote beside the data directory.
+/// the codes of the kvcomm files WeChat wrote beside the data directory;
+/// `favorites` what it saved, `recent_favorites` those only in committed
+/// frames of the favorites database's WAL.
 pub struct Account {
     pub id: &'static str,
     pub storage: PathBuf,
@@ -148,6 +162,8 @@ pub struct Account {
     pub voices: Vec<Voice>,
     pub files: Vec<(String, Vec<u8>)>,
     pub kvcomm: Vec<u32>,
+    pub favorites: Vec<Saved>,
+    pub recent_favorites: Vec<Saved>,
 }
 
 /// The databases a synthetic account has.
@@ -170,6 +186,8 @@ impl Account {
             voices: Vec::new(),
             files: Vec::new(),
             kvcomm: Vec::new(),
+            favorites: Vec::new(),
+            recent_favorites: Vec::new(),
         }
     }
 
@@ -229,6 +247,9 @@ impl Account {
         }
         if !self.voices.is_empty() {
             all.push(MEDIA_DB.to_string());
+        }
+        if !self.favorites.is_empty() || !self.recent_favorites.is_empty() {
+            all.push(FAVORITE_DB.to_string());
         }
         all
     }
@@ -326,6 +347,14 @@ impl Account {
             }
             self.seal(MEDIA_DB, &bytes(&media), &[]);
         }
+        if !self.favorites.is_empty() || !self.recent_favorites.is_empty() {
+            let favorites = plain(FAV_DB_ITEM);
+            saved(&favorites, &self.favorites);
+            let before = bytes(&favorites);
+            saved(&favorites, &self.recent_favorites);
+            let after = bytes(&favorites);
+            self.seal(FAVORITE_DB, &before, &[(&before, &after, true)]);
+        }
         for (path, bytes) in &self.files {
             let file = self.dir().join(path);
             std::fs::create_dir_all(file.parent().unwrap()).unwrap();
@@ -404,6 +433,17 @@ fn insert(db: &Connection, sessions: &[Session]) {
         db.execute(
             "INSERT INTO SessionTable(username, type, unread_count, is_hidden, summary, last_timestamp, sort_timestamp) VALUES (?1, 0, ?3, 0, 'hi', ?2, ?2)",
             params![id, at, unread],
+        )
+        .unwrap();
+    }
+}
+
+/// Writes `favorites` into the favorites database.
+fn saved(db: &Connection, favorites: &[Saved]) {
+    for f in favorites {
+        db.execute(
+            "INSERT INTO fav_db_item(local_id, server_id, type, update_time, content, fromusr, realchatname, flag) VALUES (?1, ?1 + 1000, ?2, ?3, ?4, ?5, ?6, 0)",
+            params![f.id, f.fav_type, f.saved, f.content, f.from, f.sender],
         )
         .unwrap();
     }
