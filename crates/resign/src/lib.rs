@@ -1,5 +1,5 @@
 //! Re-signing WeChat so its memory can be read
-//! (docs/adr/0005-wxread-resign-re-signs-wechat-when-asked.md).
+//! (docs/adr/0006-wxread-resign-re-signs-wechat-when-asked.md).
 //!
 //! A WeChat installed from Tencent carries the hardened runtime without the
 //! `com.apple.security.get-task-allow` entitlement, so macOS refuses

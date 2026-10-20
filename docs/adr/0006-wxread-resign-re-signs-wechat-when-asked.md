@@ -17,6 +17,6 @@ Turning System Integrity Protection off would let root read WeChat as it is, but
 
 ## Consequences
 
-- `resign` is the one command that changes anything outside wxread's own output, and only with `--yes`, run by the person whose Mac it is; every other command reads.
+- `resign` is the one command that changes anything of WeChat's (its app's signature, never its data), and only with `--yes`, run by the person whose Mac it is.
 - After a WeChat update (which a reinstall is), WeChat is Tencent's signed build again, and `wxread resign` is run again.
 - Its tests run the real codesign on a synthetic app signed the way Tencent signs WeChat; no WeChat is touched by them. That a re-signed WeChat then lets `sudo wxread keys` read it is checked on a real Mac by hand, not by the gate.
