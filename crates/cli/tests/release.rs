@@ -16,7 +16,7 @@ const SKILL: &str =
 
 /// The rustup line `build` gives when the toolchain or a target is missing,
 /// and the one the workflow installs its toolchain with.
-const INSTALL_STABLE: &str = "rustup toolchain install stable --profile minimal --target aarch64-apple-darwin x86_64-apple-darwin";
+const INSTALL_STABLE: &str = "rustup toolchain install stable --profile minimal --target aarch64-apple-darwin,x86_64-apple-darwin";
 
 fn release(dist: &Path, args: &[&str]) -> Output {
     Command::new(SCRIPT).args(args).env("DIST", dist).output().unwrap()
@@ -118,6 +118,30 @@ fn a_build_with_no_stable_toolchain_says_how_to_get_it() {
     assert!(said.contains("no rustup is installed (https://rustup.rs)"), "{said}");
     assert!(said.contains(INSTALL_STABLE), "{said}");
     assert!(WORKFLOW.contains(INSTALL_STABLE), "the workflow installs the same: {WORKFLOW}");
+}
+
+/// rustup's `--target` takes one value, or a comma-separated list: a second
+/// target after a space is read as a toolchain name, and the install fails.
+#[test]
+fn the_install_line_names_one_toolchain_and_both_targets() {
+    let args =
+        INSTALL_STABLE.strip_prefix("rustup toolchain install ").expect("it installs a toolchain");
+    let (mut toolchains, mut targets) = (Vec::new(), Vec::new());
+    let mut words = args.split_whitespace();
+    while let Some(word) = words.next() {
+        match word {
+            "--profile" => {
+                words.next().expect("--profile takes a value");
+            }
+            "--target" | "-t" => {
+                targets.extend(words.next().expect("--target takes a value").split(','))
+            }
+            flag if flag.starts_with('-') => panic!("{flag}: not a flag this line is read with"),
+            toolchain => toolchains.push(toolchain),
+        }
+    }
+    assert_eq!(toolchains, ["stable"], "{INSTALL_STABLE}");
+    assert_eq!(targets, ["aarch64-apple-darwin", "x86_64-apple-darwin"], "{INSTALL_STABLE}");
 }
 
 #[test]

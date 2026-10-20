@@ -88,7 +88,7 @@ build)
         # shellcheck disable=SC2086
         cat >&2 <<EOF
 release: build needs rustup's stable toolchain with the target $target, and ${rustup:+that is not installed}${rustup:-no rustup is installed (https://rustup.rs)}. With rustup, get it with:
-    rustup toolchain install stable --profile minimal --target $(echo $targets)
+    rustup toolchain install stable --profile minimal --target $(echo $targets | tr " " ,)
 EOF
         exit 1
     done
