@@ -111,7 +111,7 @@ pub fn seconds(text: &str) -> Option<i64> {
         Some(time) => clock(time)?,
     };
     let secs = days.checked_mul(86_400)?.checked_add(of_day)?;
-    (secs >= 0 && secs <= LAST_SECOND).then_some(secs)
+    if secs.is_negative() || secs > LAST_SECOND { None } else { Some(secs) }
 }
 
 /// The seconds `time` (`09:30:00+08:00`, `01:30:00Z`) is past midnight in
