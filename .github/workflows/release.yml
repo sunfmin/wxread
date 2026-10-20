@@ -1,0 +1,56 @@
+# A release: pushing the tag v<version> builds `wxread` on stable Rust for
+# Apple Silicon and Intel macOS, makes this repository's release v<version>
+# of both archives and the Homebrew formula generated from them, and pushes
+# that formula to the tap (sunfmin/homebrew-tap). Every step is
+# `packaging/release.sh`, which is the release cut by hand as well (README,
+# "Cutting a release").
+#
+# The release is made with this repository's own token. The tap takes the
+# secret HOMEBREW_TAP_TOKEN, a token that may write sunfmin/homebrew-tap's
+# contents; without it the last step fails, naming the line that pushes the
+# formula by hand.
+
+name: release
+
+"on":
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: release
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-apple-darwin x86_64-apple-darwin
+          rustup default stable
+      - name: The tag is the version
+        run: packaging/release.sh check "$GITHUB_REF_NAME"
+      - name: Build
+        run: packaging/release.sh build
+      - name: Package
+        run: packaging/release.sh package
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: packaging/release.sh release
+      - name: Tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::No HOMEBREW_TAP_TOKEN: the release is made, and its formula is not in sunfmin/homebrew-tap. Set the secret and run this workflow again, or push the formula by hand: packaging/release.sh build, package, then tap (README, Cutting a release)."
+            exit 1
+          fi
+          gh auth setup-git
+          git config --global user.name wxread-release
+          git config --global user.email wxread-release@users.noreply.github.com
+          packaging/release.sh tap

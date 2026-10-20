@@ -6,4 +6,5 @@ mod common;
 mod doctor;
 mod errors;
 mod help;
+mod release;
 mod version;
