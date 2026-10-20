@@ -24,6 +24,8 @@ RUN FIRST
                     one chat's messages, each as its kind, newest first
   wxread file get <id> --out <path>
                     a media message's file, written as the file it is
+  wxread voice <id> --chat <id> --out <path>
+                    a voice message as a file that plays, and its 转文字
 
 WHAT A COMMAND ANSWERS
   One JSON object on stdout. A failure is {"error": "…"} with a non-zero
@@ -42,6 +44,8 @@ WHAT A COMMAND ANSWERS
               salt
     messages  account chat messages next
     resign    app applied get_task_allow entitlements next
+    voice     account chat id path format duration_ms size length_ms
+              transcription
   file get and avatar answer path, size, sha256 and content_type of the
   file they wrote; or, when WeChat does not hold it, missing (true),
   thumbnail and fix, exit 0.
@@ -50,7 +54,7 @@ THE COMMANDS
   Setting up, run by you or an agent:
       doctor
   Reading the account, run by you or an agent:
-      chats messages
+      chats messages voice
       contacts contact group
       articles
   Getting a media message's file or an avatar, run by you or an agent:
@@ -68,9 +72,8 @@ RULES
     when told to with --yes.
   - A database is decrypted into memory and read there: no decrypted byte
     is written to disk, and what is read is what WeChat wrote last, its
-    WAL included. The one file written is the one `wxread file get` and
-    `wxread avatar` are told to write, at --out; written again, it is
-    left as it is.
+    WAL included. The one file written is the one `wxread file get`,
+    `wxread avatar` and `wxread voice` are told to write, at --out.
   - With several accounts logged in, a command that reads one is told
     which: --account <id>, as doctor names it.
   - A contact, a group and a chat are named by their id: a wxid, a

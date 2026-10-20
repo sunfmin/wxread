@@ -22,6 +22,9 @@ wxread-messages = { path = "../messages" }
 wxread-resign = { path = "../resign" }
 wxread-schema = { path = "../schema" }
 wxread-sqlcipher = { path = "../sqlcipher" }
+wxread-voice = { path = "../voice" }
+# WeChat's voice codec, decoded in-process (docs/adr/0005-voice-is-decoded-in-process.md).
+silk = { path = "../silk" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde_json.workspace = true

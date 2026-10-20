@@ -15,3 +15,4 @@ mod release;
 mod resign;
 mod synthetic;
 mod version;
+mod voice;

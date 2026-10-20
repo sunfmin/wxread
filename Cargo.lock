@@ -642,6 +642,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "silk"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -764,6 +771,7 @@ dependencies = [
  "ruzstd",
  "serde_json",
  "sha2",
+ "silk",
  "tempfile",
  "wxread-account",
  "wxread-answer",
@@ -778,6 +786,7 @@ dependencies = [
  "wxread-resign",
  "wxread-schema",
  "wxread-sqlcipher",
+ "wxread-voice",
 ]
 
 [[package]]
@@ -903,6 +912,14 @@ dependencies = [
  "proptest",
  "sha2",
  "wxread-keys",
+]
+
+[[package]]
+name = "wxread-voice"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "wxread-schema",
 ]
 
 [[package]]

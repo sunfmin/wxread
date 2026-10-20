@@ -9,8 +9,11 @@
 //!   `<name>` in `packed_info_data` (field 4, its field 8);
 //! - a file: `msg/file/<YYYY-MM>/<name>`, `<name>` in `packed_info_data`
 //!   (field 7, its field 2), else its title;
-//! - a voice message: its bytes in `message/media_<n>.db`, by the
-//!   message's server id;
+//! - a voice message: its SILK in `message/media_<n>.db`, by its chat and
+//!   the message's server id; and the text WeChat heard in it, once the
+//!   account converted it to text (转文字), in `packed_info_data` (field 5,
+//!   its field 2; its field 1 is 2 once done, 0 while it holds nothing, as
+//!   WeChat for Mac 4.1 keeps it);
 //! - a sticker: on WeChat's CDN, its address, checked against its MD5.
 
 use serde_json::{Map, Value, json};
@@ -59,7 +62,10 @@ pub fn fields(kind: Kind, content: &str, packed: &[u8]) -> Map<String, Value> {
                 "extension": read("fileext", None),
             })
         }
-        Kind::Voice => json!({ "length_ms": number("voicemsg", "voicelength") }),
+        Kind::Voice => json!({
+            "length_ms": number("voicemsg", "voicelength"),
+            "transcription": proto::text(packed, &[5, 2]),
+        }),
         Kind::Sticker => {
             let md5 = read("emoji", Some("md5")).or_else(|| read("emoticonmd5", None));
             let url = read("emoji", Some("cdnurl")).or_else(|| {
@@ -172,7 +178,7 @@ mod tests {
     #[test]
     fn a_voice_message_has_its_length_and_a_sticker_its_address() {
         let voice = fields(Kind::Voice, r#"<msg><voicemsg voicelength="3200"/></msg>"#, &[]);
-        assert_eq!(Value::Object(voice), json!({ "length_ms": 3200 }));
+        assert_eq!(Value::Object(voice), json!({ "length_ms": 3200, "transcription": null }));
         let sticker = fields(
             Kind::Sticker,
             r#"<msg><emoji md5="ABCD" cdnurl="https://cdn.example/s"/></msg>"#,
@@ -192,6 +198,25 @@ mod tests {
             Value::Object(fields(Kind::Sticker, &app, &[])),
             json!({ "md5": "ef01", "url": "https://cdn.example/t" })
         );
+    }
+
+    #[test]
+    fn a_voice_message_has_the_text_wechat_heard_in_it_once_the_account_converted_it() {
+        let xml = r#"<msg><voicemsg voicelength="1200"/></msg>"#;
+        let state = |n: u8| [0x08, n];
+        let mut heard = state(2).to_vec();
+        heard.extend(bytes_field(2, " 周六见 ".as_bytes()));
+        assert_eq!(fields(Kind::Voice, xml, &bytes_field(5, &heard))["transcription"], "周六见");
+        // Not converted, converting, converted to nothing, or not
+        // protobuf: none.
+        for packed in [
+            Vec::new(),
+            bytes_field(5, &state(0)),
+            bytes_field(5, &bytes_field(2, b"  ")),
+            vec![0xff; 4],
+        ] {
+            assert_eq!(fields(Kind::Voice, xml, &packed)["transcription"], Value::Null);
+        }
     }
 
     fn encode(bytes: &[u8]) -> String {

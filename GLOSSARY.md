@@ -88,6 +88,9 @@ _Avoid_: attachment, resource
 **Re-signing**:
 Signing the WeChat app again, ad-hoc, with its entitlements and `get-task-allow` added, so root may read the running WeChat's memory; what `wxread resign --yes` does, undone by reinstalling WeChat.
 _Avoid_: patching, cracking, unsigning
+**Transcription**:
+The text WeChat heard in a voice message, made only when the account chose to convert it to text in WeChat (转文字); wxread never transcribes.
+_Avoid_: transcript, speech-to-text, caption
 
 **Thumbnail**:
 The small copy WeChat keeps of an image or a video beside its file, often when it holds no file: an image's `_t.dat`, a video's `_thumb.jpg`.

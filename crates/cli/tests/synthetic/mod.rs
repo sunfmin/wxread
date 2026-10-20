@@ -216,8 +216,9 @@ impl Account {
         format!("{{\"_db_dir\": \"{}\", {}}}", self.storage.display(), entries.join(", "))
     }
 
-    /// Every database it has: the contact and session databases, and each
-    /// message database its messages are in.
+    /// Every database it has: the contact and session databases, each
+    /// message database its messages are in, and each media database its
+    /// voice messages are in.
     pub fn databases(&self) -> Vec<String> {
         let mut all: Vec<String> = DATABASES.iter().map(|d| d.to_string()).collect();
         for said in self.messages.iter().chain(&self.recent_messages) {

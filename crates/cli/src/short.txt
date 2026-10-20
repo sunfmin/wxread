@@ -14,6 +14,7 @@ Commands:
   keys      read every database key from the running WeChat (sudo)
   messages  a chat's messages, each as its kind, a page at a time
   resign    re-sign WeChat so keys can read it; changes it only with --yes
+  voice     a voice message written as a file that plays; WeChat's 转文字
 
 Options:
   --data-dir <dir>   WeChat's xwechat_files (or WXREAD_DATA_DIR)
