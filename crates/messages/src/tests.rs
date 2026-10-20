@@ -196,16 +196,116 @@ fn a_recall_is_its_notice_and_the_accounts_own_is_its_own() {
     for t in [SYSTEM, SYSTEM_XML] {
         let p = parse("wxid_me", t, theirs, &[]);
         assert_eq!(
-            (p.kind, p.fields["text"].clone(), p.sender),
-            (Kind::Recall, json!("\"Ann\" 撤回了一条消息"), None)
+            (p.kind, Value::Object(p.fields), p.sender, p.named.as_deref()),
+            (
+                Kind::Recall,
+                json!({ "text": "\"Ann\" 撤回了一条消息", "recalled": null }),
+                None,
+                Some("Ann")
+            )
         );
     }
-    let plain = parse("wxid_me", SYSTEM, "\"Ann\" 撤回了一条消息", &[]);
-    assert_eq!((plain.kind, plain.sender), (Kind::Recall, None));
-    let mine = parse("wxid_me", SYSTEM, "你撤回了一条消息", &[]);
-    assert_eq!((mine.kind, mine.sender.as_deref()), (Kind::Recall, Some("wxid_me")));
-    let english = parse("wxid_me", SYSTEM, "You recalled a message", &[]);
-    assert_eq!((english.kind, english.sender.as_deref()), (Kind::Recall, Some("wxid_me")));
+    // As WeChat for Mac 4.x keeps them: plain text, or a `<revokemsg>`
+    // with its text alone, in Chinese and in English.
+    for (content, sender, named) in [
+        ("\"Ann\" 撤回了一条消息", None, Some("Ann")),
+        ("\"Ann \"Ace\"\" 撤回了一条消息", None, Some("Ann \"Ace\"")),
+        ("你撤回了一条消息", Some("wxid_me"), None),
+        ("You recalled a message", Some("wxid_me"), None),
+        ("You recalled a message.", Some("wxid_me"), None),
+        ("\"Ann\" recalled a message.", None, Some("Ann")),
+        (
+            r#"<?xml version="1.0"?><sysmsg type="revokemsg"><revokemsg><content>你撤回了一条消息</content><revoketime>0</revoketime></revokemsg></sysmsg>"#,
+            Some("wxid_me"),
+            None,
+        ),
+        (
+            r#"<?xml version="1.0"?><sysmsg type="revokemsg"><revokemsg><content>You recalled a message.</content><revoketime>1791344471</revoketime></revokemsg></sysmsg>"#,
+            Some("wxid_me"),
+            None,
+        ),
+        (
+            r#"<?xml version="1.0"?><sysmsg type="revokemsg"><revokemsg><content>"王卫星" 撤回了一条消息</content><revoketime>0</revoketime></revokemsg></sysmsg>"#,
+            None,
+            Some("王卫星"),
+        ),
+    ] {
+        let p = parse("wxid_me", SYSTEM, content, &[]);
+        assert_eq!(
+            (p.kind, p.sender.as_deref(), p.named.as_deref(), &p.fields["recalled"]),
+            (Kind::Recall, sender, named, &Value::Null),
+            "{content}"
+        );
+    }
+}
+
+#[test]
+fn a_recall_has_the_id_of_the_message_recalled_when_wechat_keeps_it() {
+    let pushed = r#"<sysmsg type="revokemsg"><revokemsg><session>1@chatroom</session><oldmsgid>12</oldmsgid><msgid>34</msgid><newmsgid>8967088367583248018</newmsgid><replacemsg><![CDATA["Ann" 撤回了一条消息]]></replacemsg><content><![CDATA["Ann" 撤回了一条消息]]></content></revokemsg></sysmsg>"#;
+    let p = parse("wxid_me", SYSTEM_XML, pushed, &[]);
+    assert_eq!(p.fields["recalled"], "8967088367583248018");
+    // Its text is the `<replacemsg>` when it has no `<content>`.
+    let replaced = pushed.replace(r#"<content><![CDATA["Ann" 撤回了一条消息]]></content>"#, "");
+    let p = parse("wxid_me", SYSTEM_XML, &replaced, &[]);
+    assert_eq!(
+        (p.kind, &p.fields["text"], p.named.as_deref()),
+        (Kind::Recall, &json!("\"Ann\" 撤回了一条消息"), Some("Ann"))
+    );
+    // 0 names no message.
+    let zero = pushed.replace("8967088367583248018", "0");
+    assert_eq!(parse("wxid_me", SYSTEM_XML, &zero, &[]).fields["recalled"], Value::Null);
+}
+
+#[test]
+fn a_recall_is_its_recallers_by_the_name_its_notice_shows_them_by() {
+    let mut names = Names::default();
+    for (id, remark, nick) in [
+        ("wxid_me", None, "Me"),
+        ("wxid_ann", None, "Ann"),
+        ("wxid_qin", Some("秦俊斌"), "Qin"),
+        ("wxid_ben", None, "Ben"),
+    ] {
+        names.contacts.insert(
+            id.into(),
+            Contact { remark: remark.map(String::from), nick_name: Some(nick.into()) },
+        );
+    }
+    names.in_group.insert("wxid_ann".into(), "".into());
+    names.in_group.insert("wxid_qin".into(), "".into());
+    names.in_group.insert("wxid_ben".into(), "Benny".into());
+    names.in_group.insert("wxid_cat".into(), "Ann".into());
+    names.in_group.insert("wxid_dan".into(), "".into());
+    let recall = |text: &str| {
+        let mut r = row("message_0", 1, 1, 0);
+        r.local_type = SYSTEM;
+        r.sender = None;
+        r.content = format!(
+            r#"<?xml version="1.0"?><sysmsg type="revokemsg"><revokemsg><content>{text}</content><revoketime>0</revoketime></revokemsg></sysmsg>"#
+        )
+        .into_bytes();
+        r
+    };
+    let said = |chat_id: &str, text: &str| {
+        let m = message(&chat(chat_id), &names, &recall(text), &none);
+        assert_eq!(m["kind"], "recall", "{m}");
+        (m["sender"].clone(), m["sender_name"].clone())
+    };
+    // By the remark, the name in the group or the own name of a member.
+    assert_eq!(
+        said("1@chatroom", "\"秦俊斌\" 撤回了一条消息"),
+        (json!("wxid_qin"), json!("秦俊斌"))
+    );
+    assert_eq!(said("1@chatroom", "\"Qin\" 撤回了一条消息"), (json!("wxid_qin"), json!("秦俊斌")));
+    assert_eq!(said("1@chatroom", "\"Benny\" 撤回了一条消息"), (json!("wxid_ben"), json!("Benny")));
+    assert_eq!(said("1@chatroom", "\"Ben\" 撤回了一条消息"), (json!("wxid_ben"), json!("Benny")));
+    // A name two members go by, or none does, names nobody.
+    assert_eq!(said("1@chatroom", "\"Ann\" 撤回了一条消息"), (Value::Null, Value::Null));
+    assert_eq!(said("1@chatroom", "\"Eve\" 撤回了一条消息"), (Value::Null, Value::Null));
+    // The account's own, in a group or a direct chat.
+    assert_eq!(said("1@chatroom", "你撤回了一条消息"), (json!("wxid_me"), json!("Me")));
+    assert_eq!(said("wxid_ann", "You recalled a message."), (json!("wxid_me"), json!("Me")));
+    // In a direct chat, anyone's but the account's is the other's.
+    assert_eq!(said("wxid_ann", "\"Annie\" 撤回了一条消息"), (json!("wxid_ann"), json!("Ann")));
 }
 
 #[test]
