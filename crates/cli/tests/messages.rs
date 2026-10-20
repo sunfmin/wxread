@@ -214,6 +214,27 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
         ),
         (group(21, app(5), "<msg><appmsg><title>broken"), "unknown", json!({})),
         (
+            group(
+                -1,
+                app(53),
+                "<?xml version=\"1.0\"?>\n<msg>\n\t<appmsg appid=\"\" sdkver=\"0\">\n\t\t<title>#接龙\nSaturday hike\n\n1. Bob\n2. Amy +1\n3. Zed</title>\n\t\t<type>53</type>\n\t\t<extinfo>\n\t\t\t<solitaire_info><![CDATA[<solitaire><tt>0-17</tt><s>.</s><au>wxid_bob</au><hrt>1</hrt><loss>0</loss><sid>1760000000000_1234</sid><content><s>3</s><i><u>wxid_bob</u><h>0</h><s>.</s><t>1760000000</t><r>22-3</r></i><i><u>wxid_amy</u><h>0</h><s>.</s><t>1760000060</t><r>29-6</r></i><i><u>wxid_zed</u><h>0</h><s>.</s><t>1760000120</t><r>39-3</r></i></content></solitaire>]]></solitaire_info>\n\t\t</extinfo>\n\t</appmsg>\n\t<fromusername>wxid_bob</fromusername>\n</msg>\n",
+            ),
+            "solitaire",
+            json!({
+                "id": "1760000000000_1234",
+                "title": "Saturday hike",
+                "example": null,
+                "starter": "wxid_bob",
+                "starter_name": "Bobby",
+                "entries": [
+                    { "number": 1, "member": "wxid_bob", "member_name": "Bobby", "text": "Bob", "at": "2025-10-09T08:53:20Z" },
+                    { "number": 2, "member": "wxid_amy", "member_name": "Amy W", "text": "Amy +1", "at": "2025-10-09T08:54:20Z" },
+                    { "number": 3, "member": "wxid_zed", "member_name": null, "text": "Zed", "at": "2025-10-09T08:55:20Z" },
+                ],
+                "text": "#接龙\nSaturday hike\n\n1. Bob\n2. Amy +1\n3. Zed",
+            }),
+        ),
+        (
             zstd,
             "link",
             json!({ "to": "web_page", "title": "Packed", "summary": null, "url": "https://e.com/z", "source": null }),

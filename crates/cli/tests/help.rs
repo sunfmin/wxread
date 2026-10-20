@@ -509,6 +509,22 @@ fn search_answers_exactly_the_keys_its_help_and_the_guide_name() {
 }
 
 #[test]
+fn messages_and_search_help_say_what_a_solitaire_is() {
+    let messages = asked(&["messages", "--help"]);
+    let kinds = between(&messages, "THE KINDS AND THEIR FIELDS", "TRIPS YOU UP").join(" ");
+    let words = kinds.split_whitespace().collect::<Vec<_>>().join(" ");
+    for said in ["solitaire {id, title,", "a 接龙", "the same in every message of one 接龙"] {
+        assert!(words.contains(said), "messages --help says {said}");
+    }
+    let search = asked(&["search", "--help"]);
+    let searched = between(&search, "WHAT A MESSAGE IS SEARCHED BY", "  The rest are not searched");
+    assert!(
+        searched.iter().any(|l| l.trim_start().starts_with("solitaire ")),
+        "search --help says a solitaire is searched"
+    );
+}
+
+#[test]
 fn resign_answers_exactly_the_keys_its_help_and_the_guide_name() {
     // The object the command prints is the pure crate's answer;
     // tests/resign.rs runs the command itself against a signed app.

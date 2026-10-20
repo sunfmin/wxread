@@ -61,6 +61,10 @@ fn each_kind_is_searched_by_the_text_wechat_indexes() {
         Some("Gym\n1 x Rd".into())
     );
     assert_eq!(matched(42, r#"<msg username="wxid_x" nickname="Rex"/>"#), Some("Rex".into()));
+    // A 接龙 by all it shows, as WeChat's index holds it: its title and
+    // each entry, numbered.
+    let solitaire = "<msg><appmsg><title>#接龙\nx ride\n\n1. Ann</title><type>53</type><extinfo><solitaire_info><![CDATA[<solitaire><tt>0-10</tt><content><i><u>wxid_ann</u><t>1</t><r>15-3</r></i></content></solitaire>]]></solitaire_info></extinfo></appmsg></msg>";
+    assert_eq!(matched(app(53), solitaire), Some("#接龙\nx ride\n\n1. Ann".into()));
     // Media and notices are not searched, whatever their XML holds.
     assert_eq!(matched(3, r#"<msg><img md5="x"/></msg>"#), None);
     assert_eq!(matched(10000, "x joined"), None);
