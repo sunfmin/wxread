@@ -1305,3 +1305,53 @@ fn every_person_a_message_names_is_shown_by_the_remark_first() {
     );
     assert_eq!(said(TEXT, "hi")["sender"], json!({ "id": "wxid_bob", "display_name": "" }));
 }
+
+/// A text of `chat` sent by `sender` (None for a row that names none),
+/// the `n`th newest.
+fn sent(n: i64, sender: Option<&str>) -> Row {
+    Row { sender: sender.map(str::to_string), ..row("message_0", n, 1_760_000_000 - n, 0) }
+}
+
+#[test]
+fn recent_counts_who_sent_most_of_a_groups_newest_messages() {
+    let group = chat("1@chatroom");
+    let rows: Vec<Row> =
+        [Some("wxid_ads"), None, Some("wxid_amy"), Some("wxid_ads"), Some("wxid_ads")]
+            .into_iter()
+            .enumerate()
+            .map(|(n, s)| sent(n as i64, s))
+            .collect();
+    let found = recent(&group, &rows).unwrap();
+    assert_eq!(
+        (found.messages, found.top_sender.as_str(), found.from_top_sender),
+        (4, "wxid_ads", 3),
+        "a row that names no sender (a system message) is not counted"
+    );
+}
+
+#[test]
+fn recent_reads_only_the_newest_and_of_two_who_sent_as_many_the_newer() {
+    let group = chat("1@chatroom");
+    let mut rows: Vec<Row> = (0..RECENT as i64)
+        .map(|n| sent(n, Some(if n % 2 == 0 { "wxid_b" } else { "wxid_a" })))
+        .collect();
+    rows.extend((0..10).map(|n| sent(RECENT as i64 + n, Some("wxid_a"))));
+    let found = recent(&group, &rows).unwrap();
+    assert_eq!(found.messages, RECENT);
+    assert_eq!((found.top_sender.as_str(), found.from_top_sender), ("wxid_b", RECENT / 2));
+}
+
+#[test]
+fn recent_reads_a_groups_sender_from_its_content_when_the_row_names_none() {
+    let group = chat("1@chatroom");
+    let said = Row { content: b"wxid_ads:\ncheap flats".to_vec(), ..sent(0, None) };
+    let found = recent(&group, &[said]).unwrap();
+    assert_eq!((found.messages, found.top_sender.as_str()), (1, "wxid_ads"));
+}
+
+#[test]
+fn recent_is_none_when_no_message_names_its_sender() {
+    let group = chat("1@chatroom");
+    assert_eq!(recent(&group, &[]), None);
+    assert_eq!(recent(&group, &[sent(0, None)]), None);
+}
