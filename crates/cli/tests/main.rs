@@ -11,6 +11,7 @@ mod errors;
 mod favorites;
 mod file;
 mod help;
+mod leave;
 mod messages;
 mod moments;
 mod people;

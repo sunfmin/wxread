@@ -32,11 +32,22 @@ fn existing() -> BTreeSet<String> {
     wxread::commands().into_iter().collect()
 }
 
-/// The subcommands the guide sorts into groups: its lines of bare names.
+/// The subcommands the guide sorts into groups: its lines of bare names,
+/// a command's own subcommand (`group leave`) counted as the command.
 fn grouped(long: &str) -> BTreeSet<String> {
     let lines = between(long, "THE COMMANDS", "RULES").into_iter();
-    let names = lines.filter(|line| line.starts_with("      ")).flat_map(str::split_whitespace);
-    names.map(str::to_string).collect()
+    let lines = lines.filter(|line| line.starts_with("      "));
+    let mut names = BTreeSet::new();
+    for line in lines {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        match words.as_slice() {
+            [command, sub] if wxread::subcommands(command).iter().any(|s| s == sub) => {
+                names.insert(command.to_string());
+            }
+            _ => names.extend(words.iter().map(|w| w.to_string())),
+        }
+    }
+    names
 }
 
 /// The subcommands the screen lists: the first word of each line of its

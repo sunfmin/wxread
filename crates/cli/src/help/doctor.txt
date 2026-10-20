@@ -25,11 +25,19 @@ WHAT IT ANSWERS
                looked in, and how many databases they open
     findings   [{problem, fix}]: everything wrong, each with the line that
                fixes it
+    permissions
+               {accessibility, screen_recording}: each {granted,
+               needed_for, fix}: whether macOS allows the app that runs
+               it what `wxread group leave` needs, and when it does not,
+               the line that allows it (fix, null when granted). Reading
+               needs neither, so neither is a finding
 
 TRIPS YOU UP
   - The keys are one account's: with two accounts logged in, the other's
     databases are each named as having no key.
   - That macOS refuses reading WeChat's directory is a finding, not an
     error: its fix is Full Disk Access for the app running wxread.
+  - The permissions are the app's that runs wxread: run from another
+    terminal or agent host, the answer can differ.
   - Only a failure to start at all (HOME unset, a command line wxread
     cannot parse) is an error: {"error": …}, non-zero.
