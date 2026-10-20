@@ -85,6 +85,9 @@ enum Command {
         /// Only the chats that hold this contact, by id; again for each one more, smallest first
         #[arg(long, value_name = "ID")]
         with: Vec<String>,
+        /// Only the chats whose id, name or own name holds it, whatever its case
+        #[arg(long, value_name = "TEXT")]
+        query: Option<String>,
         /// How many chats a page holds, 1 to 1000 (100 unless given)
         #[arg(long, value_name = "N")]
         limit: Option<String>,
@@ -349,9 +352,9 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
                 world::World::from_env(cli.data_dir, cli.keys)
                     .and_then(|w| file::get(&w, &file::Asked { id, thumbnail, out, account }))
             }),
-        Command::Chats { account, with, limit, cursor } => {
+        Command::Chats { account, with, query, limit, cursor } => {
             world::World::from_env(cli.data_dir, cli.keys)
-                .and_then(|w| chats::run(&w, &chats::Asked { account, with, limit, cursor }))
+                .and_then(|w| chats::run(&w, &chats::Asked { account, with, query, limit, cursor }))
         }
         Command::Contact { id, account } => world::World::from_env(cli.data_dir, cli.keys)
             .and_then(|w| contacts::one(&w, account.as_deref(), &id)),

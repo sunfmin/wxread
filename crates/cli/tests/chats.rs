@@ -345,3 +345,64 @@ fn an_unnamed_group_is_named_by_its_members_as_wechat_shows_it() {
         json["chats"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap()).collect();
     assert_eq!(names, ["孙凤君、秦俊斌 @qinjunbin", "Hiking", "Ours"]);
 }
+
+#[test]
+fn query_finds_the_chats_whose_id_or_name_holds_it() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.contacts = vec![
+        Contact("wxid_me", "Me", ""),
+        Contact("wxid_qin", "秦俊斌 @qinjunbin", ""),
+        Contact("wxid_sun", "Sun", "孙凤君"),
+        Contact("1@chatroom", "", ""),
+        Contact("2@chatroom", "", ""),
+        Contact("3@chatroom", "Hiking", ""),
+        Contact("4@chatroom", "Climbing", "Ours"),
+    ];
+    let with_qin = vec![("wxid_sun", ""), ("wxid_me", ""), ("wxid_qin", "")];
+    let without = vec![("wxid_sun", ""), ("wxid_me", "")];
+    let group = |id, members: &Vec<(&'static str, &'static str)>| Group {
+        id,
+        owner: "wxid_me",
+        members: members.clone(),
+        notice: None,
+    };
+    account.groups = vec![
+        group("1@chatroom", &with_qin),
+        group("2@chatroom", &with_qin),
+        group("3@chatroom", &with_qin),
+        group("4@chatroom", &without),
+    ];
+    account.sessions = vec![
+        Session("wxid_qin", 1_760_000_600, 0),
+        Session("1@chatroom", 1_760_000_500, 0),
+        Session("wxid_sun", 1_760_000_400, 0),
+        Session("2@chatroom", 1_760_000_300, 0),
+        Session("3@chatroom", 1_760_000_200, 0),
+        Session("4@chatroom", 1_760_000_100, 0),
+    ];
+    account.write();
+    let keys = account.keys(&DATABASES);
+    let env = [("WXREAD_KEYS", keys.as_str())];
+    let found = |args: &[&str]| {
+        let json = world.run(&[&["chats", "--query"][..], args].concat(), &env).ok();
+        (ids(&json), json["next"].as_str().map(String::from))
+    };
+    let all = |ids: &[&str]| (ids.iter().map(|s| s.to_string()).collect::<Vec<_>>(), None);
+    assert_eq!(found(&["秦俊斌"]), all(&["wxid_qin", "1@chatroom", "2@chatroom"]));
+    assert_eq!(found(&["QINJUNBIN"]), all(&["wxid_qin", "1@chatroom", "2@chatroom"]));
+    assert_eq!(found(&["孙凤君"]), all(&["1@chatroom", "wxid_sun", "2@chatroom"]));
+    assert_eq!(found(&["hiking"]), all(&["3@chatroom"]));
+    assert_eq!(found(&["ours"]), all(&["4@chatroom"]));
+    assert_eq!(found(&["climbing"]), all(&["4@chatroom"]));
+    assert_eq!(found(&["wxid_s"]), all(&["wxid_sun"]));
+    assert_eq!(found(&["nobody"]), all(&[]));
+
+    let (first, next) = found(&["秦俊斌", "--limit", "2"]);
+    assert_eq!(first, ["wxid_qin", "1@chatroom"]);
+    let (second, next) = found(&["秦俊斌", "--limit", "2", "--cursor", &next.unwrap()]);
+    assert_eq!((second, next), all(&["2@chatroom"]));
+
+    let json = world.run(&["chats", "--with", "wxid_qin", "--query", "孙凤君"], &env).ok();
+    assert_eq!(ids(&json), ["1@chatroom", "2@chatroom"]);
+}

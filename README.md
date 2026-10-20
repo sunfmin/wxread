@@ -8,6 +8,7 @@ fix. `wxread --help` is the manual.
 ```sh
 wxread doctor                               # what it found, and the fix of everything missing
 wxread --keys <file> chats                  # the account's chats, newest first
+wxread --keys <file> chats --query amy      # find a chat by its name, and its id
 wxread --keys <file> chats --with <id> --with <id>
                                             # the groups holding them both, smallest first
 wxread --keys <file> articles               # what official accounts sent, newest first
