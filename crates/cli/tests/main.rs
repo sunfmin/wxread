@@ -2,6 +2,7 @@
 //! its JSON and exit code.
 #![cfg(unix)]
 
+mod articles;
 mod chats;
 mod common;
 mod contacts;

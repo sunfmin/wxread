@@ -26,6 +26,7 @@ WHAT A COMMAND ANSWERS
   exit (2 for a command line wxread cannot parse, 1 otherwise), and it
   names every fault with its fix. Warnings go to stderr. The keys of each
   answer; `wxread <command> --help` says what each one means:
+    articles  account articles next
     chats     account chats next
     contact   account contact
     contacts  account contacts next
@@ -40,6 +41,7 @@ THE COMMANDS
   Reading the account, run by you or an agent:
       chats
       contacts contact group
+      articles
   Getting the keys, run by the person whose Mac it is, with sudo:
       keys
 

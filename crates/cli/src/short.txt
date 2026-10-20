@@ -7,6 +7,7 @@ Run first:
   wxread doctor      find WeChat's accounts and the keys; name each fix
 
 Commands:
+  articles  official accounts' articles, newest first; one account's alone
   chats     the account's chats, newest first, a page at a time
   contact   one contact in full, by its id
   contacts  the account's contacts by id; --query finds one
@@ -17,8 +18,7 @@ Commands:
 Options:
   --data-dir <dir>   WeChat's xwechat_files (or WXREAD_DATA_DIR)
   --keys <file>      the keys of the account's databases (or WXREAD_KEYS)
-  -h                 this screen
-  --help             the guide: what wxread needs, answers and expects
+  -h, --help         this screen; --help the guide: what wxread needs, answers
   --version          the version
 
 `wxread <command> --help` says what a command reads and answers.

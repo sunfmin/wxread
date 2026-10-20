@@ -5,11 +5,12 @@ message kind, files and voice. Each command prints one JSON object, and every
 failure names its fix. `wxread --help` is the manual.
 
 ```sh
-wxread doctor              # what it found, and the fix of everything missing
-wxread --keys <file> chats # the account's chats, newest first
+wxread doctor                               # what it found, and the fix of everything missing
+wxread --keys <file> chats                  # the account's chats, newest first
+wxread --keys <file> articles               # what official accounts sent, newest first
 wxread --keys <file> contacts --query amy   # find a contact, and its id
 wxread --keys <file> group <n>@chatroom     # a group's notice and members
-wxread --help              # the guide
+wxread --help                               # the guide
 ```
 
 ## Install

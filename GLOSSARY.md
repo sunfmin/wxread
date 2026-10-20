@@ -45,6 +45,14 @@ _Avoid_: alias, nickname, note
 A contact's name as WeChat shows it: the account's remark, else their name in the group it is shown in, else their own name.
 _Avoid_: name, label, shown name
 
+**Official account**:
+A contact that publishes (公众号), its id `gh_…`: what it sends the account is kept apart from the chats, in the account's `message/biz_message_<n>.db`.
+_Avoid_: public account, subscription, biz account
+
+**Article**:
+One piece an official account published, with its title, digest, url and cover; one push of an official account's holds one or several.
+_Avoid_: post, news, biz message
+
 **Chat**:
 A conversation the account has: direct, with one contact, or in one group.
 _Avoid_: session, conversation, thread

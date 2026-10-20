@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, DatabaseName, params};
 use wxread_doctor::DB_STORAGE;
 use wxread_schema::{
-    CHAT_ROOM, CHAT_ROOM_INFO_DETAIL, CHATROOM_MEMBER, CONTACT, CONTACT_DB, HEAD_IMAGE,
-    HEAD_IMAGE_DB, SESSION, SESSION_DB,
+    BIZ_MESSAGE_PREFIX, CHAT_ROOM, CHAT_ROOM_INFO_DETAIL, CHATROOM_MEMBER, CONTACT, CONTACT_DB,
+    HEAD_IMAGE, HEAD_IMAGE_DB, NAME2ID, SESSION, SESSION_DB, ZSTD, messages, messages_table,
 };
 use wxread_sqlcipher::{PAGE, RESERVE};
 
@@ -32,6 +32,46 @@ pub struct Group {
     pub notice: Option<(&'static str, &'static str, i64)>,
 }
 
+/// A message an official account sent, in the official accounts' store
+/// `message/biz_message_<store>.db`: `from` the official account's id, `at` when
+/// it was sent, `local_type` and `content` as WeChat keeps them, the content
+/// zstd-compressed when `zstd` says, and only in the store's WAL when `in_wal`.
+pub struct Biz {
+    pub store: u8,
+    pub from: &'static str,
+    pub at: i64,
+    pub local_type: i64,
+    pub content: String,
+    pub zstd: bool,
+    pub in_wal: bool,
+}
+
+/// One article of a push: its title, digest, url and cover.
+pub struct Article(pub &'static str, pub &'static str, pub &'static str, pub &'static str);
+
+/// An app message of a link (49, its appmsg type 5), as WeChat stores one.
+pub const ARTICLE_TYPE: i64 = 49 | 5 << 32;
+
+impl Biz {
+    /// A push of `articles` from official account `from`, named `name` in
+    /// it, in store 0, as WeChat writes one: the first article in the
+    /// appmsg itself, every article an item of its `mmreader`.
+    pub fn push(from: &'static str, name: &str, at: i64, articles: &[Article]) -> Biz {
+        let items: String = articles
+            .iter()
+            .map(|Article(title, digest, url, cover)| {
+                format!("<item><itemshowtype>0</itemshowtype><title><![CDATA[{title}]]></title><url><![CDATA[{url}]]></url><pub_time>{at}</pub_time><cover><![CDATA[{cover}]]></cover><digest><![CDATA[{digest}]]></digest></item>")
+            })
+            .collect();
+        let Article(title, digest, url, cover) = &articles[0];
+        let content = format!(
+            "<msg><appmsg appid=\"\" sdkver=\"0\"><title><![CDATA[{title}]]></title><des><![CDATA[{digest}]]></des><type>5</type><url><![CDATA[{url}]]></url><thumburl><![CDATA[{cover}]]></thumburl><mmreader><category type=\"20\" count=\"{}\"><name><![CDATA[{name}]]></name>{items}</category><publisher><username><![CDATA[{from}]]></username><nickname><![CDATA[{name}]]></nickname></publisher></mmreader></appmsg><fromusername><![CDATA[{from}]]></fromusername></msg>",
+            articles.len()
+        );
+        Biz { store: 0, from, at, local_type: ARTICLE_TYPE, content, zstd: false, in_wal: false }
+    }
+}
+
 /// A chat in `SessionTable`: its id, when its last message was (which is
 /// where WeChat sorts it, in seconds), and its unread messages.
 pub struct Session(pub &'static str, pub i64, pub i64);
@@ -41,7 +81,8 @@ pub struct Session(pub &'static str, pub i64, pub i64);
 /// sessions only in committed frames of the session database's WAL, and
 /// `uncommitted` in frames after them that no commit ended; `profiles` more
 /// of some contacts, `avatars` the contacts WeChat holds an avatar of, and
-/// `groups` each group's record and notice.
+/// `groups` each group's record and notice; `biz` the messages official
+/// accounts sent, in the official accounts' stores.
 pub struct Account {
     pub id: &'static str,
     pub storage: PathBuf,
@@ -52,6 +93,7 @@ pub struct Account {
     pub profiles: Vec<Profile>,
     pub avatars: Vec<&'static str>,
     pub groups: Vec<Group>,
+    pub biz: Vec<Biz>,
 }
 
 /// The databases a synthetic account has.
@@ -69,6 +111,7 @@ impl Account {
             profiles: Vec::new(),
             avatars: Vec::new(),
             groups: Vec::new(),
+            biz: Vec::new(),
         }
     }
 
@@ -175,6 +218,7 @@ impl Account {
         insert(&sessions, &self.uncommitted);
         let after = bytes(&sessions);
         self.seal(SESSION_DB, &before, &[(&before, &committed, true), (&committed, &after, false)]);
+        self.write_biz();
     }
 
     /// Writes database `path`, `plain` encrypted, and a WAL of each change
@@ -287,4 +331,60 @@ fn bytes(db: &Connection) -> Vec<u8> {
 
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+impl Account {
+    /// The official accounts' stores `biz` fills, by their paths.
+    pub fn biz_databases(&self) -> Vec<String> {
+        let mut stores: Vec<u8> = self.biz.iter().map(|b| b.store).collect();
+        stores.sort();
+        stores.dedup();
+        stores.iter().map(|n| format!("{BIZ_MESSAGE_PREFIX}{n}.db")).collect()
+    }
+
+    /// Writes each official accounts' store `biz` names: its `Name2Id`, a
+    /// table of each official account's messages, and a WAL of the ones
+    /// only there.
+    fn write_biz(&self) {
+        for path in self.biz_databases() {
+            let db = plain(NAME2ID);
+            let store = |b: &&Biz| format!("{BIZ_MESSAGE_PREFIX}{}.db", b.store) == path;
+            let sent: Vec<&Biz> = self.biz.iter().filter(store).collect();
+            for b in &sent {
+                let table = messages_table(b.from);
+                db.execute(
+                    "INSERT OR IGNORE INTO Name2Id(user_name, is_session) VALUES (?1, 1)",
+                    params![b.from],
+                )
+                .unwrap();
+                db.execute_batch(
+                    &messages(&table).replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"),
+                )
+                .unwrap();
+            }
+            let insert = |b: &Biz| {
+                let content: Vec<u8> = if b.zstd {
+                    ruzstd::encoding::compress_to_vec(
+                        b.content.as_bytes(),
+                        ruzstd::encoding::CompressionLevel::Fastest,
+                    )
+                } else {
+                    b.content.as_bytes().to_vec()
+                };
+                let compressed = if b.zstd { Some(ZSTD) } else { None };
+                db.execute(
+                    &format!("INSERT INTO {}(server_id, local_type, sort_seq, real_sender_id, create_time, status, message_content, WCDB_CT_message_content) VALUES (?1, ?2, ?3, 1, ?4, 3, ?5, ?6)", messages_table(b.from)),
+                    params![b.at * 7, b.local_type, b.at * 1000, b.at, content, compressed],
+                )
+                .unwrap();
+            };
+            sent.iter().filter(|b| !b.in_wal).for_each(|b| insert(b));
+            let before = bytes(&db);
+            sent.iter().filter(|b| b.in_wal).for_each(|b| insert(b));
+            let after = bytes(&db);
+            let changes: &[(&[u8], &[u8], bool)] =
+                if before == after { &[] } else { &[(&before, &after, true)] };
+            self.seal(&path, &before, changes);
+        }
+    }
 }
