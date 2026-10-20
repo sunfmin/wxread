@@ -143,22 +143,28 @@ pub struct Page {
     pub next: Option<Cursor>,
 }
 
-/// The page of the contacts in `rows` that `query` finds (every one, for
-/// none), by id, starting after `after` (at the first, for none) and
-/// holding at most `limit`. A row with no id is no contact, and of rows
-/// of one id the first is the contact.
-pub fn page(rows: Vec<Row>, query: Option<&str>, after: Option<&Cursor>, limit: Limit) -> Page {
-    let mut by_id: BTreeMap<String, Row> = BTreeMap::new();
-    for row in rows {
-        let wanted = !row.id.is_empty()
-            && after.is_none_or(|c| row.id > c.id)
-            && query.is_none_or(|q| matches(&row, q));
-        if wanted {
-            by_id.entry(row.id.clone()).or_insert(row);
-        }
+/// The account's contacts, by id: the rows of `contact` that have one,
+/// the first of rows of one id.
+pub type Contacts = BTreeMap<String, Row>;
+
+/// `rows` as [`Contacts`].
+pub fn by_id(rows: impl IntoIterator<Item = Row>) -> Contacts {
+    let mut contacts = Contacts::new();
+    for row in rows.into_iter().filter(|r| !r.id.is_empty()) {
+        contacts.entry(row.id.clone()).or_insert(row);
     }
-    let more = by_id.len() > limit.get();
-    let contacts: Vec<Contact> = by_id.into_values().take(limit.get()).map(contact).collect();
+    contacts
+}
+
+/// The page of `contacts` that `query` finds (every one, for none), by
+/// id, starting after `after` (at the first, for none) and holding at most
+/// `limit`.
+pub fn page(contacts: Contacts, query: Option<&str>, after: Option<&Cursor>, limit: Limit) -> Page {
+    let mut found = contacts
+        .into_values()
+        .filter(|row| after.is_none_or(|c| row.id > c.id) && query.is_none_or(|q| matches(row, q)));
+    let contacts: Vec<Contact> = found.by_ref().take(limit.get()).map(contact).collect();
+    let more = found.next().is_some();
     let next = if more { contacts.last().map(|c| Cursor { id: c.id.clone() }) } else { None };
     Page { contacts, next }
 }
@@ -171,7 +177,7 @@ pub fn unknown(id: &str) -> String {
 }
 
 /// The contact `id` in `contacts`, or what fixes asking for it.
-pub fn find(contacts: &BTreeMap<String, Row>, id: &str) -> Result<Contact, String> {
+pub fn find(contacts: &Contacts, id: &str) -> Result<Contact, String> {
     contacts.get(id).cloned().map(contact).ok_or_else(|| unknown(id))
 }
 
@@ -250,8 +256,8 @@ pub struct Group {
 /// `chatroom_member` lists and those its `ext_buffer` does, each once.
 pub fn group(
     id: &str,
-    contacts: &BTreeMap<String, Row>,
-    room: Option<Room>,
+    contacts: &Contacts,
+    room: Room,
     notice: Option<NoticeRow>,
 ) -> Result<Group, String> {
     let row = contacts.get(id).ok_or_else(|| unknown(id))?;
@@ -262,7 +268,6 @@ pub fn group(
             kind.name().replace('_', " ")
         ));
     }
-    let room = room.unwrap_or_default();
     let mut in_group: BTreeMap<String, Option<String>> =
         room.members.iter().map(|m| (m.clone(), None)).collect();
     for (member, name) in names_in_group(room.ext_buffer.as_deref().unwrap_or_default()) {
@@ -310,7 +315,7 @@ pub fn group(
 }
 
 /// How a group shows `id`, whose name in it is `in_group`.
-fn shown(contacts: &BTreeMap<String, Row>, id: &str, in_group: Option<&str>) -> String {
+fn shown(contacts: &Contacts, id: &str, in_group: Option<&str>) -> String {
     let row = contacts.get(id);
     display_name(
         row.and_then(|r| r.remark.as_deref()),
@@ -457,10 +462,10 @@ mod tests {
     fn a_page_is_by_id_and_each_contact_is_on_one_page() {
         let rows = vec![row("c", "", ""), row("a", "", ""), row("", "x", ""), row("b", "", "")];
         let two = Limit::new(2).unwrap();
-        let first = page(rows.clone(), None, None, two);
+        let first = page(by_id(rows.clone()), None, None, two);
         assert_eq!(ids(&first), ["a", "b"]);
         let next = Cursor::parse(&first.next.unwrap().text()).unwrap();
-        let second = page(rows, None, Some(&next), two);
+        let second = page(by_id(rows), None, Some(&next), two);
         assert_eq!(ids(&second), ["c"]);
         assert_eq!(second.next, None);
     }
@@ -468,7 +473,7 @@ mod tests {
     #[test]
     fn a_page_holds_only_what_the_query_finds() {
         let rows = vec![row("wxid_a", "Amy", ""), row("wxid_b", "Bob", "Amy's dad")];
-        let page = page(rows, Some("amy"), None, Limit::default_limit());
+        let page = page(by_id(rows), Some("amy"), None, Limit::default_limit());
         assert_eq!(ids(&page), ["wxid_a", "wxid_b"]);
     }
 
@@ -477,16 +482,13 @@ mod tests {
         assert!(Cursor::parse("").unwrap_err().contains("leave --cursor out"));
     }
 
-    fn contacts() -> BTreeMap<String, Row> {
-        [
+    fn contacts() -> Contacts {
+        by_id([
             row("1@chatroom", "Hiking", ""),
             row("wxid_me", "Me", ""),
             row("wxid_amy", "Amy", "Auntie"),
             row("wxid_bob", "Bob", ""),
-        ]
-        .into_iter()
-        .map(|r| (r.id.clone(), r))
-        .collect()
+        ])
     }
 
     #[test]
@@ -504,7 +506,7 @@ mod tests {
             editor: Some("wxid_bob".into()),
             published: Some(1_760_000_000),
         };
-        let g = group("1@chatroom", &contacts(), Some(room), Some(notice)).unwrap();
+        let g = group("1@chatroom", &contacts(), room, Some(notice)).unwrap();
         assert_eq!(
             (g.display_name.as_str(), g.name.as_str(), g.remark),
             ("Hiking", "Hiking", None)
@@ -540,17 +542,17 @@ mod tests {
     #[test]
     fn a_group_with_no_record_or_notice_has_none() {
         let empty = NoticeRow { text: Some(String::new()), ..NoticeRow::default() };
-        let g = group("1@chatroom", &contacts(), None, Some(empty)).unwrap();
+        let g = group("1@chatroom", &contacts(), Room::default(), Some(empty)).unwrap();
         assert_eq!((g.owner, g.notice, g.members), (None, None, vec![]));
     }
 
     #[test]
     fn an_unknown_id_or_one_not_a_group_is_refused_with_its_fix() {
-        let why = group("2@chatroom", &contacts(), None, None).unwrap_err();
+        let why = group("2@chatroom", &contacts(), Room::default(), None).unwrap_err();
         assert!(why.contains("no contact 2@chatroom") && why.contains("wxread contacts --query"));
         let why = find(&contacts(), "wxid_nobody").unwrap_err();
         assert!(why.contains("no contact wxid_nobody") && why.contains("wxread contacts --query"));
-        let why = group("wxid_amy", &contacts(), None, None).unwrap_err();
+        let why = group("wxid_amy", &contacts(), Room::default(), None).unwrap_err();
         assert!(
             why.contains("is a person, not a group") && why.contains("`wxread contact wxid_amy`")
         );
@@ -576,11 +578,11 @@ mod tests {
             limit in 1usize..7,
         ) {
             let rows: Vec<Row> = names.iter().enumerate().map(|(i, n)| row(&format!("c{i:02}"), n, "")).collect();
-            let whole = page(rows.clone(), Some("a"), None, Limit::new(MAX_LIMIT).unwrap());
+            let whole = page(by_id(rows.clone()), Some("a"), None, Limit::new(MAX_LIMIT).unwrap());
             let mut paged = Vec::new();
             let mut after = None;
             loop {
-                let p = page(rows.clone(), Some("a"), after.as_ref(), Limit::new(limit).unwrap());
+                let p = page(by_id(rows.clone()), Some("a"), after.as_ref(), Limit::new(limit).unwrap());
                 prop_assert!(p.contacts.len() <= limit);
                 paged.extend(p.contacts);
                 match p.next {
