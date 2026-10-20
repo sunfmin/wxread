@@ -67,22 +67,15 @@ WHAT IT ANSWERS
                 width              its width in pixels, when WeChat says;
                                    else null
                 height             its height, the same
-                file_present, thumbnail_present}], in its order:
-                id                 what `wxread file get` takes for it:
-                                   <the Moment's id>:<its place, from 0>
-                kind               image, video, or other (a link's
-                                   cover, a song: no file of it is kept)
-                url, thumbnail_url where WeChat's CDN served it and its
-                                   thumbnail; "" for none. The CDN's
-                                   addresses expire: wxread fetches
-                                   neither.
-                width, height      its size in pixels, when WeChat says
                 file_present       whether WeChat holds its file on this
                                    Mac, which `wxread file get <id>`
-                                   writes; null for other
-                thumbnail_present  a video's: whether WeChat holds its
-                                   thumbnail; null for an image (WeChat
-                                   keeps one copy of it) and other
+                                   writes; null for other, and for one
+                                   whose Moment gives no id of it
+                thumbnail_present  whether WeChat holds its thumbnail (an
+                                   image's smaller copy, a video's
+                                   cover), which `wxread file get <id>
+                                   --thumbnail` writes; null as
+                                   file_present is
               likes      [{by, at}]: who liked it ({id, name}, named as
                          author is) and when
               comments   [{by, at, text, reply_to}]: who said what and
@@ -102,9 +95,9 @@ TRIPS YOU UP
     exit 0, not an error.
   - A media's file_present false is an answer: `wxread file get <id>`
     answers it missing, exit 0, with what makes WeChat load it.
-  - A Moment's images are cached under a name nobody has yet found how
-    WeChat derives (https://github.com/sunfmin/wxread/issues/28): until
-    it is, an image's file_present is false.
+  - WeChat often caches only an image's thumbnail, the copy it showed in
+    the feed: file_present false with thumbnail_present true is that, and
+    opening the photo in WeChat's Moments caches it whole.
   - A Moment whose XML wxread cannot read is still listed, with its id,
     author and content: read its content.
   - Paging is by where each Moment was when the page was read: one WeChat

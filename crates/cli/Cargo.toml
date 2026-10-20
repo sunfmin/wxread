@@ -16,6 +16,7 @@ wxread-moments = { path = "../moments" }
 wxread-chats = { path = "../chats" }
 wxread-contacts = { path = "../contacts" }
 wxread-doctor = { path = "../doctor" }
+wxread-favorites = { path = "../favorites" }
 wxread-keys = { path = "../keys" }
 wxread-crack = { path = "../crack" }
 wxread-media = { path = "../media" }

@@ -8,7 +8,8 @@ Commands:
   contact   one contact in full, by its id
   contacts  the account's contacts by id; --query finds one
   doctor    run first: find WeChat's accounts and the keys; name each fix
-  file      file get <id>: write a message's or a Moment's file (--out)
+  favorites what the account saved (收藏), each as its kind
+  file      file get <id>: write a message's, favorite's or Moment's file
   group     a group's notice, owner and members, each named in it
   keys      read every database key from the running WeChat (sudo)
   messages  a chat's messages, each as its kind, a page at a time
@@ -19,6 +20,5 @@ Commands:
 Options:
   --data-dir <dir>   WeChat's xwechat_files (or WXREAD_DATA_DIR)
   --keys <file>      the keys of the account's databases (or WXREAD_KEYS)
-  -h, --help         this screen; --help the guide: what wxread needs, answers
-  --version          the version
+  -h, --help         this screen; --help the guide; --version the version
   <command> --help   what a command reads and answers

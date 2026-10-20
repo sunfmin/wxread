@@ -1,8 +1,9 @@
 # wxread
 
 An agent CLI that reads WeChat for Mac 4.x directly: chats, contacts, every
-message kind, files and voice, and the Moments WeChat has loaded. Each command prints one JSON object, and every
-failure names its fix. `wxread --help` is the manual.
+message kind, favorites, files and voice, and the Moments WeChat has
+loaded. Each command prints one JSON object, and every failure names its
+fix. `wxread --help` is the manual.
 
 ```sh
 wxread doctor                               # what it found, and the fix of everything missing
@@ -13,7 +14,8 @@ wxread --keys <file> group <n>@chatroom     # a group's notice and members
 wxread --keys <file> messages --chat <id>   # a chat's messages, each as its kind
 wxread --keys <file> moments --contact <id> # the Moments WeChat loaded, with likes and comments
 wxread --keys <file> search crag            # messages across every chat that hold a text
-wxread --keys <file> file get <id> --out <path>  # a message's or a Moment's file, as it is
+wxread --keys <file> favorites              # what the account saved (收藏), each as its kind
+wxread --keys <file> file get <id> --out <path>  # a message's, a favorite's or a Moment's file, as it is
 wxread --keys <file> avatar <id> --out <path>    # a contact's avatar
 wxread --keys <file> voice <id> --chat <id> --out v.wav
                                             # a voice message that plays
@@ -46,8 +48,9 @@ silk-decoder-rs (MIT), vendored in [crates/silk](crates/silk)
 ## Developing
 
 `./gate.sh` decides whether a change may land, run where the change is made: `cargo fmt
---check`, `./verify.sh` (Flux over the pure crates, which must report `0
-trusted; 0 ignored`), `cargo clippy -D warnings` and `cargo nextest run`. It
+--check`, `./verify.sh` (Flux over the pure crates, each of which must report `0
+trusted; 0 ignored`, as `./flux-summary.sh` reads it; `./flux-summary-test.sh`
+tests that reading), `cargo clippy -D warnings` and `cargo nextest run`. It
 runs on rustup's `nightly-2026-09-25` and needs the checker Cargo.toml pins:
 
 - cargo-flux, built from the Flux revision pinned there:

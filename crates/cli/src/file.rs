@@ -1,6 +1,7 @@
 //! `wxread file get` and `wxread avatar`: find one media message's file
-//! (or its thumbnail) where WeChat keeps it, or a contact's avatar in the
-//! head image database, and write it at `--out` as the file it is.
+//! (or its thumbnail) where WeChat keeps it, or a favorite's, or a
+//! contact's avatar in the head image database, and write it at `--out` as
+//! the file it is.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -8,10 +9,11 @@ use std::path::{Path, PathBuf};
 use anyhow::anyhow;
 use rusqlite::{Connection, OptionalExtension as _};
 use serde_json::{Value, json};
+use wxread_favorites::FileId;
 use wxread_media::Media;
 use wxread_messages::{Chat, Row};
 use wxread_moments::MediaId;
-use wxread_schema::{CONTACT_DB, HEAD_IMAGE_DB, SNS_DB};
+use wxread_schema::{CONTACT_DB, FAVORITE_DB, HEAD_IMAGE_DB, SNS_DB};
 
 use crate::account::Account;
 use crate::media::{self, MEDIA_DB_PATHS};
@@ -37,6 +39,9 @@ struct Found {
 
 /// What `file get` answers of `world`.
 pub fn get(world: &World, asked: &Asked) -> anyhow::Result<Value> {
+    if wxread_favorites::is_file_id(&asked.id) {
+        return favorite(world, asked);
+    }
     if let Some(id) = MediaId::parse(&asked.id) {
         return moment(world, asked, id);
     }
@@ -108,14 +113,18 @@ fn moment(world: &World, asked: &Asked, id: MediaId) -> anyhow::Result<Value> {
         .file
         .as_ref()
         .ok_or_else(|| anyhow!(wxread_moments::not_a_file(&asked.id, &moment.id)))?;
-    if asked.thumbnail && !media.has_thumbnail() {
-        return Err(anyhow!(wxread_media::no_thumbnail(media.kind(), &asked.id)));
-    }
+    let author =
+        Some(moment.author.name.as_str()).filter(|n| !n.is_empty()).unwrap_or(&moment.author.id);
+    let at = moment.at.as_deref().unwrap_or("an unknown time");
+    let source = format!("{author}'s Moment of {at} (in WeChat's Moments)");
     let mut key = None;
     let dir = account.dir();
+    // Both a Moment's kinds, image and video, have a thumbnail.
     let mut bytes = |thumbnail: bool| -> anyhow::Result<Option<Vec<u8>>> {
         match media::find(&dir, media, "", thumbnail) {
-            Some(path) if media.sealed() => media::decrypted(&account, &path, &mut key).map(Some),
+            Some(path) if media.sealed() => {
+                media::unsealed(&account, &path, &mut key, &source).map(Some)
+            }
             Some(path) => media::read(&path).map(Some),
             None => Ok(None),
         }
@@ -123,12 +132,47 @@ fn moment(world: &World, asked: &Asked, id: MediaId) -> anyhow::Result<Value> {
     if let Some(bytes) = bytes(asked.thumbnail)? {
         return media::write(&asked.out, &bytes);
     }
-    let author =
-        Some(moment.author.name.as_str()).filter(|n| !n.is_empty()).unwrap_or(&moment.author.id);
-    let at = moment.at.as_deref().unwrap_or("an unknown time");
-    let thumbnail = if !asked.thumbnail && media.has_thumbnail() { bytes(true)? } else { None };
+    let thumbnail = if asked.thumbnail { None } else { bytes(true)? };
     let written = thumbnail.map(|t| media::write(&asked.out, &t)).transpose()?;
     let fix = wxread_media::moment_fix(media.kind(), &asked.id, author, at, written.is_some());
+    Ok(missing(written, &fix))
+}
+
+/// What `file get fav:<favorite>:<item>` answers of `world`: the
+/// favorite's item's file, or its thumbnail, unsealed when WeChat sealed
+/// it.
+fn favorite(world: &World, asked: &Asked) -> anyhow::Result<Value> {
+    let id = FileId::parse(&asked.id)
+        .ok_or_else(|| anyhow!(wxread_favorites::not_a_file_id(&asked.id)))?;
+    let account = Account::open(world, asked.account.as_deref(), &[FAVORITE_DB])?;
+    let no_such = || anyhow!(wxread_favorites::no_such_file(&id, account.id()));
+    let db = crate::favorites::database(&account)?.ok_or_else(no_such)?;
+    let row = crate::favorites::row(&db, id.favorite)?.ok_or_else(no_such)?;
+    let stored = wxread_favorites::stored(&row, &id.item)
+        .map_err(|kind| anyhow!(wxread_favorites::not_media(&id, kind)))?
+        .ok_or_else(no_such)?;
+    if asked.thumbnail && stored.thumbnail.is_none() {
+        return Err(anyhow!(wxread_favorites::no_thumbnail(&id, stored.kind)));
+    }
+    let source = format!("favorite {} (in Favorites, 收藏)", id.favorite);
+    let dir = account.dir();
+    let mut key = None;
+    let mut bytes = |path: Option<&String>| -> anyhow::Result<Option<Vec<u8>>> {
+        match path.map(|p| dir.join(p)).filter(|p| p.is_file()) {
+            Some(p) => media::unsealed(&account, &p, &mut key, &source).map(Some),
+            None => Ok(None),
+        }
+    };
+    let wanted = if asked.thumbnail { stored.thumbnail.as_ref() } else { Some(&stored.file) };
+    if let Some(bytes) = bytes(wanted)? {
+        return media::write(&asked.out, &bytes);
+    }
+    if asked.thumbnail {
+        return Ok(missing(None, &wxread_favorites::fetch_fix(&id, stored.kind, true, false)));
+    }
+    let thumbnail = bytes(stored.thumbnail.as_ref())?;
+    let written = thumbnail.map(|t| media::write(&asked.out, &t)).transpose()?;
+    let fix = wxread_favorites::fetch_fix(&id, stored.kind, false, written.is_some());
     Ok(missing(written, &fix))
 }
 

@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use roxmltree::Node;
 use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
-use wxread_media::{Media, moment_video_key};
+use wxread_media::Media;
 use wxread_messages::kinds::{attr, child, named, text, xml};
 
 /// The option that picks one author's Moments.
@@ -191,16 +191,16 @@ pub fn moment(row: &Row, names: &BTreeMap<String, String>) -> Moment {
         let local = find(root, "LocalExtraInfo");
         let object = child(timeline, "ContentObject");
         let field = |node: Option<Node>, path| node.and_then(|n| text(n, path)).unwrap_or_default();
-        // WeChat's id of the Moment as its XML gives it, which its videos
+        // WeChat's id of the Moment as its XML gives it, which its media
         // are cached by; the row's when it gives none.
-        let post = text(timeline, "id").unwrap_or_else(|| id.clone());
+        let post = text(timeline, "id").and_then(|p| p.parse().ok()).unwrap_or(row.id());
         let media = object
             .and_then(|o| child(o, "mediaList"))
             .map(|list| named(list, "media"))
             .unwrap_or_default()
             .into_iter()
             .enumerate()
-            .map(|(n, m)| media_of(&id, &post, n, m))
+            .map(|(n, m)| media_of(&id, post, n, m))
             .collect();
         let link = Some(field(object, "contentUrl")).filter(|u| !u.is_empty()).map(|url| Link {
             title: field(object, "title"),
@@ -257,17 +257,14 @@ fn find<'a, 'i>(root: Node<'a, 'i>, name: &str) -> Option<Node<'a, 'i>> {
     root.descendants().find(|n| n.has_tag_name(name))
 }
 
-/// The `n`th medium of the Moment `id`, `post` as its XML names it.
-fn media_of(id: &str, post: &str, n: usize, m: Node) -> MediaOf {
-    let kind = text(m, "type").unwrap_or_default();
-    let key = text(m, "id");
-    let (kind, file) = match kind.as_str() {
-        // The name WeChat caches a Moment's image under is not known
-        // yet (#28): until it is, none is looked for.
-        IMAGE => ("image", Some(Media::MomentImage { key: None })),
-        VIDEO => {
-            ("video", Some(Media::MomentVideo { key: key.map(|k| moment_video_key(post, &k)) }))
-        }
+/// The `n`th medium of the Moment `id`, `post` as its XML names it. One
+/// whose XML gives no id of it is cached under no name it can be found
+/// by: it has no file.
+fn media_of(id: &str, post: u64, n: usize, m: Node) -> MediaOf {
+    let media = text(m, "id").and_then(|k| k.parse().ok());
+    let (kind, file) = match text(m, "type").unwrap_or_default().as_str() {
+        IMAGE => ("image", media.map(|media| Media::MomentImage { post, media })),
+        VIDEO => ("video", media.map(|media| Media::MomentVideo { post, media })),
         _ => ("other", None),
     };
     let size = child(m, "size");
@@ -331,11 +328,11 @@ pub fn no_such_moment(id: &str, account: &str) -> String {
     )
 }
 
-/// What fixes naming a medium of Moment `moment` that WeChat keeps no file
-/// of.
+/// What fixes naming a medium of Moment `moment` no file of which can be
+/// found: one of kind other, or one its Moment gives no id of.
 pub fn not_a_file(id: &str, moment: &str) -> String {
     format!(
-        "{id} is a medium of Moment {moment} that WeChat keeps no file of (only a Moment's images and videos have one): pass the id of one whose kind is image or video"
+        "{id} is a medium of Moment {moment} no file of which can be found (only a Moment's images and videos have one, cached under the id the Moment gives them): pass the id of one whose file_present is not null, as `wxread moments` answers it"
     )
 }
 

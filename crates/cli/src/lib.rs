@@ -15,6 +15,7 @@ pub mod articles;
 pub mod chats;
 pub mod contacts;
 pub mod doctor;
+pub mod favorites;
 pub mod file;
 pub mod keys;
 pub mod media;
@@ -114,7 +115,19 @@ enum Command {
     },
     /// Find WeChat's accounts and the keys supplied; change nothing, name each fix
     Doctor,
-    /// Get a media message's file (an image, video, file, sticker or voice message), or a Moment's
+    /// List what the account saved (收藏), each as its kind, newest first, a page at a time
+    Favorites {
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+        /// How many favorites a page holds, 1 to 1000 (100 unless given)
+        #[arg(long, value_name = "N")]
+        limit: Option<String>,
+        /// Where the page starts: the `next` of the answer before
+        #[arg(long, value_name = "NEXT")]
+        cursor: Option<String>,
+    },
+    /// Get a media message's or a favorite's file: an image, video, file, sticker or voice message
     File {
         #[command(subcommand)]
         action: FileAction,
@@ -223,7 +236,7 @@ enum Command {
 enum FileAction {
     /// Write a media message's or a Moment's file, or its thumbnail, as the file it is
     Get {
-        /// The message's id, as `wxread messages` answers it, or a Moment's medium's, as `wxread moments` does
+        /// The message's id, as `wxread messages` answers it, a favorite's file_id, or a Moment's medium's, as `wxread moments` does
         #[arg(value_name = "ID")]
         id: String,
         /// The thumbnail WeChat keeps of an image or a video, not the file
@@ -259,6 +272,7 @@ fn help_of(name: &str) -> Option<&'static str> {
         "contact" => Some(include_str!("help/contact.txt")),
         "contacts" => Some(include_str!("help/contacts.txt")),
         "doctor" => Some(include_str!("help/doctor.txt")),
+        "favorites" => Some(include_str!("help/favorites.txt")),
         "group" => Some(include_str!("help/group.txt")),
         "keys" => Some(include_str!("help/keys.txt")),
         "messages" => Some(include_str!("help/messages.txt")),
@@ -342,6 +356,10 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
             })
         }
         Command::Doctor => world::World::from_env(cli.data_dir, cli.keys).map(|w| doctor::run(&w)),
+        Command::Favorites { account, limit, cursor } => {
+            world::World::from_env(cli.data_dir, cli.keys)
+                .and_then(|w| favorites::run(&w, &favorites::Asked { account, limit, cursor }))
+        }
         Command::Group { id, account } => world::World::from_env(cli.data_dir, cli.keys)
             .and_then(|w| contacts::group(&w, account.as_deref(), &id)),
         Command::Messages { account, chat, from, to, limit, cursor } => {

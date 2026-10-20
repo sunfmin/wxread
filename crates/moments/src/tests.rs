@@ -59,8 +59,9 @@ fn a_moment_is_read_with_its_text_media_likes_and_comments() {
         ("https://szmmsns.qpic.cn/a/0", "https://szmmsns.qpic.cn/a/150")
     );
     assert_eq!((m.media[0].width, m.media[0].height), (Some(1080), Some(1440)));
-    let video = moment_video_key(&id, "222");
-    assert_eq!(m.media[1].file, Some(Media::MomentVideo { key: Some(video) }));
+    let post = tid as u64;
+    assert_eq!(m.media[0].file, Some(Media::MomentImage { post, media: 111 }));
+    assert_eq!(m.media[1].file, Some(Media::MomentVideo { post, media: 222 }));
     assert_eq!(m.media[2].file, None);
     let at = Some("2025-10-09T08:54:20Z".to_string());
     let like = |by| Said { by, at: at.clone(), text: String::new(), reply_to: None };
@@ -112,11 +113,20 @@ fn a_moment_whose_xml_does_not_read_is_still_listed() {
 }
 
 #[test]
-fn a_video_with_no_id_in_its_moment_is_cached_under_the_rows_id() {
-    let xml = r#"<TimelineObject><username>u</username><ContentObject><mediaList><media><id>7</id><type>6</type></media></mediaList></ContentObject></TimelineObject>"#;
+fn media_with_no_id_in_their_moment_are_cached_under_the_rows_id() {
+    let xml = r#"<TimelineObject><username>u</username><ContentObject><mediaList><media><id>7</id><type>6</type></media><media><id>8</id><type>2</type></media></mediaList></ContentObject></TimelineObject>"#;
     let m = moment(&row(-2, "u", xml), &BTreeMap::new());
-    let key = moment_video_key(&(-2i64 as u64).to_string(), "7");
-    assert_eq!(m.media[0].file, Some(Media::MomentVideo { key: Some(key) }));
+    let post = -2i64 as u64;
+    assert_eq!(m.media[0].file, Some(Media::MomentVideo { post, media: 7 }));
+    assert_eq!(m.media[1].file, Some(Media::MomentImage { post, media: 8 }));
+}
+
+#[test]
+fn a_medium_whose_xml_gives_no_id_of_it_has_no_file() {
+    let xml = r#"<TimelineObject><id>9</id><ContentObject><mediaList><media><type>2</type></media><media><id>x</id><type>6</type></media></mediaList></ContentObject></TimelineObject>"#;
+    let m = moment(&row(9, "u", xml), &BTreeMap::new());
+    let kinds: Vec<(&str, bool)> = m.media.iter().map(|x| (x.kind, x.file.is_some())).collect();
+    assert_eq!(kinds, [("image", false), ("video", false)]);
 }
 
 #[test]

@@ -3,6 +3,7 @@
 //! and `wxread file get` of a Moment's media.
 
 use serde_json::{Value, json};
+use wxread_media::image::{Format, ImageKey, seal};
 use wxread_schema::{CONTACT_DB, SNS_DB};
 
 use crate::common::{World, snapshot};
@@ -40,16 +41,23 @@ fn link(author: &str, at: i64, own: i64) -> String {
     )
 }
 
-/// The key WeChat caches the video `media` of Moment `post` under.
-fn video_key(post: i64, media: &str) -> String {
-    format!("{:x}", md5::compute(format!("{}_{media}_3", id(post))))
+/// Where in `month` WeChat caches the copy `n` of the media `media` of
+/// Moment `post`, in `Sns/<shelf>`, ending `ext`: the MD5 of
+/// `<post>_<media>_<n>`, split after its first two digits.
+fn cached(month: &str, shelf: &str, post: i64, media: &str, n: u8, ext: &str) -> String {
+    let k = format!("{:x}", md5::compute(format!("{}_{media}_{n}", id(post))));
+    format!("cache/{month}/Sns/{shelf}/{}/{}{ext}", &k[..2], &k[2..])
 }
 
 const MP4: &[u8] = b"\0\0\0\x18ftypmp42 a Moment's video";
 const JPG: &[u8] = b"\xff\xd8\xff\xe0 a Moment's video's thumbnail";
+const PHOTO: &[u8] = b"\xff\xd8\xff\xe0 a Moment's photo";
+const SMALL: &[u8] = b"\xff\xd8\xff\xe0 a Moment's photo, smaller";
+const CODE: u32 = 4242;
 
 /// An account that loaded Amy's Moment (only in its database's WAL), a
-/// Moment of Bob's and an older one of his, with Amy's video and Bob's
+/// Moment of Bob's and an older one of his, with Amy's video, Amy's image
+/// and its smaller copy (sealed under the account's image key), and Bob's
 /// video's thumbnail cached.
 fn account(world: &World) -> Account {
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
@@ -59,12 +67,14 @@ fn account(world: &World) -> Account {
         Posted(tid(BOB_AT, 2), "wxid_bob", link("wxid_bob", BOB_AT, 2)),
         Posted(tid(AMY_AT, 1), "wxid_amy", amy()),
     ];
-    let cached = |month: &str, key: String, ext: &str| {
-        format!("cache/{month}/Sns/Video/{}/{}{ext}", &key[..2], &key[2..])
-    };
+    account.kvcomm = vec![CODE];
+    let sealed = |bytes: &[u8]| seal(bytes, Format::V2(ImageKey::derive(CODE, "wxid_me")));
+    let (amy, bob) = (tid(AMY_AT, 1), tid(BOB_AT, 2));
     account.files = vec![
-        (cached("2025-10", video_key(tid(AMY_AT, 1), "102"), ".mp4"), MP4.to_vec()),
-        (cached("2025-09", video_key(tid(BOB_AT, 2), "201"), ".jpg"), JPG.to_vec()),
+        (cached("2025-10", "Video", amy, "102", 3, ".mp4"), MP4.to_vec()),
+        (cached("2025-10", "Img", amy, "101", 2, ""), sealed(PHOTO)),
+        (cached("2025-10", "Img", amy, "101", 6, ""), sealed(SMALL)),
+        (cached("2025-09", "Video", bob, "201", 3, ".jpg"), JPG.to_vec()),
     ];
     account.write();
     account
@@ -110,8 +120,8 @@ fn it_lists_each_moment_with_its_text_media_likes_and_comments_newest_first() {
                     "thumbnail_url": "https://szmmsns.qpic.cn/a/150",
                     "width": 1080,
                     "height": 1440,
-                    "file_present": false,
-                    "thumbnail_present": null,
+                    "file_present": true,
+                    "thumbnail_present": true,
                 },
                 {
                     "id": format!("{amy_id}:1"),
@@ -203,7 +213,7 @@ fn paging_with_next_returns_each_moment_once() {
 }
 
 #[test]
-fn a_cached_video_is_written_and_what_wechat_does_not_hold_is_missing() {
+fn a_cached_image_and_video_are_written_and_what_wechat_does_not_hold_is_missing() {
     let world = World::new();
     let account = account(&world);
     let keys = account.all_keys();
@@ -225,9 +235,18 @@ fn a_cached_video_is_written_and_what_wechat_does_not_hold_is_missing() {
     let fix = json["fix"].as_str().unwrap();
     assert!(fix.contains("open Auntie's Moment of 2025-10-09T09:00:00Z"), "{fix}");
 
-    // An image's cache name is not known yet (#28): it is missing.
+    // An image is unsealed; its thumbnail is the smaller copy WeChat
+    // keeps when it keeps no `_1`.
     let json = world.run(&["file", "get", &format!("{amy}:0"), "--out", out_s], &env).ok();
-    assert_eq!((json["missing"].clone(), json["thumbnail"].clone()), (json!(true), Value::Null));
+    assert_eq!(std::fs::read(&out).unwrap(), PHOTO);
+    assert_eq!(
+        (json["content_type"].clone(), json["size"].clone()),
+        (json!("image/jpeg"), json!(PHOTO.len()))
+    );
+    let json =
+        world.run(&["file", "get", &format!("{amy}:0"), "--thumbnail", "--out", out_s], &env).ok();
+    assert_eq!(std::fs::read(&out).unwrap(), SMALL);
+    assert_eq!(json["size"], json!(SMALL.len()));
 
     let bob = id(tid(BOB_AT, 2));
     let json = world.run(&["file", "get", &format!("{bob}:0"), "--out", out_s], &env).ok();
@@ -251,18 +270,14 @@ fn a_moments_medium_that_is_not_there_is_refused_with_its_fix() {
     for (asked, says) in [
         ("1:0".to_string(), "holds no Moment of 1:0"),
         (format!("{bob}:2"), "its Moment has 2, from 0"),
-        (format!("{bob}:1"), "keeps no file of"),
-        (format!("{amy}:0"), "leave --thumbnail out"),
+        (format!("{bob}:1"), "no file of which can be found"),
+        (format!("{amy}:2"), "its Moment has 2, from 0"),
     ] {
-        let mut args = vec!["file", "get", asked.as_str(), "--out", out];
-        if asked.ends_with(":0") && asked.starts_with(&amy) {
-            args.push("--thumbnail");
-        }
-        let error = world.run(&args, &env).error();
+        let error = world.run(&["file", "get", asked.as_str(), "--out", out], &env).error();
         assert!(error.contains(says), "{asked}: {error}");
     }
     let error = world.run(&["file", "get", "x:y", "--out", out], &env).error();
-    assert!(error.contains("nor a Moment's medium's"), "{error}");
+    assert!(error.contains("or a Moment's medium's"), "{error}");
     assert!(!std::path::Path::new(out).exists(), "nothing is written");
 }
 

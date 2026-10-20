@@ -57,6 +57,11 @@ impl Account {
         dir.parent().and_then(|d| d.parent()).map_or(dir.clone(), PathBuf::from)
     }
 
+    /// Whether the keys supplied hold one of database `path`.
+    pub fn has_key(&self, path: &str) -> bool {
+        self.keys.get(path).is_some()
+    }
+
     /// Every database under its db_storage, by its path there.
     pub fn databases(&self) -> anyhow::Result<Vec<String>> {
         self.databases.clone().map_err(|why| anyhow!(wxread_account::unlisted(&self.id, &why)))

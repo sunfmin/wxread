@@ -128,16 +128,18 @@ fn voice_rows(
 
 /// The account's image key, found as wxkey finds it: derived from a
 /// kvcomm file's code and the account's id, the one that opens the
-/// account's first image sealed under one; None when none does.
+/// account's first image sealed under one, a message's, else a favorite's
+/// thumbnail, else a Moment's image; None when none does.
 pub fn image_key(account: &Account) -> Option<ImageKey> {
     let attach = account.dir().join("msg/attach");
-    let sample = months(&attach).into_iter().flat_map(|chat| months(&chat)).find_map(|month| {
-        let mut files: Vec<PathBuf> = std::fs::read_dir(month.join("Img"))
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .collect();
+    let images = months(&attach).into_iter().flat_map(|chat| months(&chat)).map(|m| m.join("Img"));
+    let thumbs = months(&account.dir().join(wxread_favorites::SHELF).join("thumb"));
+    let moments = months(&account.dir().join("cache"))
+        .into_iter()
+        .flat_map(|month| months(&month.join("Sns/Img")));
+    let sample = images.chain(thumbs).chain(moments).find_map(|dir| {
+        let mut files: Vec<PathBuf> =
+            std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
         files.sort();
         files.into_iter().find_map(|p| std::fs::read(p).ok().filter(|d| image::needs_key(d)))
     })?;
@@ -162,19 +164,50 @@ pub fn decrypted(
     key: &mut Option<Option<ImageKey>>,
 ) -> anyhow::Result<Vec<u8>> {
     let dat = read(path)?;
-    let key = if image::needs_key(&dat) {
-        let found = *key.get_or_insert_with(|| image_key(account));
-        Some(found.ok_or_else(|| {
-            anyhow!(wxread_media::no_image_key(
-                account.id(),
-                &account.documents().display().to_string()
-            ))
-        })?)
-    } else {
-        None
-    };
+    let key = key_of(account, &dat, key)?;
+    let path = path.display().to_string();
     image::decrypt(&dat, key.as_ref())
-        .map_err(|r| anyhow!(wxread_media::image_refused(&path.display().to_string(), r)))
+        .map_err(|r| anyhow!(wxread_media::image_refused(&path, r, "the message")))
+}
+
+/// A favorite's file at `path` in memory: unsealed when WeChat sealed it
+/// (an image, a note, a PDF alike), `key` finding the account's image key
+/// when it is sealed under one; else as it is. `source` names the
+/// favorite, which a refusal says to open.
+pub fn unsealed(
+    account: &Account,
+    path: &Path,
+    key: &mut Option<Option<ImageKey>>,
+    source: &str,
+) -> anyhow::Result<Vec<u8>> {
+    let dat = read(path)?;
+    if !image::is_sealed(&dat) {
+        return Ok(dat);
+    }
+    let key = key_of(account, &dat, key)?;
+    let path = path.display().to_string();
+    image::unseal(&dat, key.as_ref())
+        .map_err(|r| anyhow!(wxread_media::image_refused(&path, r, source)))
+}
+
+/// The image key `dat` is sealed under, found once: None for one that
+/// needs none.
+fn key_of(
+    account: &Account,
+    dat: &[u8],
+    key: &mut Option<Option<ImageKey>>,
+) -> anyhow::Result<Option<ImageKey>> {
+    if !image::needs_key(dat) {
+        return Ok(None);
+    }
+    let found = *key.get_or_insert_with(|| image_key(account));
+    let found = found.ok_or_else(|| {
+        anyhow!(wxread_media::no_image_key(
+            account.id(),
+            &account.documents().display().to_string()
+        ))
+    })?;
+    Ok(Some(found))
 }
 
 /// The bytes of WeChat's file at `path`.
