@@ -87,7 +87,7 @@ impl Kind {
     }
 
     /// The kind of an item of `datatype` `d`.
-    fn of_datatype(d: i64) -> Kind {
+    pub fn of_datatype(d: i64) -> Kind {
         DATATYPES.into_iter().find(|(n, _)| *n == d).map_or(Kind::Unknown, |(_, k)| k)
     }
 
@@ -359,7 +359,7 @@ pub fn path(item: &str, md5: Option<&str>, which: &str) -> String {
 }
 
 /// What an item says it is: its `datatype`.
-fn datatype(item: Node) -> Option<i64> {
+pub fn datatype(item: Node) -> Option<i64> {
     attr(item, "datatype").or_else(|| text(item, "datatype"))?.parse().ok()
 }
 
@@ -521,7 +521,10 @@ impl<F: Files> At<'_, F> {
         let file = self.files.of(kind, item, place);
         let mut fields = Map::new();
         fields.insert("file_id".into(), json!(file.id));
-        fields.insert("size".into(), json!(it("fullsize").and_then(|s| s.parse::<u64>().ok())));
+        // A favorite's item says its size in `fullsize`, a note's sent into
+        // a chat in `datasize`.
+        let size = it("fullsize").or_else(|| it("datasize")).and_then(|s| s.parse::<u64>().ok());
+        fields.insert("size".into(), json!(size));
         match kind {
             Kind::Video => {
                 fields.insert(

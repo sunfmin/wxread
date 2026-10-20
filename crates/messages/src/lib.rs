@@ -13,6 +13,7 @@ use wxread_media::{Held, Media};
 pub mod kinds;
 pub mod media;
 pub mod names;
+pub mod note;
 mod proto;
 
 pub use names::{Contact, Names};
@@ -61,6 +62,7 @@ pub enum Kind {
     Location,
     Card,
     Forward,
+    Note,
     Recall,
     Nudge,
     Join,
@@ -80,13 +82,14 @@ pub enum Kind {
 
 impl Kind {
     /// Every kind, as the answer names them.
-    pub const ALL: [Kind; 21] = [
+    pub const ALL: [Kind; 22] = [
         Kind::Text,
         Kind::Link,
         Kind::Quote,
         Kind::Location,
         Kind::Card,
         Kind::Forward,
+        Kind::Note,
         Kind::Recall,
         Kind::Nudge,
         Kind::Join,
@@ -112,6 +115,7 @@ impl Kind {
             Kind::Location => "location",
             Kind::Card => "card",
             Kind::Forward => "forward",
+            Kind::Note => "note",
             Kind::Recall => "recall",
             Kind::Nudge => "nudge",
             Kind::Join => "join",
@@ -400,6 +404,11 @@ pub fn message(
 ) -> Value {
     let Read { sender, content, mut parsed } = read(chat, row);
     let sender = sender.or_else(|| parsed.named.as_deref().and_then(|n| names.who(chat, n)));
+    if parsed.kind == Kind::Note
+        && let Some(fields) = note::read(chat, row, &|m: &Media| Some(held(m, row)))
+    {
+        parsed.fields = fields;
+    }
     if let Some(found) = media::locate(parsed.kind, &parsed.fields) {
         let h = held(&found, row);
         parsed.fields.insert("file_present".into(), json!(h.file));

@@ -12,6 +12,8 @@ use roxmltree::Node;
 use serde_json::{Map, Value, json};
 use wxread_xml::{attr, child, inner, named, text, xml};
 
+use wxread_media::Media;
+
 use crate::Kind;
 
 /// WeChat's types: text, an image, a voice message, a contact's card, a
@@ -41,10 +43,11 @@ const LINKS: [(i64, &str); 7] = [
     (63, "channels_live"),
 ];
 /// The other subtypes of an app message wxread reads: a file, a sticker, a
-/// forwarded history, a quote, a nudge, a transfer and a red packet.
+/// forwarded history, a note, a quote, a nudge, a transfer and a red packet.
 const APP_FILE: i64 = 6;
 const APP_STICKER: i64 = 8;
 const FORWARD: i64 = 19;
+const NOTE: i64 = 24;
 const QUOTE: i64 = 57;
 const NUDGE: i64 = 62;
 const TRANSFER: i64 = 2000;
@@ -264,6 +267,12 @@ fn app(root: Node, sub: i64) -> Option<Parsed> {
                 Kind::Forward,
                 json!({ "title": text(a, "title").unwrap_or_default(), "messages": messages }),
             ))
+        }
+        NOTE => {
+            // Its items' files are looked for once the message's id and
+            // directory are known (crate::note::read).
+            let files = crate::note::InChat { message: 0, rec: None, held: &|_: &Media| None };
+            Some(Parsed::of(Kind::Note, Value::Object(crate::note::fields(a, &files)?)))
         }
         NUDGE => {
             let p = child(a, "patinfo")?;

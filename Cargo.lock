@@ -897,6 +897,7 @@ dependencies = [
  "wxread-answer",
  "wxread-chats",
  "wxread-contacts",
+ "wxread-favorites",
  "wxread-media",
  "wxread-schema",
  "wxread-xml",
