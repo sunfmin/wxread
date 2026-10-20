@@ -19,6 +19,10 @@ pub const IDLE_WAIT_SECONDS: u64 = 60;
 pub const LEFT_WAIT_SECONDS: u64 = 30;
 /// How many times the chat info is scrolled looking for Leave.
 pub const MAX_SCROLLS: u32 = 8;
+/// How many of the chats a search lists by the name are opened, looking
+/// for the group: the others are groups the account has left, or a contact
+/// of the same name.
+pub const MAX_MATCHES: u32 = 4;
 
 /// Why it stopped, and the fix, as the one line the run answers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,8 +51,10 @@ pub struct Target {
 }
 
 /// The group `id` as the target of a leave, when the account `own` is
-/// among its `members` and no other group of the account is shown as it
-/// is: `same_name` holds the id of every group shown as `display_name`.
+/// among its `members` and no other group it is in is shown as it is:
+/// `same_name` holds the id of every group the account is in that is shown
+/// as `display_name`. A group it has left reads apart in the window: its
+/// chat's title holds no member count.
 pub fn target(
     id: &str,
     display_name: &str,
@@ -135,7 +141,7 @@ pub fn plan(target: &Target) -> Vec<String> {
         ),
         "bring WeChat to the front".to_string(),
         format!(
-            "search for {shown} (Edit › Search, then Edit › Paste, the pasteboard put back) and, once the search box holds it, open it with Return"
+            "search for {shown} (Edit › Search, then Edit › Paste, the pasteboard put back) and, once the search box holds it, click the chat it lists by that name; a group of that name the account has left is passed for the next, up to {MAX_MATCHES}"
         ),
         format!("check the chat's title reads {shown} ({})", target.members),
     ];
@@ -222,14 +228,23 @@ impl Frame {
     }
 }
 
-/// What one screenshot of WeChat's window showed: its size, the text in
-/// it, and the frame of the window of its own a confirmation comes up in.
+/// What one look at WeChat's window showed: its size, the text in it, and
+/// each window of WeChat's own over it (the matches a search lists, a
+/// confirmation), which a screenshot of the main window does not hold.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Screen {
     pub width: u32,
     pub height: u32,
     pub lines: Vec<Line>,
-    pub dialog: Option<Frame>,
+    pub overlays: Vec<Overlay>,
+}
+
+/// A window of WeChat's over its main one, and the text read in it, both
+/// in the main window's points.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Overlay {
+    pub frame: Frame,
+    pub lines: Vec<Line>,
 }
 
 /// Which screen a step expects: what a refusal says it stopped on.
@@ -256,7 +271,6 @@ impl Look {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
     Escape,
-    Return,
 }
 
 /// A menu item the run presses through Accessibility.
@@ -279,7 +293,8 @@ impl MenuItem {
 /// One thing the effect crate does to WeChat's window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Act {
-    /// Make WeChat the active app, and check it is.
+    /// Make WeChat the active app with its main window in front, and
+    /// check it is.
     Front,
     Key(Key),
     Menu(MenuItem),
@@ -312,28 +327,30 @@ pub enum Move {
     Stop(Vec<Act>, Refusal),
 }
 
-/// How many times the chat info was scrolled: never past [`MAX_SCROLLS`].
+/// How many times something was done that is done a bounded number of
+/// times (scrolling the chat info, opening a match): never past the bound
+/// it was counted against, nor past 8.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[refined_by(n: int)]
 #[invariant(n <= 8)]
-pub struct Scrolls {
+pub struct Count {
     #[field(u32[n])]
     n: u32,
 }
 
-impl Scrolls {
-    #[spec(fn() -> Scrolls[0])]
-    pub fn none() -> Scrolls {
-        Scrolls { n: 0 }
+impl Count {
+    #[spec(fn() -> Count[0])]
+    pub fn none() -> Count {
+        Count { n: 0 }
     }
 
-    /// One more, when there may be one more.
-    #[spec(fn(Scrolls[@n]) -> Option<Scrolls{m: m == n + 1}>)]
-    pub fn more(self) -> Option<Scrolls> {
-        if self.n < MAX_SCROLLS { Some(Scrolls { n: self.n + 1 }) } else { None }
+    /// One more, when there may be one more within `bound`.
+    #[spec(fn(Count[@n], bound: u32{bound <= 8}) -> Option<Count{m: m == n + 1 && m <= bound}>)]
+    pub fn more(self, bound: u32) -> Option<Count> {
+        if self.n < bound { Some(Count { n: self.n + 1 }) } else { None }
     }
 
-    #[spec(fn(&Scrolls[@n]) -> u32[n])]
+    #[spec(fn(&Count[@n]) -> u32[n])]
     pub fn count(&self) -> u32 {
         self.n
     }
@@ -353,6 +370,10 @@ const ASKS: [&str; 2] = ["leavethegroupchat", "退出群聊"];
 const CANCEL: [&str; 2] = ["Cancel", "取消"];
 const OK: [&str; 2] = ["OK", "确定"];
 const CLEAR_HISTORY: [&str; 2] = ["ClearChatHistory", "聊天记录"];
+/// How far right of the list's left edge a chat the search lists starts,
+/// past its avatar: the headings and the searches of the internet start
+/// nearer.
+const MATCH_INDENT: u32 = 35;
 /// The title row and the search box are above this, in points.
 const TOP: u32 = 40;
 /// The chat list is left of this; the chat's title right of [`TITLE_FROM`].
@@ -371,14 +392,22 @@ pub struct Path {
     target: Target,
     retry: String,
     step: Step,
-    scrolls: Scrolls,
+    scrolls: Count,
+    /// The matches of the search opened, and found not the group.
+    opened: Count,
 }
 
 impl Path {
     /// The path to leave `target`; `retry` is the line a refusal says to
     /// run again.
     pub fn new(target: Target, retry: &str) -> Path {
-        Path { target, retry: retry.to_string(), step: Step::Start, scrolls: Scrolls::none() }
+        Path {
+            target,
+            retry: retry.to_string(),
+            step: Step::Start,
+            scrolls: Count::none(),
+            opened: Count::none(),
+        }
     }
 
     /// The title its chat shows: its display name and member count.
@@ -391,6 +420,11 @@ impl Path {
         if self.step != Step::Start {
             return self.stop(Look::Search, "the path was started twice", &[]);
         }
+        self.search()
+    }
+
+    /// WeChat in front, its search holding the name.
+    fn search(&mut self) -> Move {
         self.step = Step::Look(Look::Search);
         Move::Then(
             vec![
@@ -426,17 +460,44 @@ impl Path {
         if !field.iter().any(|f| f.contains(&name)) {
             return self.stop(
                 Look::Search,
-                "the search box does not hold the name, and Return could send it into a chat",
+                "the search box does not hold the name it was given",
                 &field,
             );
         }
+        // The matches are listed in a window of their own, under headings
+        // that change from one search to the next; a search of the internet
+        // is listed too. Each chat listed by the name is opened in turn, its
+        // title telling whether it is the group.
+        let mut matches = Vec::new();
+        let mut read = Vec::new();
+        for overlay in &screen.overlays {
+            matches.extend(chats_named(&overlay.lines, &name));
+            for line in &overlay.lines {
+                read.push(normalize(&line.text));
+            }
+        }
+        // Opening a match can move it up the list, so the matches are taken
+        // in turn, round the list.
+        let turn = (self.opened.count() as usize).checked_rem(matches.len()).unwrap_or(0);
+        let Some(found) = matches.get(turn) else {
+            return self.stop(Look::Search, "the search lists no chat by the name", &read);
+        };
+        let (x, y) = found.center();
         self.step = Step::Look(Look::Chat);
-        Move::Then(vec![Act::Key(Key::Return), Act::Wait(1200)], Look::Chat)
+        Move::Then(vec![Act::Click { x, y }, Act::Wait(1200)], Look::Chat)
     }
 
     fn opened(&mut self, screen: &Screen) -> Move {
         let title = titles(screen);
         if !title.contains(&self.title()) {
+            // A group of the same name the account has left: its title is
+            // the name alone, with no member count. The next match, if any;
+            // any other title stops the run.
+            let left = title.contains(&normalize(&self.target.display_name));
+            if let Some(more) = self.opened.more(MAX_MATCHES - 1).filter(|_| left) {
+                self.opened = more;
+                return self.search();
+            }
             return self.stop(Look::Chat, "the opened chat is not the group asked for", &title);
         }
         if group_name_label(screen).is_some() {
@@ -479,7 +540,7 @@ impl Path {
             self.step = Step::Look(Look::Confirmation);
             return Move::Then(vec![Act::Click { x, y }, Act::Wait(1000)], Look::Confirmation);
         }
-        match self.scrolls.more() {
+        match self.scrolls.more(MAX_SCROLLS) {
             Some(more) => {
                 self.scrolls = more;
                 Move::Then(
@@ -498,18 +559,21 @@ impl Path {
     }
 
     fn confirmation(&mut self, screen: &Screen) -> Move {
-        let Some(frame) = screen.dialog else {
+        let Some(dialog) = screen.overlays.first() else {
             return self.stop(Look::Confirmation, "no confirmation came up", &[]);
         };
         // Only the text inside the confirmation's own window: the chat list
         // behind it is level with it.
-        let mut inside: Vec<&Line> = Vec::new();
+        let mut inside: Vec<&Line> = dialog.lines.iter().collect();
         for line in &screen.lines {
-            if frame.contains(line.center()) {
+            if dialog.frame.contains(line.center()) {
                 inside.push(line);
             }
         }
-        let read = texts(screen, |s, l| s.dialog.is_some_and(|f| f.contains(l.center())));
+        let mut read = Vec::new();
+        for line in &inside {
+            read.push(normalize(&line.text));
+        }
         let Some(ask) = first(&inside, 0, |l| holds(&l.text, &ASKS)) else {
             return self.stop(Look::Confirmation, "no confirmation came up", &read);
         };
@@ -578,6 +642,24 @@ impl Path {
 /// The first of `lines` below `y` that `wanted` wants.
 fn first<'a>(lines: &[&'a Line], y: u32, wanted: fn(&Line) -> bool) -> Option<&'a Line> {
     lines.iter().copied().find(|line| line.y > y && wanted(line))
+}
+
+/// The chats a search's matches `lines` list by `name`, top first: each
+/// reads exactly the name, indented past its avatar from the list's left
+/// edge.
+fn chats_named<'a>(lines: &'a [Line], name: &str) -> Vec<&'a Line> {
+    let mut edge = u32::MAX;
+    for line in lines {
+        edge = edge.min(line.x);
+    }
+    let mut found: Vec<&Line> = Vec::new();
+    for line in lines {
+        if line.x >= edge.saturating_add(MATCH_INDENT) && normalize(&line.text) == name {
+            found.push(line);
+        }
+    }
+    found.sort_by_key(|l| (l.y, l.x));
+    found
 }
 
 /// Whether `text`, made comparable, is one of `labels`.

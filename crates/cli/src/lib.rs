@@ -18,6 +18,8 @@ pub mod doctor;
 pub mod favorites;
 pub mod file;
 pub mod keys;
+#[cfg(target_os = "macos")]
+pub mod leave;
 pub mod media;
 mod memory;
 pub mod messages;
@@ -25,6 +27,8 @@ pub mod moments;
 pub mod resign;
 pub mod search;
 pub mod voice;
+#[cfg(target_os = "macos")]
+mod window;
 pub mod world;
 
 /// What this binary was built from, as `--version` says it: stamped by
@@ -138,11 +142,14 @@ enum Command {
         #[command(subcommand)]
         action: FileAction,
     },
-    /// Answer a group: its name, notice, owner and every member
+    /// Answer a group: its name, notice, owner and every member; `group leave` leaves it
+    #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
     Group {
+        #[command(subcommand)]
+        action: Option<GroupAction>,
         /// The group's id: <n>@chatroom
-        #[arg(value_name = "ID")]
-        id: String,
+        #[arg(value_name = "ID", required = true)]
+        id: Option<String>,
         /// The account to read, by its id, when several are logged in
         #[arg(long, value_name = "ID")]
         account: Option<String>,
@@ -242,6 +249,22 @@ enum Command {
 }
 
 #[derive(Subcommand)]
+enum GroupAction {
+    /// Leave the group through WeChat's window, checked before and after; only with --yes
+    Leave {
+        /// The group's id: <n>@chatroom
+        #[arg(value_name = "ID")]
+        id: String,
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+        /// Leave it; without this, only say what it would do and change nothing
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum FileAction {
     /// Write a media message's or a Moment's file, or its thumbnail, as the file it is
     Get {
@@ -283,6 +306,7 @@ fn help_of(name: &str) -> Option<&'static str> {
         "doctor" => Some(include_str!("help/doctor.txt")),
         "favorites" => Some(include_str!("help/favorites.txt")),
         "group" => Some(include_str!("help/group.txt")),
+        "group leave" => Some(include_str!("help/group-leave.txt")),
         "keys" => Some(include_str!("help/keys.txt")),
         "messages" => Some(include_str!("help/messages.txt")),
         "moments" => Some(include_str!("help/moments.txt")),
@@ -379,8 +403,13 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| favorites::run(&w, &favorites::Asked { account, limit, cursor }))
         }
-        Command::Group { id, account } => world::World::from_env(cli.data_dir, cli.keys)
-            .and_then(|w| contacts::group(&w, account.as_deref(), &id)),
+        Command::Group { action: Some(GroupAction::Leave { id, account, yes }), .. } => {
+            world::World::from_env(cli.data_dir, cli.keys).and_then(|w| leave(&w, id, account, yes))
+        }
+        Command::Group { action: None, id, account } => {
+            world::World::from_env(cli.data_dir, cli.keys)
+                .and_then(|w| contacts::group(&w, account.as_deref(), &id.unwrap_or_default()))
+        }
         Command::Messages { account, chat, from, to, limit, cursor, oldest_first } => {
             world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
                 let asked =
@@ -408,6 +437,25 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
     answer(result, 1)
 }
 
+/// What `group leave` answers: on macOS alone, whose window it drives
+/// (docs/adr/0001-macos-only-and-apache-2.md).
+fn leave(
+    w: &world::World,
+    id: String,
+    account: Option<String>,
+    yes: bool,
+) -> anyhow::Result<Value> {
+    #[cfg(target_os = "macos")]
+    return leave::run(w, &leave::Asked { id, account, yes });
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (w, id, account, yes);
+        anyhow::bail!(
+            "`wxread group leave` drives WeChat for Mac's window: run it on the Mac WeChat is logged in on"
+        )
+    }
+}
+
 /// The help `args` ask for, if they ask for any: `--help` or `-h` before
 /// any `--`, of the first subcommand named, or of wxread itself. It is
 /// answered before anything is parsed, so a command's help is printed
@@ -419,7 +467,8 @@ fn help(args: &[OsString]) -> Option<&'static str> {
     if !long && !words.contains(&"-h") {
         return None;
     }
-    match words.iter().find_map(|w| help_of(w)) {
+    let named = words.windows(2).find_map(|pair| help_of(&pair.join(" ")));
+    match named.or_else(|| words.iter().find_map(|w| help_of(w))) {
         Some(text) => Some(text),
         None if long => Some(GUIDE),
         None => Some(SCREEN),

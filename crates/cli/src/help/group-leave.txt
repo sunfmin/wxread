@@ -1,0 +1,91 @@
+wxread group leave: leaves one of the account's groups, the way a person
+does, in WeChat's own window. It cannot be undone: to rejoin, a member of
+the group must invite the account back. Without --yes it says what it would
+do and changes nothing.
+
+WHEN TO RUN IT
+  To leave a group the account no longer wants, found by reading it with
+  wxread (an ad group: `wxread group <id>`, `wxread messages --chat <id>`).
+  Run by the person whose Mac it is, or by an agent they told to leave that
+  group: first `wxread group leave <id>` to see what it would do, then
+  `wxread group leave <id> --yes`.
+
+WHAT IT READS AND DOES
+  - The group, out of contact/contact.db (its display name, its own name,
+    its members) and its newest message, out of the message databases,
+    with their keys: the file --keys names, else WXREAD_KEYS. It refuses
+    a group the account is not in, and a group another group the account
+    is in is shown the same as: nothing in WeChat's window tells two such
+    groups apart.
+  - What stops it before the window is touched, answered as blockers:
+    WeChat not running, or logged in as another account (told by which
+    account's databases the running WeChat has open), and either
+    permission below missing.
+  - With --yes only, WeChat's window, for about ten seconds, once the
+    keyboard and mouse have been left alone for 3 s (waited for at most
+    a minute): WeChat is brought to the front, its search given the
+    group's name through the pasteboard (put back right after), the chat
+    it lists by that name opened, its title checked to read the name and
+    the member count, its chat info (···) opened and its Group Name
+    checked, Leave clicked, and OK clicked once the confirmation quotes
+    the name. Each step is checked on a screenshot of the window, by the
+    text macOS recognizes in it; the screenshot is kept only while it is
+    read, in a directory only you can read. The app that was in front
+    gets it back. Clear Chat History is left unticked: the chat and its
+    messages stay.
+  - Then the databases, once a second for at most 30 s, until they no
+    longer list the account among the group's members: only then does it
+    answer that it left.
+
+WHAT MACOS MUST ALLOW
+  The app running wxread (a terminal, an agent's host) needs, in System
+  Settings › Privacy & Security:
+  - Accessibility, to press WeChat's menus and send its keys and clicks
+  - Screen & System Audio Recording (Screen Recording before macOS 15),
+    to take the screenshot of WeChat's window; quit and reopen that app
+    once it is allowed
+  `wxread doctor` says whether each is allowed.
+
+USAGE
+  wxread group leave <id> [--account <id>] [--yes]
+
+  <id>              the group's id, <n>@chatroom, as `wxread contacts`
+                    answers it
+  --account <id>    the account to read, as `wxread doctor` names it;
+                    with only one logged in, that one
+  --yes             leave it; without it, nothing is changed
+
+WHAT IT ANSWERS
+    account       the account read: its directory's name, as doctor's id
+    group         {id, display_name, name, members, last_message}: the
+                  group as it was read before leaving it; members is how
+                  many it had, the account among them; last_message its
+                  newest message as `wxread messages` answers it, null
+                  for none
+    applied       true when this run left the group; false without --yes
+    confirmed_in  the seconds after OK the databases took to no longer
+                  list the account among its members; null without --yes
+    plan          the steps it takes, in order
+    blockers      [line]: what stops --yes before the window is touched,
+                  each with its fix; [] when nothing does
+    next          what to do now
+
+TRIPS YOU UP
+  - Without --yes nothing changes: read plan and blockers, then add --yes.
+  - Anything in the window that does not read as expected stops it where
+    it is, naming the screen it stopped on and what it read there, with
+    nothing clicked after it; a confirmation already up is cancelled.
+    Running it again with the Mac left alone usually gets past a screen
+    that was still drawing; WeChat itself can always leave the group.
+  - The person at the Mac comes first: it waits for the keyboard and mouse
+    to be left alone, and typing while it runs can stop it.
+  - Opening the group's chat marks its messages read, as a person opening
+    it would; the chat is left open after.
+  - WeChat whose screens read otherwise than 4.1.15's (another version, a
+    new layout) is refused at the step that no longer matches.
+  - A group with no name of its own is searched for by the names WeChat
+    shows it by; a group whose display name another group the account is
+    in shares is refused: give one of them a remark in WeChat first.
+  - An answer that the leave is not confirmed means OK was clicked but the
+    databases still list the account after 30 s: read `wxread group <id>`
+    again, and look at WeChat's window.

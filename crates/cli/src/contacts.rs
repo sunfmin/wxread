@@ -51,12 +51,17 @@ pub fn one(world: &World, account: Option<&str>, id: &str) -> anyhow::Result<Val
 /// What `group <id>` answers of `world`.
 pub fn group(world: &World, account: Option<&str>, id: &str) -> anyhow::Result<Value> {
     let account = Account::open(world, account, &[CONTACT_DB])?;
-    let contacts = contacts(&account, false)?;
-    let db = account.database(CONTACT_DB)?;
-    let own = own_id(&account, &contacts);
-    let group = wxread_contacts::group(id, &contacts, room(&db, id)?, notice(&db, id)?, &own)
-        .map_err(|e| anyhow!(e))?;
+    let group = read_group(&account, &contacts(&account, false)?, id)?;
     Ok(json!({"account": account.id(), "group": group_json(&group)}))
+}
+
+/// Group `id` of `account`, whose contacts are `contacts`, as `group`
+/// answers it.
+pub fn read_group(account: &Account, contacts: &Contacts, id: &str) -> anyhow::Result<Group> {
+    let db = account.database(CONTACT_DB)?;
+    let own = own_id(account, contacts);
+    wxread_contacts::group(id, contacts, room(&db, id)?, notice(&db, id)?, &own)
+        .map_err(|e| anyhow!(e))
 }
 
 fn contact_json(c: &Contact) -> Value {
@@ -107,7 +112,7 @@ fn sql(e: rusqlite::Error) -> anyhow::Error {
 }
 
 /// The account's own id, as `contacts` knows it.
-fn own_id(account: &Account, contacts: &Contacts) -> String {
+pub fn own_id(account: &Account, contacts: &Contacts) -> String {
     wxread_messages::names::account_id(account.id(), |id| contacts.contains_key(id))
 }
 

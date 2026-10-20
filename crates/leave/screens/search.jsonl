@@ -1,2 +1,5 @@
-{"window":[1200,800]}
-{"text":"、wxread 退群测试 1","x":52,"y":14,"w":230,"h":16}
+{"window": [1092, 1226]}
+{"text": "wxread 退群测试", "x": 96, "y": 21, "w": 96, "h": 14}
+{"text": "wxread 退群测试", "x": 381, "y": 18, "w": 111, "h": 21}
+{"text": "You've left the group chat", "x": 650, "y": 268, "w": 152, "h": 21}
+{"overlay": [48, 35, 368, 426], "lines": [{"text": "Most used", "x": 84, "y": 54, "w": 70, "h": 14}, {"text": "wxread 退群测试", "x": 128, "y": 98, "w": 96, "h": 14}, {"text": "Group Chats", "x": 83, "y": 150, "w": 80, "h": 14}, {"text": "wxread 退群测试", "x": 128, "y": 194, "w": 96, "h": 14}, {"text": "Internet search results", "x": 109, "y": 246, "w": 150, "h": 14}, {"text": "wxread 退群测试", "x": 98, "y": 277, "w": 96, "h": 14}, {"text": "Q 微信退群了怎样恢复", "x": 85, "y": 310, "w": 140, "h": 14}]}

@@ -11,22 +11,26 @@ const RETRY: &str = "wxread group leave 58872695997@chatroom --yes";
 fn screen(name: &str) -> Screen {
     let path = format!("{}/screens/{name}.jsonl", env!("CARGO_MANIFEST_DIR"));
     let text = std::fs::read_to_string(&path).unwrap();
-    let mut screen = Screen { width: 0, height: 0, lines: Vec::new(), dialog: None };
+    let mut screen = Screen { width: 0, height: 0, lines: Vec::new(), overlays: Vec::new() };
     let n = |v: &Value| u32::try_from(v.as_u64().unwrap()).unwrap();
-    for line in text.lines() {
-        let v: Value = serde_json::from_str(line).unwrap();
+    let line = |v: &Value| Line {
+        text: v["text"].as_str().unwrap().to_string(),
+        x: n(&v["x"]),
+        y: n(&v["y"]),
+        w: n(&v["w"]),
+        h: n(&v["h"]),
+    };
+    for text in text.lines() {
+        let v: Value = serde_json::from_str(text).unwrap();
         if let Some(size) = v.get("window") {
             (screen.width, screen.height) = (n(&size[0]), n(&size[1]));
-        } else if let Some(f) = v.get("dialog") {
-            screen.dialog = Some(Frame { x: n(&f[0]), y: n(&f[1]), w: n(&f[2]), h: n(&f[3]) });
-        } else {
-            screen.lines.push(Line {
-                text: v["text"].as_str().unwrap().to_string(),
-                x: n(&v["x"]),
-                y: n(&v["y"]),
-                w: n(&v["w"]),
-                h: n(&v["h"]),
+        } else if let Some(f) = v.get("overlay") {
+            screen.overlays.push(Overlay {
+                frame: Frame { x: n(&f[0]), y: n(&f[1]), w: n(&f[2]), h: n(&f[3]) },
+                lines: v["lines"].as_array().unwrap().iter().map(line).collect(),
             });
+        } else {
+            screen.lines.push(line(&v));
         }
     }
     screen
@@ -80,12 +84,39 @@ fn the_recorded_path_ends_in_ok_on_the_confirmation_that_quotes_the_group() {
         moves[2],
         Move::Then(vec![Act::Click { x: 1166, y: 27 }, Act::Wait(1000)], Look::Info)
     );
-    assert_eq!(moves[3], Move::Then(vec![Act::Key(Key::Return), Act::Wait(1200)], Look::Chat));
+    // The first chat listed by the name, not the search of the internet.
+    assert_eq!(
+        moves[3],
+        Move::Then(vec![Act::Click { x: 176, y: 105 }, Act::Wait(1200)], Look::Chat)
+    );
     let Move::Then(first, Look::Search) = &moves[4] else { panic!("{:?}", moves[4]) };
     assert_eq!(first[0], Act::Front);
     assert!(first.contains(&Act::Menu(MenuItem::Search)));
     assert!(first.contains(&Act::Paste(NAME.into())));
     assert_eq!(clicks(first), 0, "the search is pressed through the menus");
+}
+
+#[test]
+fn the_path_recorded_on_the_test_group_ends_in_ok() {
+    // The screens of the run that left 57609122265@chatroom on 2026-10-20.
+    let screens = ["recorded-search", "recorded-chat", "recorded-info", "recorded-confirm"];
+    let moves = walk(test_group(), &screens);
+    assert_eq!(moves[0], Move::Confirm(vec![Act::Click { x: 605, y: 664 }]));
+    let clicked: Vec<&Act> = moves[1..4]
+        .iter()
+        .map(|m| match m {
+            Move::Then(acts, _) => &acts[0],
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        clicked,
+        [
+            &Act::Click { x: 967, y: 899 },
+            &Act::Click { x: 1058, y: 27 },
+            &Act::Click { x: 181, y: 106 }
+        ]
+    );
 }
 
 #[test]
@@ -122,11 +153,63 @@ fn a_search_box_without_the_name_stops_before_return() {
     let (acts, line) = stopped(&moves[0]);
     assert!(acts.is_empty());
     assert!(
-        line.starts_with("stopped on the search box: the search box does not hold the name"),
+        line.starts_with(
+            "stopped on the search box: the search box does not hold the name it was given"
+        ),
         "{line}"
     );
     assert!(line.contains("nothing was clicked after it"), "{line}");
     assert!(line.contains(&format!("`{RETRY}` again")), "{line}");
+}
+
+#[test]
+fn a_search_listing_no_chat_by_the_name_stops_with_no_click() {
+    // Only a search of the internet is listed by the name: it is not a chat.
+    let moves = walk(test_group(), &["search-no-chat"]);
+    let (acts, line) = stopped(&moves[0]);
+    assert!(acts.is_empty());
+    let read = "(read there: Internetsearchresults | wxread退群测试 | Q微信退群了怎样恢复)";
+    assert!(
+        line.starts_with(&format!(
+            "stopped on the search box: the search lists no chat by the name {read}"
+        )),
+        "{line}"
+    );
+}
+
+#[test]
+fn a_chat_by_the_name_that_is_not_the_group_is_passed_for_the_next_match() {
+    // The first match opens a group the account has left: its title holds
+    // no member count. The search is made again and the next match opened.
+    let moves = walk(test_group(), &["search", "chat-left", "search", "chat"]);
+    assert_eq!(
+        moves[0],
+        Move::Then(vec![Act::Click { x: 1166, y: 27 }, Act::Wait(1000)], Look::Info)
+    );
+    assert_eq!(
+        moves[1],
+        Move::Then(vec![Act::Click { x: 176, y: 201 }, Act::Wait(1200)], Look::Chat)
+    );
+    assert!(
+        matches!(&moves[2], Move::Then(acts, Look::Search) if acts.contains(&Act::Menu(MenuItem::Search)) && clicks(acts) == 0)
+    );
+    assert_eq!(
+        moves[3],
+        Move::Then(vec![Act::Click { x: 176, y: 105 }, Act::Wait(1200)], Look::Chat)
+    );
+}
+
+#[test]
+fn no_more_than_four_chats_by_the_name_are_opened() {
+    let mut screens = vec!["search"];
+    for _ in 0..MAX_MATCHES {
+        screens.extend(["chat-left", "search"]);
+    }
+    screens.pop();
+    let moves = walk(test_group(), &screens);
+    let (acts, line) = stopped(&moves[0]);
+    assert!(acts.is_empty());
+    assert!(line.starts_with("stopped on the group's chat: the opened chat is not the group asked for (read there: wxread退群测试)"), "{line}");
 }
 
 #[test]

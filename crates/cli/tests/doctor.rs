@@ -4,7 +4,7 @@
 use std::os::unix::fs::PermissionsExt;
 
 use serde_json::{Value, json};
-use wxread_doctor::{ALLOW_READING, DATA_DIR_UNDER_HOME};
+use wxread_doctor::{ALLOW_READING, DATA_DIR_UNDER_HOME, Permission};
 
 use crate::common::{World, snapshot};
 
@@ -23,7 +23,10 @@ fn an_account_whose_every_database_has_a_key_is_ok() {
     let world = World::new();
     let storage = world.account(&world.data_dir(), "wxid_a_1234", &DATABASES);
     let keys = world.file("keys.json", &World::keys(&DATABASES));
-    let json = world.run(&["doctor", "--keys", keys.to_str().unwrap()], &[]).ok();
+    let mut json = world.run(&["doctor", "--keys", keys.to_str().unwrap()], &[]).ok();
+    // What macOS allows is the host's, and no finding: its shape is
+    // checked apart.
+    permissions_are_answered(json.as_object_mut().unwrap().remove("permissions").unwrap());
     assert_eq!(
         json,
         json!({
@@ -40,6 +43,21 @@ fn an_account_whose_every_database_has_a_key_is_ok() {
             "findings": [],
         })
     );
+}
+
+/// `permissions` says, for each permission `group leave` needs, whether it
+/// is granted, what needs it, and the fix exactly when it is not granted.
+fn permissions_are_answered(permissions: Value) {
+    let names: Vec<&str> = Permission::ALL.iter().map(|p| p.name()).collect();
+    let answered: Vec<&str> = permissions.as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(answered, names);
+    for p in Permission::ALL {
+        let one = &permissions[p.name()];
+        let granted = one["granted"].as_bool().expect("granted is true or false");
+        assert_eq!(one["needed_for"], p.needed_for());
+        let fix = if granted { Value::Null } else { Value::from(p.fix()) };
+        assert_eq!(one["fix"], fix, "{one}");
+    }
 }
 
 #[test]

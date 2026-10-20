@@ -12,7 +12,10 @@ WXREAD_KEYS="$(cat <keys>)" ./wxwin run <n>@chatroom --confirm     # OK, only on
 ```
 
 It answers one JSON line per step and saves every screenshot in `--out`. It is a
-prototype: wxread does not ship it. Each screen is described below by the text
+prototype: wxread does not ship it. `wxread group leave <id> --yes` is the path
+built into wxread (crates/leave decides it, crates/cli/src/window.rs drives the
+window); where building it found the path otherwise than the prototype did, the
+steps below say so, and [Built into wxread](#built-into-wxread) records the runs. Each screen is described below by the text
 recognized on it; the screenshots themselves are not kept (they are the owner's
 chat list).
 
@@ -31,7 +34,10 @@ Chinese.
 wxread answers the group (`wxread group <id>`): its display name, its own name,
 and its members. Then every contact is read (`wxread contacts`, page by page:
 `--query` matches a group's own name, not the display name a group with none is
-shown by), and the display name must belong to this one group alone. Two groups
+shown by), and the display name must belong to this one group alone among the
+groups the account is in. A group of the same name the account has left is
+told apart in the window: its chat's title is the name alone, with no member
+count, and wxread passes it for the next chat the search lists by the name. Two groups
 answered with the same display name are refused before the window is touched:
 
 ```json
@@ -87,7 +93,10 @@ hold the name: Return could send it into a chat`; seen in two of fourteen runs
 on real groups, when the paste did not land.
 
 **3. Return opens the first match.** WeChat 4.1.15 shows no list of matches after
-a paste, in its window or any other; Return opens the first. The chat is told by
+a paste, in its window or any other; Return opens the first. (Built into wxread,
+this was found otherwise: the matches are listed, in a window of WeChat's own
+over the main one, and Return opened WeChat's search of the internet. wxread
+clicks a chat that list names; see [Built into wxread](#built-into-wxread).) The chat is told by
 its title (y < 40, right of the list): `<display name> (<members>)`.
 
 Seen: the title `wxread 退群测试 (1)`, and right of it the chat bubble, call and `···` buttons.
@@ -191,3 +200,40 @@ Accessibility and checked.
   person opening it would.
 - The chat is left open, with its chat info.
 - The pasteboard holds the name for a fraction of a second, and is put back.
+
+## Built into wxread
+
+What `wxread group leave` does where the prototype's path did not hold, found
+on 2026-10-20 on this account, WeChat 4.1.15 in English, on a new test group
+`wxread 退群测试` (57609122265@chatroom), with the old one of that name
+(58872695997@chatroom) left before. Every run that did not leave stopped
+before Leave was clicked, or cancelled the confirmation; the screens of the run
+that left are kept, as their text, in crates/leave/screens/recorded-*.
+
+- **The matches are a window of their own.** After the paste, WeChat lists the
+  matches in a window over the main one (layer 3, 368 points wide), which a
+  screenshot of the main window does not hold. Return opened WeChat's search of
+  the internet (a window of its own, its title `Search`), not the chat. The list
+  read: `Most used`, the group, `Group Chats`, the group, `Internet search
+  results` and searches of the internet; in the next search, both groups of the
+  name under `Most used` and no `Group Chats`. So headings are not relied on: a
+  chat listed is a line that reads exactly the name, indented past its avatar
+  (35 points or more from the list's left edge; the searches of the internet
+  start nearer). wxread clicks the first, and when its chat's title is the name
+  alone (a group the account has left) searches again and clicks the next, at
+  most four chats in all. Any other title stops the run.
+- **WeChat's other windows.** WeChat had a file open in a window of its own
+  (layer 0), and with it in front Edit › Search was not in the menus. wxread
+  takes the main window by its name (`Weixin`, `WeChat`, `微信`), and puts it in
+  front of WeChat's others (Accessibility's `AXRaise` and `AXMain`) after making
+  WeChat the active app.
+- **The confirmation's own window is not shot alone.** `screencapture -l` of
+  it gave all of WeChat's window squeezed into its 280 × 194 points; its text
+  was read, as the prototype read it, in the main window's screenshot inside
+  its frame. wxread reads a window's own screenshot only when its pixels are
+  the same multiple of its points across and down.
+- **The leave.** The run that left took 12.8 s from start to answer; the
+  databases no longer listed the account 3 s after OK, and the chat's newest
+  message was the notice `You've left the group chat`. `wxread group` answered
+  `members: []`.
+

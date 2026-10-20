@@ -66,7 +66,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
         rows.extend(read(&conn, &db, &table, range, start, limit).map_err(sql)?);
     }
     if !found {
-        return Err(anyhow!(wxread_messages::no_such_chat(&chat, account.id())));
+        return Err(NoMessages(wxread_messages::no_such_chat(&chat, account.id())).into());
     }
     let own = wxread_messages::names::account_id(account.id(), |id| {
         names.contacts.contains_key(id) || senders.iter().any(|s| s == id)
@@ -91,6 +91,20 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
         "next": page.next.map(|n| n.text()),
     }))
 }
+
+/// The failure of a chat WeChat on this Mac holds no message of, as the
+/// line that says so: told apart from the others by whoever only wants a
+/// chat's newest message, if it has one.
+#[derive(Debug)]
+pub struct NoMessages(String);
+
+impl std::fmt::Display for NoMessages {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for NoMessages {}
 
 /// The chat `--chat` names, or what fixes it.
 pub fn chat(given: Option<&str>) -> anyhow::Result<String> {

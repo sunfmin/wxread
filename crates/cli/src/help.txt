@@ -46,10 +46,12 @@ WHAT A COMMAND ANSWERS
     chats     account chats next
     contact   account contact
     contacts  account contacts next
-    doctor    ok data_dir accounts keys findings
+    doctor    ok data_dir accounts keys findings permissions
     favorites account favorites next
     file      path size sha256 content_type missing thumbnail fix
     group     account group
+    group leave  account group applied confirmed_in plan blockers
+              next
     keys      each database's path under db_storage, to its enc_key and
               salt
     messages  account chat messages next
@@ -76,13 +78,18 @@ THE COMMANDS
       keys
   Letting keys read WeChat, run by the person whose Mac it is, once:
       resign
+  Leaving a group, which cannot be undone, run by the person whose Mac it
+  is (or an agent they told to), only with --yes; it takes WeChat's window
+  for about ten seconds:
+      group leave
 
 RULES
   - wxread reads and never writes WeChat's files, prompts for nothing,
     elevates nothing and keeps nothing between runs: every run reads the
-    data directory and the keys again. The one exception is
-    `wxread resign --yes`, which re-signs the WeChat app itself, and only
-    when told to with --yes.
+    data directory and the keys again. The two exceptions each act only
+    when told to with --yes: `wxread resign --yes` re-signs the WeChat app
+    itself, and `wxread group leave <id> --yes` leaves a group, through
+    WeChat's own window, which cannot be undone.
   - A database is decrypted into memory and read there: no decrypted byte
     is written to disk, and what is read is what WeChat wrote last, its
     WAL included. The one file written is the one `wxread file get`,
