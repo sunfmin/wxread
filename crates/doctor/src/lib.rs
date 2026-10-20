@@ -179,7 +179,7 @@ pub fn diagnose(seen: &Seen) -> Report {
         Listing::Accounts(accounts) => accounts.as_slice(),
         _ => &[],
     };
-    data_dir_findings(seen, &mut findings);
+    findings.extend(data_dir_finding(&seen.data_dir, seen.data_dir_from, &seen.listing));
     let mut reports = Vec::new();
     for account in accounts {
         reports.push(judge_account(account, keys.as_ref(), &mut findings));
@@ -187,9 +187,10 @@ pub fn diagnose(seen: &Seen) -> Report {
     Report { accounts: reports, keys: keys_report, findings }
 }
 
-fn data_dir_findings(seen: &Seen, findings: &mut Vec<Finding>) {
-    let dir = &seen.data_dir;
-    let elsewhere = match seen.data_dir_from {
+/// What is wrong with the data directory `dir`, named from `from`, as
+/// `listing` found it: nothing, when it lists an account.
+pub fn data_dir_finding(dir: &str, from: Source, listing: &Listing) -> Option<Finding> {
+    let elsewhere = match from {
         Source::Default => format!(
             "if WeChat keeps its files elsewhere, pass {DATA_DIR_FLAG} <its xwechat_files directory>"
         ),
@@ -197,7 +198,7 @@ fn data_dir_findings(seen: &Seen, findings: &mut Vec<Finding>) {
             "pass {DATA_DIR_FLAG} (or set {DATA_DIR_VAR} to) the xwechat_files directory WeChat keeps its accounts in, by default ~/{DATA_DIR_UNDER_HOME}"
         ),
     };
-    let finding = match &seen.listing {
+    let finding = match listing {
         Listing::Missing => Finding {
             problem: format!("WeChat's data directory {dir} does not exist"),
             fix: format!("install WeChat for Mac 4.x and log in; {elsewhere}"),
@@ -214,9 +215,9 @@ fn data_dir_findings(seen: &Seen, findings: &mut Vec<Finding>) {
             problem: format!("no account is under {dir}: no directory there holds a {DB_STORAGE}"),
             fix: format!("log in to WeChat for Mac 4.x on this Mac; {elsewhere}"),
         },
-        Listing::Accounts(_) => return,
+        Listing::Accounts(_) => return None,
     };
-    findings.push(finding);
+    Some(finding)
 }
 
 /// The keys, when they parse, and what to report of them.

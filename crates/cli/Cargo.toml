@@ -9,13 +9,21 @@ repository.workspace = true
 autotests = false
 
 [dependencies]
+wxread-account = { path = "../account" }
+wxread-answer = { path = "../answer" }
+wxread-chats = { path = "../chats" }
+wxread-contacts = { path = "../contacts" }
 wxread-doctor = { path = "../doctor" }
-wxread-crack = { path = "../crack" }
 wxread-keys = { path = "../keys" }
+wxread-crack = { path = "../crack" }
+wxread-schema = { path = "../schema" }
+wxread-sqlcipher = { path = "../sqlcipher" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde_json.workspace = true
 libc = "0.2.191"
+# WeChat's databases, decrypted, opened from memory.
+rusqlite = { version = "0.32", features = ["bundled", "serialize"] }
 
 # Reading the running WeChat's memory is a macOS job (docs/adr/0001).
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -1,5 +1,5 @@
 //! `wxread keys`: reads every database's key out of the running WeChat's
-//! memory and prints them (docs/adr/0003-keys-from-memory.md). It reads the
+//! memory and prints them (docs/adr/0004-keys-from-memory.md). It reads the
 //! world — whether wxread is root, whether WeChat is running and readable,
 //! and the first page of each database — and asks [`wxread_crack`] which keys
 //! open which databases. It keeps nothing and writes nothing.
@@ -9,9 +9,11 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use wxread_crack::{Access, Request, Target};
-use wxread_doctor::{DATA_DIR_VAR, DB_STORAGE};
+use wxread_doctor::Listing;
+use wxread_sqlcipher::PAGE;
 
-use crate::{memory, paths};
+use crate::memory;
+use crate::world::World;
 
 /// Reads the keys and answers them as one JSON object, or fails with the one
 /// line that says why there are none and how to get them.
@@ -22,7 +24,7 @@ pub fn run(data_dir: Option<PathBuf>) -> anyhow::Result<Value> {
     let (access, candidates, dbs) = if is_root {
         let (access, candidates) = memory::probe();
         let dbs = match access {
-            Access::Read => targets(data_dir)?,
+            Access::Read => targets(World::from_env(data_dir, None)?.listing()),
             _ => Vec::new(),
         };
         (access, candidates, dbs)
@@ -37,35 +39,32 @@ pub fn run(data_dir: Option<PathBuf>) -> anyhow::Result<Value> {
 }
 
 /// Every database under every account, each with its first page, for the keys
-/// to be matched against. Under `sudo` the data directory is the invoking
-/// user's, not root's.
-fn targets(data_dir: Option<PathBuf>) -> anyhow::Result<Vec<Target>> {
-    let (dir, _from) = paths::data_dir(data_dir, paths::var(DATA_DIR_VAR), real_home())?;
-    let mut targets = Vec::new();
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Ok(targets);
+/// to be matched against. A database shorter than one page, or one that
+/// cannot be read, is left out.
+fn targets(listing: Listing) -> Vec<Target> {
+    let Listing::Accounts(accounts) = listing else {
+        return Vec::new();
     };
-    for entry in entries.flatten() {
-        let storage = entry.path().join(DB_STORAGE);
-        if !storage.is_dir() {
+    let mut targets = Vec::new();
+    for account in &accounts {
+        let Ok(databases) = &account.databases else {
             continue;
-        }
-        if let Ok(databases) = paths::databases(&storage) {
-            for (path, file) in databases {
-                if let Some(page1) = first_page(&file) {
-                    targets.push(Target { path, page1 });
-                }
+        };
+        for path in databases {
+            let file = Path::new(&account.db_storage).join(path);
+            if let Some(page1) = first_page(&file) {
+                targets.push(Target { path: path.clone(), page1 });
             }
         }
     }
-    Ok(targets)
+    targets
 }
 
 /// The first SQLCipher page of a database, or `None` when the file is shorter
 /// than one page (so not an encrypted database) or cannot be read.
-fn first_page(file: &Path) -> Option<Vec<u8>> {
+fn first_page(file: &Path) -> Option<[u8; PAGE]> {
     let mut reader = std::fs::File::open(file).ok()?;
-    let mut page = vec![0u8; wxread_crack::PAGE];
+    let mut page = [0u8; PAGE];
     let mut read = 0;
     while read < page.len() {
         match reader.read(&mut page[read..]) {
@@ -75,34 +74,4 @@ fn first_page(file: &Path) -> Option<Vec<u8>> {
         }
     }
     Some(page)
-}
-
-/// The home directory WeChat's files are under: the user `sudo` was run by,
-/// when there is one, else this process's own `HOME`.
-fn real_home() -> Option<PathBuf> {
-    if let Some(user) = paths::var("SUDO_USER")
-        && let Some(home) = home_of(&user)
-    {
-        return Some(home);
-    }
-    std::env::var_os("HOME").filter(|home| !home.is_empty()).map(PathBuf::from)
-}
-
-/// The home directory of user `name` from the password database, if it has
-/// one.
-fn home_of(name: &str) -> Option<PathBuf> {
-    use std::os::unix::ffi::OsStrExt;
-
-    let name = std::ffi::CString::new(name).ok()?;
-    // getpwnam is not re-entrant, but wxread is one short-lived process.
-    let pw = unsafe { libc::getpwnam(name.as_ptr()) };
-    if pw.is_null() {
-        return None;
-    }
-    let dir = unsafe { (*pw).pw_dir };
-    if dir.is_null() {
-        return None;
-    }
-    let bytes = unsafe { std::ffi::CStr::from_ptr(dir) }.to_bytes();
-    Some(PathBuf::from(std::ffi::OsStr::from_bytes(bytes)))
 }

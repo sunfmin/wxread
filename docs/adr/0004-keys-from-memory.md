@@ -7,9 +7,9 @@ Every WeChat database has a key of its own, and that key exists in only one plac
 The key search is a pure function over bytes (`wxread-crack`), checked by Flux like every other pure crate (docs/adr/0002): the effect crate hands it the bytes of WeChat's memory and the first page of each database, and it answers which key opens which database. It never trusts a candidate it has not proved:
 
 - **Find.** Every run of 64 or more hex digits in the memory spells a candidate key in its first 64 digits (WeChat's literal is `x'…'`, whose `x` and `'` bound the run).
-- **Prove.** A candidate opens a database only if the database's first-page HMAC recomputes from it, the SQLCipher 4 way: pages are 4096 bytes, AES-256-CBC, each ending in an 80-byte reserve of a 16-byte IV and a 64-byte HMAC-SHA512. The HMAC key is `PBKDF2-HMAC-SHA512(raw key, salt ⊕ 0x3a, 2 rounds, 32 bytes)`, where the salt is the database's first 16 bytes; the HMAC is taken over page bytes `[16, 4032)` and the little-endian page number, and must equal bytes `[4032, 4096)`. Only the raw key is used; no 256000-round key derivation runs, because WeChat already holds the derived key.
+- **Prove.** A candidate opens a database only if that database's first-page HMAC recomputes from it — exactly the check `wxread-sqlcipher::opens` makes before any page is decrypted, whose SQLCipher 4 layout and HMAC are decided in docs/adr/0003. `keys` uses that one implementation rather than its own, so a key it answers and a key that decrypts a database are proved the same way.
 
-So every key `wxread keys` answers opens its database, and a database no key in memory opens is simply absent from the answer — never guessed. The search is tested with synthetic memory and synthetic encrypted pages; no real key or chat is in the tree.
+So every key `wxread keys` answers opens its database, and a database no key in memory opens is simply absent from the answer — never guessed. The search is tested with synthetic memory and with synthetic encrypted pages built by `wxread-sqlcipher`'s own `encrypt`; no real key or chat is in the tree.
 
 ## How macOS is handled
 

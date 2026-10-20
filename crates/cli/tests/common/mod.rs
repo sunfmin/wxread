@@ -2,8 +2,10 @@
 //! directory under it when the test makes one, and no variable of the host.
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 
 use serde_json::Value;
 use tempfile::TempDir;
@@ -99,4 +101,24 @@ impl World {
         command.args(args).env_clear().env("HOME", &self.home);
         command
     }
+}
+
+/// Every path under `dir`, with its bytes and when it was last changed.
+pub fn snapshot(dir: &Path) -> BTreeMap<PathBuf, (Vec<u8>, SystemTime)> {
+    let mut all = BTreeMap::new();
+    let mut dirs = vec![dir.to_path_buf()];
+    while let Some(d) = dirs.pop() {
+        for entry in std::fs::read_dir(&d).unwrap() {
+            let path = entry.unwrap().path();
+            let meta = std::fs::metadata(&path).unwrap();
+            let bytes = if meta.is_dir() {
+                dirs.push(path.clone());
+                Vec::new()
+            } else {
+                std::fs::read(&path).unwrap()
+            };
+            all.insert(path, (bytes, meta.modified().unwrap()));
+        }
+    }
+    all
 }

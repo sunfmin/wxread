@@ -7,7 +7,11 @@ Run first:
   wxread doctor      find WeChat's accounts and the keys; name each fix
 
 Commands:
+  chats     the account's chats, newest first, a page at a time
+  contact   one contact in full, by its id
+  contacts  the account's contacts by id; --query finds one
   doctor    find WeChat's accounts and the keys supplied; change nothing
+  group     a group's notice, owner and members, each named in it
   keys      read every database key from the running WeChat (sudo)
 
 Options:

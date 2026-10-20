@@ -1,33 +1,25 @@
-//! Finding each database's key in the running WeChat's memory, and proving
-//! it opens the database before it is reported (docs/adr/0003-keys-from-memory.md).
+//! Finding each database's key in the running WeChat's memory
+//! (docs/adr/0004-keys-from-memory.md).
 //!
 //! WeChat for Mac 4.x keeps every database's key in memory as the raw
-//! 32-byte AES key, written as the ASCII SQLCipher literal `x'<64 hex>...'`.
-//! The effect crate reads the running WeChat's memory and the first page of
-//! each database; everything here is a pure function over those bytes:
+//! 32-byte key, written as the SQLCipher literal `x'<64 hex key><32 hex
+//! salt>'`. The effect crate reads the running WeChat's memory and the first
+//! page of each database; everything here is a pure function over those
+//! bytes:
 //!
 //! - [`candidates`] reads every 32-byte key written in a block of memory.
-//! - [`opens`] checks one candidate against a database's first-page HMAC,
-//!   the way SQLCipher 4 computes it (AES-256-CBC pages, a reserve of an IV
-//!   and an HMAC-SHA512 at the end of each page).
 //! - [`run`] turns what the effect crate gathered — whether the memory could
 //!   be read at all, the candidates, and the databases — into either the keys
-//!   that open the databases or the one line that says why it could not.
+//!   that open the databases (each proved by [`wxread_sqlcipher::opens`]) or
+//!   the one line that says why it could not.
 
-use hmac::{Hmac, Mac};
-use sha2::Sha512;
 use wxread_keys::{Key, Keys};
+use wxread_sqlcipher::PAGE;
 
-/// A SQLCipher page is 4096 bytes; each database key is 32 bytes and each
-/// salt 16.
-pub const PAGE: usize = 4096;
+/// How many bytes a database key is.
 pub const KEY_LEN: usize = 32;
-pub const SALT_LEN: usize = 16;
-/// Each page ends with a reserve of a 16-byte IV and a 64-byte HMAC-SHA512.
-/// The first page's HMAC is over its bytes `[SALT_LEN, HMAC_END)` and the
-/// page number, and is stored in `[HMAC_END, PAGE)`.
-const RESERVE: usize = 80;
-const HMAC_END: usize = PAGE - RESERVE + SALT_LEN;
+/// How many bytes of a first page are its salt.
+const SALT_LEN: usize = 16;
 
 /// Every distinct 32-byte key written as hex in `memory`: the 64 hex digits
 /// at the start of each run of 64 or more hex digits (WeChat holds the key as
@@ -72,48 +64,12 @@ fn take_key(memory: &[u8], start: usize, out: &mut Vec<[u8; KEY_LEN]>) {
     }
 }
 
-/// The salt of a database from its first page: its first 16 bytes, which
-/// SQLCipher keeps in the clear. `None` for a page shorter than that.
-pub fn salt_of(page1: &[u8]) -> Option<[u8; SALT_LEN]> {
-    if page1.len() < SALT_LEN {
-        return None;
-    }
-    let mut salt = [0u8; SALT_LEN];
-    salt.copy_from_slice(&page1[..SALT_LEN]);
-    Some(salt)
-}
-
-/// Whether `key` opens the database whose first page is `page1`: the key the
-/// SQLCipher 4 way, its first-page HMAC-SHA512 is recomputed and must equal
-/// the one stored in the page. A page shorter than one SQLCipher page opens
-/// to nothing.
-pub fn opens(page1: &[u8], key: &[u8; KEY_LEN]) -> bool {
-    if page1.len() < PAGE {
-        return false;
-    }
-    // The HMAC key is PBKDF2-HMAC-SHA512 of the raw key over the salt with
-    // every byte flipped by 0x3a, two rounds, 32 bytes.
-    let mut mac_salt = [0u8; SALT_LEN];
-    mac_salt.copy_from_slice(&page1[..SALT_LEN]);
-    for b in mac_salt.iter_mut() {
-        *b ^= 0x3a;
-    }
-    let mut mac_key = [0u8; KEY_LEN];
-    pbkdf2::pbkdf2_hmac::<Sha512>(key, &mac_salt, 2, &mut mac_key);
-
-    let mut mac = <Hmac<Sha512> as Mac>::new_from_slice(&mac_key)
-        .expect("HMAC-SHA512 takes a key of any length");
-    mac.update(&page1[SALT_LEN..HMAC_END]);
-    mac.update(&1u32.to_le_bytes());
-    mac.finalize().into_bytes().as_slice() == &page1[HMAC_END..PAGE]
-}
-
 /// One database to find the key of: its path under `db_storage`, as the keys
 /// are answered, and its first page.
 #[derive(Debug, Clone)]
 pub struct Target {
     pub path: String,
-    pub page1: Vec<u8>,
+    pub page1: [u8; PAGE],
 }
 
 /// Whether the running WeChat's memory could be read at all.
@@ -170,8 +126,8 @@ pub fn run(request: &Request) -> Result<Keys, Failure> {
     let mut found: Vec<(String, Key)> = Vec::new();
     for db in request.dbs {
         for candidate in request.candidates {
-            if opens(&db.page1, candidate) {
-                found.push((db.path.clone(), Key::new(*candidate, salt_of(&db.page1))));
+            if wxread_sqlcipher::opens(&Key::new(*candidate, None), &db.page1) {
+                found.push((db.path.clone(), Key::new(*candidate, Some(salt_of(&db.page1)))));
                 break;
             }
         }
@@ -182,41 +138,17 @@ pub fn run(request: &Request) -> Result<Keys, Failure> {
     Ok(Keys::of(found))
 }
 
+/// The salt a first page starts with: its first 16 bytes.
+fn salt_of(page1: &[u8; PAGE]) -> [u8; SALT_LEN] {
+    let mut salt = [0u8; SALT_LEN];
+    salt.copy_from_slice(&page1[..SALT_LEN]);
+    salt
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aes::cipher::{BlockEncryptMut, KeyIvInit};
     use proptest::prelude::*;
-
-    type Enc = cbc::Encryptor<aes::Aes256>;
-
-    /// A synthetic first page that `key` and `salt` open: the SQLCipher 4
-    /// layout built the other way round, so a correct [`opens`] accepts it.
-    /// No real database or key: `plaintext` is whatever the test gives.
-    fn encrypt_page1(key: &[u8; 32], salt: &[u8; 16], plaintext: &[u8], iv: &[u8; 16]) -> Vec<u8> {
-        let mut page = vec![0u8; PAGE];
-        page[..SALT_LEN].copy_from_slice(salt);
-        // The clear-text of page 1 is everything between the salt and the
-        // reserve; pad the test's bytes to it.
-        let body = PAGE - RESERVE - SALT_LEN;
-        let mut buf = vec![0u8; body];
-        let take = plaintext.len().min(body);
-        buf[..take].copy_from_slice(&plaintext[..take]);
-        let ct = Enc::new(key.into(), iv.into())
-            .encrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf, body)
-            .unwrap();
-        page[SALT_LEN..PAGE - RESERVE].copy_from_slice(ct);
-        page[PAGE - RESERVE..PAGE - RESERVE + 16].copy_from_slice(iv);
-        // The HMAC over [salt, HMAC_END) and the page number, as opens checks.
-        let mac_salt: Vec<u8> = salt.iter().map(|b| b ^ 0x3a).collect();
-        let mut mac_key = [0u8; KEY_LEN];
-        pbkdf2::pbkdf2_hmac::<Sha512>(key, &mac_salt, 2, &mut mac_key);
-        let mut mac = <Hmac<Sha512> as Mac>::new_from_slice(&mac_key).unwrap();
-        mac.update(&page[SALT_LEN..HMAC_END]);
-        mac.update(&1u32.to_le_bytes());
-        page[HMAC_END..PAGE].copy_from_slice(&mac.finalize().into_bytes());
-        page
-    }
 
     const KEY: [u8; 32] = [
         0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee,
@@ -227,51 +159,40 @@ mod tests {
         0xde, 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
         0x0c,
     ];
-    const IV: [u8; 16] = [7u8; 16];
 
-    #[test]
-    fn a_key_opens_the_page_built_for_it_and_no_other_key_does() {
-        let page = encrypt_page1(&KEY, &SALT, b"a synthetic page", &IV);
-        assert!(opens(&page, &KEY));
-        assert_eq!(salt_of(&page), Some(SALT));
-        let mut wrong = KEY;
-        wrong[0] ^= 1;
-        assert!(!opens(&page, &wrong));
-        // A tampered page no longer verifies.
-        let mut tampered = page.clone();
-        tampered[100] ^= 1;
-        assert!(!opens(&tampered, &KEY));
-    }
-
-    #[test]
-    fn a_page_shorter_than_one_sqlcipher_page_opens_to_nothing() {
-        let page = encrypt_page1(&KEY, &SALT, b"x", &IV);
-        assert!(!opens(&page[..PAGE - 1], &KEY));
-        assert_eq!(salt_of(&[1, 2, 3]), None);
+    /// A synthetic first page that `key` and `salt` open, built the way
+    /// `wxread_sqlcipher::opens` checks: a correct candidate opens it. No real
+    /// database or key.
+    fn page(key: &[u8; 32], salt: &[u8; 16], body: &[u8]) -> [u8; PAGE] {
+        let mut plain = [0u8; PAGE];
+        let take = body.len().min(PAGE);
+        plain[..take].copy_from_slice(&body[..take]);
+        let db = wxread_sqlcipher::encrypt(&plain, key, salt, |n| [n as u8 ^ 0x5a; 16]);
+        let mut first = [0u8; PAGE];
+        first.copy_from_slice(&db[..PAGE]);
+        first
     }
 
     #[test]
     fn candidates_reads_the_key_out_of_the_hex_literal_in_memory() {
         let key_hex = wxread_keys::encode(&KEY);
         let salt_hex = wxread_keys::encode(&SALT);
-        // The key as WeChat holds it, amid other bytes and other hex runs.
-        let memory = format!(
-            "....PRAGMA key = \"x'{key_hex}{salt_hex}'\";....{}....",
-            "zz 0123 deadbeef", // runs of fewer than 64 hex digits are ignored
-        );
-        let found = candidates(memory.as_bytes());
-        assert!(found.contains(&KEY), "{found:?}");
+        let memory =
+            format!("....PRAGMA key = \"x'{key_hex}{salt_hex}'\";....zz 0123 deadbeef....");
+        assert!(candidates(memory.as_bytes()).contains(&KEY), "literal");
         // A bare 64-hex run is a candidate too.
-        assert!(candidates(key_hex.as_bytes()).contains(&KEY));
-        // Nothing of value in bytes with no long hex run.
+        assert!(candidates(key_hex.as_bytes()).contains(&KEY), "bare");
+        // Nothing in bytes with no long hex run.
         assert!(candidates(b"no keys here, just prose and 0xbadf00d").is_empty());
     }
 
     #[test]
     fn run_finds_the_key_of_each_database_among_the_candidates() {
         let other = [9u8; 32];
-        let page = encrypt_page1(&KEY, &SALT, b"chat", &IV);
-        let dbs = [Target { path: "message/message_0.db".to_string(), page1: page.clone() }];
+        let dbs = [Target {
+            path: "message/message_0.db".to_string(),
+            page1: page(&KEY, &SALT, b"chat"),
+        }];
         let request = Request { access: Access::Read, candidates: &[other, KEY], dbs: &dbs };
         let keys = run(&request).unwrap();
         let value = keys.to_value();
@@ -281,8 +202,7 @@ mod tests {
 
     #[test]
     fn each_way_of_reading_nothing_is_its_own_line_with_the_fix() {
-        let page = encrypt_page1(&KEY, &SALT, b"chat", &IV);
-        let dbs = [Target { path: "m.db".to_string(), page1: page }];
+        let dbs = [Target { path: "m.db".to_string(), page1: page(&KEY, &SALT, b"chat") }];
         let no_dbs: [Target; 0] = [];
         let cases = [
             (Access::NotRoot, &no_dbs[..], &[][..], "sudo wxread keys"),
@@ -300,17 +220,22 @@ mod tests {
     }
 
     proptest! {
-        // Over random keys, salts and bodies, the key that built a page opens
-        // it and a different key does not.
+        // Over random keys, salts and bodies, the key that built a page is the
+        // one `run` reports for it, and a different key is not.
         #[test]
-        fn opens_accepts_only_the_key_that_built_the_page(
-            key: [u8; 32], salt: [u8; 16], iv: [u8; 16], body in proptest::collection::vec(any::<u8>(), 0..200),
+        fn run_reports_only_the_key_that_built_the_page(
+            key: [u8; 32], salt: [u8; 16], body in proptest::collection::vec(any::<u8>(), 0..200),
         ) {
-            let page = encrypt_page1(&key, &salt, &body, &iv);
-            prop_assert!(opens(&page, &key));
+            prop_assume!(key != [0u8; 32]);
+            let dbs = [Target { path: "m.db".to_string(), page1: page(&key, &salt, &body) }];
+            let request = Request { access: Access::Read, candidates: &[key], dbs: &dbs };
+            let value = run(&request).unwrap().to_value();
+            prop_assert_eq!(value["m.db"]["enc_key"].as_str().unwrap(), wxread_keys::encode(&key));
+
             let mut other = key;
-            other[key[0] as usize % 32] ^= 1;
-            prop_assert!(!opens(&page, &other));
+            other[(key[0] as usize) % 32] ^= 1;
+            let request = Request { access: Access::Read, candidates: &[other], dbs: &dbs };
+            prop_assert!(run(&request).is_err());
         }
     }
 }
