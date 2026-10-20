@@ -2,7 +2,7 @@
 
 How a group is left in WeChat for Mac 4.1.15 (build 4066647863) by doing what a
 person does in its window: a key, a menu, a screenshot, text recognized in it,
-a click. The decision to take this path is docs/adr/0011; this is the path itself,
+a click. The decision to take this path is docs/adr/0015; this is the path itself,
 as `docs/leave-group/wxwin.swift` runs it:
 
 ```sh

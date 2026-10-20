@@ -1,6 +1,6 @@
 //! `wxread resign`: re-signs WeChat ad-hoc with `get-task-allow` added to
 //! its entitlements, so `sudo wxread keys` can read its memory
-//! (docs/adr/0006-wxread-resign-re-signs-wechat-when-asked.md). Without
+//! (docs/adr/0008-wxread-resign-re-signs-wechat-when-asked.md). Without
 //! `--yes` it only says what it would do. This module runs `codesign`, the
 //! one place its command lines are built; [`wxread_resign`] decides what to
 //! sign with and what to answer.

@@ -46,7 +46,7 @@ macOS only, Apache-2.0 ([ADR 0001](docs/adr/0001-macos-only-and-apache-2.md)).
 The formats are as [wechat-cli](https://github.com/huohuoer/wechat-cli) and
 wechat-decrypt (both Apache-2.0) found them. Voice messages are decoded by
 silk-decoder-rs (MIT), vendored in [crates/silk](crates/silk)
-([ADR 0005](docs/adr/0005-voice-is-decoded-in-process.md)).
+([ADR 0007](docs/adr/0007-voice-is-decoded-in-process.md)).
 
 ## Developing
 
@@ -66,7 +66,8 @@ runs on rustup's `nightly-2026-09-25` and needs the checker Cargo.toml pins:
 `./verify.sh` names the one to install when one is missing or another build.
 Each pure crate is listed in `verify.sh`'s `PURE`: a new one is added there,
 or Flux never checks it. Terms are in [GLOSSARY.md](GLOSSARY.md), decisions
-in [docs/adr](docs/adr).
+in [docs/adr](docs/adr). A new ADR takes the next free number; the gate
+refuses two that share one (`./adr-numbers.sh`).
 
 ## Cutting a release
 

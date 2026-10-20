@@ -1,6 +1,6 @@
 # `wxread resign` re-signs WeChat with get-task-allow, only when told to
 
-`sudo wxread keys` reads the keys out of the running WeChat's memory (docs/adr/0004), and macOS lets even root take the `task_for_pid` port of a process only when its signature allows it. A WeChat installed from Tencent is signed with the hardened runtime and without `com.apple.security.get-task-allow`, so `keys` is refused. `wxread resign` closes that gap: it re-signs the WeChat app ad-hoc (`codesign --force --sign - --entitlements <them> <app>`) with the entitlements it is signed with now plus `get-task-allow`, and nothing else.
+`sudo wxread keys` reads the keys out of the running WeChat's memory (docs/adr/0005), and macOS lets even root take the `task_for_pid` port of a process only when its signature allows it. A WeChat installed from Tencent is signed with the hardened runtime and without `com.apple.security.get-task-allow`, so `keys` is refused. `wxread resign` closes that gap: it re-signs the WeChat app ad-hoc (`codesign --force --sign - --entitlements <them> <app>`) with the entitlements it is signed with now plus `get-task-allow`, and nothing else.
 
 ## How
 
