@@ -395,6 +395,109 @@ fn messages_of_one_second_are_in_order_and_paging_returns_each_once() {
 }
 
 #[test]
+fn oldest_first_reads_a_chat_forward_and_its_next_continues_forward() {
+    let world = World::new();
+    let account = account(&world);
+    let keys = account.all_keys();
+    let env = [("WXREAD_KEYS", keys.as_str())];
+    let newest = ids(&world.run(&["messages", "--chat", "wxid_amy"], &env).ok());
+    let whole = world.run(&["messages", "--chat", "wxid_amy", "--oldest-first"], &env).ok();
+    let mut forward = newest.clone();
+    forward.reverse();
+    assert_eq!(ids(&whole), forward);
+    assert_eq!(whole["messages"][0]["content"], "earlier");
+    for limit in ["1", "2", "3"] {
+        let mut paged = Vec::new();
+        let mut args = vec!["messages", "--chat", "wxid_amy", "--oldest-first", "--limit", limit];
+        let mut cursor;
+        loop {
+            let json = world.run(&args, &env).ok();
+            let page = ids(&json);
+            assert!(page.len() <= limit.parse().unwrap(), "{json}");
+            paged.extend(page);
+            match json["next"].as_str() {
+                Some(next) => {
+                    assert!(next.starts_with("oldest."), "{next}");
+                    cursor = next.to_string();
+                    args = vec![
+                        "messages",
+                        "--chat",
+                        "wxid_amy",
+                        "--oldest-first",
+                        "--limit",
+                        limit,
+                        "--cursor",
+                        &cursor,
+                    ];
+                }
+                None => break,
+            }
+        }
+        assert_eq!(paged, forward, "--limit {limit}");
+    }
+}
+
+#[test]
+fn oldest_first_keeps_to_from_and_to() {
+    let world = World::new();
+    let account = account(&world);
+    let env = [("WXREAD_KEYS", account.all_keys())];
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let run = |args: &[&str]| world.run(args, &env).ok();
+    let between = [
+        "messages",
+        "--chat",
+        GROUP,
+        "--oldest-first",
+        "--from",
+        "2025-10-09T08:53:21Z",
+        "--to",
+        "2025-10-09T08:53:23Z",
+    ];
+    assert_eq!(ids(&run(&between)), ["9001", "9002"]);
+    let mut first = between.to_vec();
+    first.extend(["--limit", "1"]);
+    let one = run(&first);
+    assert_eq!(ids(&one), ["9001"]);
+    let next = one["next"].as_str().unwrap().to_string();
+    first.extend(["--cursor", next.as_str()]);
+    let rest = run(&first);
+    assert_eq!(ids(&rest), ["9002"]);
+    assert_eq!(rest["next"], Value::Null);
+    let from = ["messages", "--chat", "wxid_amy", "--oldest-first", "--from"];
+    let mut later = from.to_vec();
+    later.push("2025-10-09T16:53:20+08:00");
+    let later = ids(&run(&later));
+    assert_eq!(later.len(), 6);
+    assert!(!later.contains(&"99".to_string()), "{later:?}");
+}
+
+#[test]
+fn a_cursor_of_one_order_given_with_the_other_is_refused_with_its_fix() {
+    let world = World::new();
+    let account = account(&world);
+    let keys = account.all_keys();
+    let env = [("WXREAD_KEYS", keys.as_str())];
+    let page = |extra: &[&str]| {
+        let mut args = vec!["messages", "--chat", "wxid_amy", "--limit", "1"];
+        args.extend_from_slice(extra);
+        world.run(&args, &env)
+    };
+    let back = page(&[]).ok()["next"].as_str().unwrap().to_string();
+    let forward = page(&["--oldest-first"]).ok()["next"].as_str().unwrap().to_string();
+    let error = page(&["--oldest-first", "--cursor", &back]).error();
+    assert!(
+        error.contains("a newest-first read") && error.contains("leave --oldest-first out"),
+        "{error}"
+    );
+    let error = page(&["--cursor", &forward]).error();
+    assert!(
+        error.contains("an --oldest-first read") && error.contains("pass --oldest-first"),
+        "{error}"
+    );
+}
+
+#[test]
 fn from_and_to_bound_the_times_read() {
     let world = World::new();
     let account = account(&world);

@@ -113,6 +113,15 @@ fn each_command_has_its_own_guide_whatever_else_its_line_holds() {
 }
 
 #[test]
+fn messages_help_says_how_to_read_a_chat_forward() {
+    let help = asked(&["messages", "--help"]);
+    let options = between(&help, "OPTIONS", "WHAT IT ANSWERS").join("\n");
+    assert!(options.contains("--oldest-first"), "{options}");
+    let trips = between(&help, "TRIPS YOU UP", "\u{0}").join("\n");
+    assert!(trips.contains("--oldest-first"), "{trips}");
+}
+
+#[test]
 fn the_guide_says_how_to_find_a_chat_with_someone() {
     let run_first = between(wxread::GUIDE, "RUN FIRST", "WHAT A COMMAND ANSWERS").join("\n");
     assert!(run_first.contains("wxread chats --with <id>"), "{run_first}");

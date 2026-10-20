@@ -147,7 +147,7 @@ enum Command {
         #[arg(long, value_name = "ID")]
         account: Option<String>,
     },
-    /// Read a chat's messages, each as its kind, newest first, a page at a time
+    /// Read a chat's messages, each as its kind, newest first (or oldest), a page at a time
     Messages {
         /// The account to read, by its id, when several are logged in
         #[arg(long, value_name = "ID")]
@@ -167,6 +167,9 @@ enum Command {
         /// Where the page starts: the `next` of the answer before
         #[arg(long, value_name = "NEXT")]
         cursor: Option<String>,
+        /// Read the chat forward, from its first message: oldest first
+        #[arg(long)]
+        oldest_first: bool,
     },
     /// Find messages across every chat, newest first, a page at a time
     Search {
@@ -370,9 +373,11 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
         }
         Command::Group { id, account } => world::World::from_env(cli.data_dir, cli.keys)
             .and_then(|w| contacts::group(&w, account.as_deref(), &id)),
-        Command::Messages { account, chat, from, to, limit, cursor } => {
+        Command::Messages { account, chat, from, to, limit, cursor, oldest_first } => {
             world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
-                messages::run(&w, &messages::Asked { account, chat, from, to, limit, cursor })
+                let asked =
+                    messages::Asked { account, chat, from, to, limit, cursor, oldest_first };
+                messages::run(&w, &asked)
             })
         }
         Command::Search { text, account, chat, from, to, limit, cursor } => {

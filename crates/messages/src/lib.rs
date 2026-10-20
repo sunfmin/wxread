@@ -1,5 +1,6 @@
 //! What `wxread messages` answers of the rows it read: each message of a
-//! chat as its kind, its sender named, newest first, a page at a time. The
+//! chat as its kind, its sender named, newest first or oldest first, a
+//! page at a time. The
 //! effect crate reads the rows out of the account's message databases and
 //! the names out of its contacts; nothing here reads or writes.
 
@@ -20,6 +21,36 @@ pub use names::{Contact, Names};
 pub const CHAT_FLAG: &str = "--chat";
 pub const FROM_FLAG: &str = "--from";
 pub const TO_FLAG: &str = "--to";
+/// The option that reads a chat forward, from its first message.
+pub const OLDEST_FIRST_FLAG: &str = "--oldest-first";
+
+/// Which way a chat is read: newest first, unless `--oldest-first` says
+/// from its first message forward.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Order {
+    #[default]
+    NewestFirst,
+    OldestFirst,
+}
+
+impl Order {
+    /// The order `--oldest-first` says, given or not.
+    pub fn of(oldest_first: bool) -> Order {
+        if oldest_first { Order::OldestFirst } else { Order::NewestFirst }
+    }
+
+    /// The other way.
+    pub fn reverse(self) -> Order {
+        match self {
+            Order::NewestFirst => Order::OldestFirst,
+            Order::OldestFirst => Order::NewestFirst,
+        }
+    }
+}
+
+/// What a cursor of an [`Order::OldestFirst`] read starts with, so one
+/// given with the other order is told apart and refused.
+const OLDEST: &str = "oldest";
 
 /// What a message is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,10 +192,12 @@ impl Range {
 }
 
 /// Where a page ended: the last message it holds, by when it was sent,
-/// its order in that second, and its row. Its text is the `next` an answer
-/// gives and `--cursor` takes back.
+/// its order in that second, and its row, and which way it was read. Its
+/// text is the `next` an answer gives and `--cursor` takes back: that of
+/// an oldest-first read starts `oldest.`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cursor {
+    order: Order,
     create_time: i64,
     sort_seq: i64,
     db: String,
@@ -172,34 +205,67 @@ pub struct Cursor {
 }
 
 impl Cursor {
-    /// The cursor `text` writes, or what fixes it.
-    pub fn parse(text: &str) -> Result<Cursor, String> {
-        let parts: Vec<&str> = text.split('.').collect();
+    /// The cursor `text` writes, for a read in `order`, or what fixes it:
+    /// a cursor of the other order is refused, naming the option that
+    /// continues it.
+    pub fn parse(text: &str, order: Order) -> Result<Cursor, String> {
+        let (written, place) = match text.strip_prefix(OLDEST).and_then(|t| t.strip_prefix('.')) {
+            Some(place) => (Order::OldestFirst, place),
+            None => (Order::NewestFirst, text),
+        };
+        let parts: Vec<&str> = place.split('.').collect();
         let cursor = match parts.as_slice() {
             [create_time, sort_seq, db, local_id] if !db.is_empty() => {
                 match (create_time.parse(), sort_seq.parse(), local_id.parse()) {
-                    (Ok(create_time), Ok(sort_seq), Ok(local_id)) => {
-                        Some(Cursor { create_time, sort_seq, db: db.to_string(), local_id })
-                    }
+                    (Ok(create_time), Ok(sort_seq), Ok(local_id)) => Some(Cursor {
+                        order: written,
+                        create_time,
+                        sort_seq,
+                        db: db.to_string(),
+                        local_id,
+                    }),
                     _ => None,
                 }
             }
             _ => None,
         };
-        cursor.ok_or_else(|| {
-            format!(
-                "{CURSOR_FLAG} {text} is not a `next` that wxread messages answered: pass the `next` of the answer before, with the same {CHAT_FLAG}, or leave {CURSOR_FLAG} out to start at the newest message"
-            )
-        })
+        let start = match order {
+            Order::NewestFirst => "the newest",
+            Order::OldestFirst => "the first",
+        };
+        match cursor {
+            None => Err(format!(
+                "{CURSOR_FLAG} {text} is not a `next` that wxread messages answered: pass the `next` of the answer before, with the same {CHAT_FLAG}, or leave {CURSOR_FLAG} out to start at {start} message"
+            )),
+            Some(c) if c.order != order => Err(match c.order {
+                Order::OldestFirst => format!(
+                    "{CURSOR_FLAG} {text} is a `next` of an {OLDEST_FIRST_FLAG} read: pass {OLDEST_FIRST_FLAG} with it to read on forward, or leave {CURSOR_FLAG} out to start at {start} message"
+                ),
+                Order::NewestFirst => format!(
+                    "{CURSOR_FLAG} {text} is a `next` of a newest-first read: leave {OLDEST_FIRST_FLAG} out with it to read on back, or leave {CURSOR_FLAG} out to start at {start} message"
+                ),
+            }),
+            Some(c) => Ok(c),
+        }
+    }
+
+    /// Which way the read it ended was going.
+    pub fn order(&self) -> Order {
+        self.order
     }
 
     /// What `next` says of it.
     pub fn text(&self) -> String {
-        format!("{}.{}.{}.{}", self.create_time, self.sort_seq, self.db, self.local_id)
+        let place = format!("{}.{}.{}.{}", self.create_time, self.sort_seq, self.db, self.local_id);
+        match self.order {
+            Order::NewestFirst => place,
+            Order::OldestFirst => format!("{OLDEST}.{place}"),
+        }
     }
 
-    fn of(row: &Row) -> Cursor {
+    fn of(row: &Row, order: Order) -> Cursor {
         Cursor {
+            order,
             create_time: row.create_time,
             sort_seq: row.sort_seq,
             db: row.db.clone(),
@@ -208,8 +274,9 @@ impl Cursor {
     }
 
     /// The bound of a row of database `db` that comes after this cursor:
-    /// its `(create_time, sort_seq, local_id)` is below the one answered.
-    pub fn below_in(&self, db: &str) -> (i64, i64, i64) {
+    /// its `(create_time, sort_seq, local_id)` is below the one answered,
+    /// newest first, and above it, oldest first.
+    pub fn bound_in(&self, db: &str) -> (i64, i64, i64) {
         let local_id = match db.cmp(self.db.as_str()) {
             std::cmp::Ordering::Less => i64::MAX,
             std::cmp::Ordering::Equal => self.local_id,
@@ -218,9 +285,14 @@ impl Cursor {
         (self.create_time, self.sort_seq, local_id)
     }
 
-    /// Whether `row` comes after the message this cursor names.
+    /// Whether `row` comes after the message this cursor names, in the
+    /// order it was read.
     fn before(&self, row: &Row) -> bool {
-        order(&Cursor::of(row), self) == std::cmp::Ordering::Less
+        let wanted = match self.order {
+            Order::NewestFirst => std::cmp::Ordering::Less,
+            Order::OldestFirst => std::cmp::Ordering::Greater,
+        };
+        order(&Cursor::of(row, self.order), self) == wanted
     }
 }
 
@@ -234,6 +306,32 @@ fn order(a: &Cursor, b: &Cursor) -> std::cmp::Ordering {
         b.db.as_str(),
         b.local_id,
     ))
+}
+
+/// Where a page starts: at a chat's newest or first message, or after the
+/// message a cursor names, read on the way it was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Start<'a> {
+    First(Order),
+    After(&'a Cursor),
+}
+
+impl Start<'_> {
+    /// Which way the page is read.
+    pub fn order(&self) -> Order {
+        match self {
+            Start::First(order) => *order,
+            Start::After(cursor) => cursor.order,
+        }
+    }
+
+    /// The cursor it starts after, if any.
+    pub fn after(&self) -> Option<&Cursor> {
+        match self {
+            Start::First(_) => None,
+            Start::After(cursor) => Some(cursor),
+        }
+    }
 }
 
 /// One page of a chat's messages.
@@ -257,9 +355,9 @@ impl Chat {
     }
 }
 
-/// The page of `chat`'s messages in `rows` within `range` that starts
-/// after `after` (at the newest, for none) and holds at most `limit`:
-/// newest first, by when each was sent and its order in that second, so a
+/// The page of `chat`'s messages in `rows` within `range` that starts at
+/// `start` and holds at most `limit`: newest first or oldest first, as
+/// `start` reads, by when each was sent and its order in that second, so a
 /// cursor names one place and each message is on one page; each named by
 /// `names`, and a media message's file and thumbnail held as `held` says.
 pub fn page(
@@ -267,18 +365,26 @@ pub fn page(
     names: &Names,
     rows: Vec<Row>,
     range: Range,
-    after: Option<&Cursor>,
+    start: Start<'_>,
     limit: Limit,
     held: impl Fn(&Media, &Row) -> Held,
 ) -> Page {
+    let way = start.order();
+    let after = start.after();
     let mut rows: Vec<Row> = rows
         .into_iter()
         .filter(|r| range.holds(r.create_time) && after.is_none_or(|c| c.before(r)))
         .collect();
-    rows.sort_by(|a, b| order(&Cursor::of(b), &Cursor::of(a)));
+    rows.sort_by(|a, b| {
+        let (a, b) = (Cursor::of(a, way), Cursor::of(b, way));
+        match way {
+            Order::NewestFirst => order(&b, &a),
+            Order::OldestFirst => order(&a, &b),
+        }
+    });
     let more = rows.len() > limit.get();
     rows.truncate(limit.get());
-    let next = if more { rows.last().map(Cursor::of) } else { None };
+    let next = if more { rows.last().map(|r| Cursor::of(r, way)) } else { None };
     Page { messages: rows.iter().map(|r| message(chat, names, r, &held)).collect(), next }
 }
 

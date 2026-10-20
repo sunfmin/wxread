@@ -1,5 +1,5 @@
-wxread messages: one chat's messages, each as its kind, newest first, a
-page at a time.
+wxread messages: one chat's messages, each as its kind, newest first or,
+with --oldest-first, from the first forward, a page at a time.
 
 WHEN TO RUN IT
   To read a conversation, once `wxread chats` has named the chat. Run by
@@ -30,14 +30,18 @@ OPTIONS
   --limit <n>       how many messages a page holds, 1 to 1000; 100 unless
                     given
   --cursor <next>   start after the page that answered this `next`, with
-                    the same --chat, --from and --to
+                    the same --chat, --from, --to and --oldest-first
+  --oldest-first    read the chat forward: oldest first, from its first
+                    message (from --from, when given), each `next`
+                    continuing forward; newest first unless given
 
 WHAT IT ANSWERS
     account   the account read: its directory's name, as doctor's id
     chat      the chat read: its id
     messages  [{id, at, sender, sender_name, kind, <kind>, type, subtype,
-              content}], newest first, those sent in one second in the
-              order WeChat shows them:
+              content}], newest first (oldest first with
+              --oldest-first), those sent in one second in the order
+              WeChat shows them:
               id           WeChat's server id of it, a string; null for one
                            the server never saw (some notices)
               at           when it was sent, RFC 3339 in UTC
@@ -126,9 +130,13 @@ THE KINDS AND THEIR FIELDS
               message whose XML does not read is unknown, never an error
 
 TRIPS YOU UP
-  - Messages are newest first: reverse a page to read it in the order it
-    was said. A message sent since the first page is not on a later one; a
-    fresh run from the newest shows it.
+  - Messages are newest first: to read a conversation in the order it was
+    said, pass --oldest-first and page forward with its `next`; there is
+    no need to fetch every page and reverse it. A `next` keeps its order:
+    one of an --oldest-first read given without it, or one of a
+    newest-first read given with it, is an error naming the fix. Newest
+    first, a message sent since the first page is not on a later one; a
+    fresh run from the newest shows it. Oldest first, it is on the last.
   - The chat id is exact: a group's ends in @chatroom. A chat none of the
     account's message databases holds is an error pointing at
     `wxread chats`.
