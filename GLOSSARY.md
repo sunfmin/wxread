@@ -77,6 +77,10 @@ _Avoid_: msg, record, entry
 What a message is (text, image, voice, file, link, and so on), whatever number WeChat stores it under.
 _Avoid_: type, msg type
 
+**Call**:
+A voice or video call in a chat, as the bubble WeChat leaves of it: whether it connected and for how long, or was cancelled, declined or missed.
+_Avoid_: VoIP, phone call
+
 **Sender**:
 The contact who said a message, by id, and shown as WeChat shows them: the account's remark for them, else their name in the group, else their own name. WeChat's own notices have none.
 _Avoid_: author, from, user
