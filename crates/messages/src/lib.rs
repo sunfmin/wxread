@@ -61,6 +61,7 @@ pub enum Kind {
     Location,
     Card,
     Forward,
+    Solitaire,
     Recall,
     Nudge,
     Join,
@@ -80,13 +81,14 @@ pub enum Kind {
 
 impl Kind {
     /// Every kind, as the answer names them.
-    pub const ALL: [Kind; 21] = [
+    pub const ALL: [Kind; 22] = [
         Kind::Text,
         Kind::Link,
         Kind::Quote,
         Kind::Location,
         Kind::Card,
         Kind::Forward,
+        Kind::Solitaire,
         Kind::Recall,
         Kind::Nudge,
         Kind::Join,
@@ -112,6 +114,7 @@ impl Kind {
             Kind::Location => "location",
             Kind::Card => "card",
             Kind::Forward => "forward",
+            Kind::Solitaire => "solitaire",
             Kind::Recall => "recall",
             Kind::Nudge => "nudge",
             Kind::Join => "join",
@@ -405,6 +408,9 @@ pub fn message(
         parsed.fields.insert("file_present".into(), json!(h.file));
         parsed.fields.insert("thumbnail_present".into(), json!(h.thumbnail));
     }
+    if parsed.kind == Kind::Solitaire {
+        members_named(&mut parsed.fields, names);
+    }
     let (t, sub) = kinds::split(row.local_type);
     let mut out = Map::new();
     out.insert("id".into(), json!((row.server_id != 0).then(|| row.server_id.to_string())));
@@ -417,6 +423,23 @@ pub fn message(
     out.insert("subtype".into(), json!(sub));
     out.insert("content".into(), json!(content));
     Value::Object(out)
+}
+
+/// A 接龙's `fields` with who started it and each entry's member named
+/// as WeChat shows them, by `names`: `starter_name`, and each entry's
+/// `member_name`.
+fn members_named(fields: &mut Map<String, Value>, names: &Names) {
+    let named = |id: Option<&Value>| json!(id.and_then(Value::as_str).and_then(|id| names.of(id)));
+    let starter = named(fields.get("starter"));
+    fields.insert("starter_name".into(), starter);
+    if let Some(Value::Array(entries)) = fields.get_mut("entries") {
+        for entry in entries.iter_mut() {
+            if let Value::Object(entry) = entry {
+                let member = named(entry.get("member"));
+                entry.insert("member_name".into(), member);
+            }
+        }
+    }
 }
 
 /// A row of a chat, read: who said it, its content as the answer has it,

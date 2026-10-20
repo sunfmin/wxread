@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<msg>
+	<appmsg appid="" sdkver="0">
+		<title>#接龙
+周四10:30莫干山
+
+1. 🐝Ann
+2. Bob
+3. 🐯Cat  Dan去才去
+4. Eve 你去我就去
+5. 🐔Fay +2
+6. Gus 再带一个就去
+7. Hal 🌺 在杭州就来</title>
+		<type>53</type>
+		<appattach>
+			<cdnthumbaeskey />
+			<aeskey></aeskey>
+		</appattach>
+		<extinfo>
+			<solitaire_info><![CDATA[<solitaire><tt>0-14</tt><s>.</s><au>wxid_ann</au><hrt>1</hrt><loss>0</loss><sid>1792387959382_6313</sid><content><s>7</s><i><u>wxid_ann</u><h>0</h><s>.</s><t>1792387949</t><r>19-5</r></i><i><u>wxid_bob</u><h>0</h><s>.</s><t>1792389610</t><r>28-3</r></i><i><u>wxid_cat</u><h>0</h><s>.</s><t>1792389840</t><r>35-13</r></i><i><u>wxid_dan</u><h>0</h><s>.</s><t>1792390208</t><r>52-9</r></i><i><u>wxid_eve</u><h>0</h><s>.</s><t>1792390219</t><r>65-8</r></i><i><u>wxid_fay</u><h>0</h><s>.</s><t>1792391034</t><r>77-10</r></i><i><u>wxid_gus</u><h>0</h><s>.</s><t>1792391576</t><r>91-12</r></i></content></solitaire>]]></solitaire_info>
+		</extinfo>
+	</appmsg>
+	<fromusername>wxid_hal</fromusername>
+	<scene>0</scene>
+	<appinfo>
+		<version>1</version>
+		<appname />
+	</appinfo>
+	<commenturl />
+</msg>

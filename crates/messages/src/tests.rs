@@ -317,6 +317,155 @@ fn a_nudge_has_who_nudged_whom() {
     );
 }
 
+/// 接龙 as WeChat for Mac wrote them, taken from an account's records with
+/// the people and their words made up and the ranges counted again: a
+/// 接龙's seventh entry, and its first message, its solitaire info kept as
+/// CDATA; one kept escaped, with an example line; and one written by
+/// another client, its parts in another order and with no solitaire id.
+const SOLITAIRE: &str = include_str!("fixtures/solitaire.xml");
+const SOLITAIRE_STARTED: &str = include_str!("fixtures/solitaire_started.xml");
+const SOLITAIRE_ESCAPED: &str = include_str!("fixtures/solitaire_escaped_with_example.xml");
+const SOLITAIRE_WITHOUT_ID: &str = include_str!("fixtures/solitaire_without_id.xml");
+
+/// An entry of a 接龙 as the answer has it before its member is named.
+fn entry(number: usize, member: &str, text: &str, at: &str) -> Value {
+    json!({ "number": number, "member": member, "text": text, "at": at })
+}
+
+#[test]
+fn a_solitaire_has_its_title_and_its_entries_in_order() {
+    let shown = "#接龙\n周四10:30莫干山\n\n1. 🐝Ann\n2. Bob\n3. 🐯Cat  Dan去才去\n4. Eve 你去我就去\n5. 🐔Fay +2\n6. Gus 再带一个就去\n7. Hal 🌺 在杭州就来";
+    assert_eq!(
+        read(app(53), SOLITAIRE),
+        json!({ "kind": "solitaire", "solitaire": {
+            "id": "1792387959382_6313",
+            "title": "周四10:30莫干山",
+            "example": null,
+            "starter": "wxid_ann",
+            "entries": [
+                entry(1, "wxid_ann", "🐝Ann", "2026-10-19T05:32:29Z"),
+                entry(2, "wxid_bob", "Bob", "2026-10-19T06:00:10Z"),
+                entry(3, "wxid_cat", "🐯Cat  Dan去才去", "2026-10-19T06:04:00Z"),
+                entry(4, "wxid_dan", "Eve 你去我就去", "2026-10-19T06:10:08Z"),
+                entry(5, "wxid_eve", "🐔Fay +2", "2026-10-19T06:10:19Z"),
+                entry(6, "wxid_fay", "Gus 再带一个就去", "2026-10-19T06:23:54Z"),
+                entry(7, "wxid_gus", "Hal 🌺 在杭州就来", "2026-10-19T06:32:56Z"),
+            ],
+            "text": shown,
+        } })
+    );
+    // The subtype from <type> when local_type has none.
+    assert_eq!(read(APP, SOLITAIRE)["kind"], "solitaire");
+}
+
+#[test]
+fn each_message_of_one_solitaire_has_its_id() {
+    let started = read(app(53), SOLITAIRE_STARTED);
+    let later = read(app(53), SOLITAIRE);
+    assert_eq!(started["solitaire"]["id"], later["solitaire"]["id"]);
+    assert_eq!(
+        started["solitaire"]["entries"],
+        json!([entry(1, "wxid_ann", "🐝Ann", "2026-10-19T05:32:29Z")])
+    );
+    // A record that holds no id has none, and is read all the same.
+    let without = read(app(53), SOLITAIRE_WITHOUT_ID);
+    assert_eq!(
+        without["solitaire"],
+        json!({
+            "id": null,
+            "title": "明早9点多龙井见",
+            "example": null,
+            "starter": "wxid_ann",
+            "entries": [
+                entry(1, "wxid_ann", "🐝Ann", "2026-10-13T05:21:44Z"),
+                entry(2, "wxid_bob", "Bob 屁股", "2026-10-13T05:22:53Z"),
+            ],
+            "text": "#接龙\n明早9点多龙井见\n\n1. 🐝Ann\n2. Bob 屁股",
+        })
+    );
+}
+
+#[test]
+fn a_solitaire_kept_escaped_reads_with_its_example() {
+    let s = &read(app(53), SOLITAIRE_ESCAPED)["solitaire"];
+    assert_eq!(
+        s["title"],
+        "9.12 14:00-17:00 新手专场的自由对弈(Casual game)\n\nAfterglowCoffee(拱墅区42号-6);"
+    );
+    assert_eq!(s["example"], "例 名字+分数");
+    assert_eq!(s["id"], Value::Null);
+    assert_eq!(
+        s["entries"],
+        json!([
+            entry(1, "wxid_ann", "Ann", "2026-09-10T08:00:03Z"),
+            entry(2, "wxid_bob", "____ （折后 ELO 600）", "2026-09-10T08:02:22Z"),
+            entry(3, "wxid_cat", "Cat-（很久没下棋了 elo没概念了）", "2026-09-10T10:27:04Z"),
+            entry(4, "wxid_dan", "Dan （国象联盟1000）", "2026-09-12T00:03:14Z"),
+        ])
+    );
+}
+
+#[test]
+fn an_entry_whose_range_is_not_in_the_title_has_no_text() {
+    let s = |info: &str| {
+        let xml = format!(
+            "<msg><appmsg><title>#接龙\nT\n\n1. a</title><type>53</type><extinfo><solitaire_info><![CDATA[<solitaire>{info}</solitaire>]]></solitaire_info></extinfo></appmsg></msg>"
+        );
+        read(app(53), &xml)
+    };
+    let one = |r: &str| {
+        s(&format!("<tt>0-5</tt><content><i><u>wxid_ann</u><t>x</t><r>{r}</r></i></content>"))
+    };
+    assert_eq!(one("10-1")["solitaire"]["entries"][0]["text"], "a");
+    for r in ["10-2", "99-1", "a-1", "10", "18446744073709551615-2", ""] {
+        assert_eq!(
+            one(r)["solitaire"]["entries"],
+            json!([{ "number": 1, "member": "wxid_ann", "text": null, "at": null }]),
+            "{r}"
+        );
+    }
+    // A title that is not WeChat's tag alone; no title at all.
+    assert_eq!(one("10-1")["solitaire"]["title"], "T");
+    assert_eq!(s("<content></content>")["solitaire"]["title"], Value::Null);
+    assert_eq!(s("<content></content>")["solitaire"]["entries"], json!([]));
+    // Solitaire info with no entries list at all is not one.
+    assert_eq!(s("<tt>0-5</tt>")["kind"], "unknown");
+}
+
+#[test]
+fn a_solitaires_starter_and_members_are_named_as_wechat_shows_them() {
+    let mut names = Names::default();
+    names.contacts.insert(
+        "wxid_ann".into(),
+        Contact { remark: Some("Annie".into()), nick_name: Some("Ann".into()) },
+    );
+    names
+        .contacts
+        .insert("wxid_bob".into(), Contact { remark: None, nick_name: Some("Bob".into()) });
+    names.in_group.insert("wxid_bob".into(), "Bobby".into());
+    let mut r = row("message_0", 1, 1_792_391_576, 0);
+    r.local_type = app(53);
+    r.sender = Some("wxid_bob".into());
+    r.content = format!("wxid_bob:\n{SOLITAIRE_WITHOUT_ID}").into_bytes();
+    let m = message(&chat("1@chatroom"), &names, &r, &none);
+    let s = &m["solitaire"];
+    assert_eq!((&s["starter"], &s["starter_name"]), (&json!("wxid_ann"), &json!("Annie")));
+    let named: Vec<(Value, Value)> = s["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["member"].clone(), e["member_name"].clone()))
+        .collect();
+    assert_eq!(
+        named,
+        vec![(json!("wxid_ann"), json!("Annie")), (json!("wxid_bob"), json!("Bobby"))]
+    );
+    // One nothing names is null.
+    let m = message(&chat("1@chatroom"), &Names::default(), &r, &none);
+    assert_eq!(m["solitaire"]["entries"][0]["member_name"], Value::Null);
+    assert_eq!(m["solitaire"]["starter_name"], Value::Null);
+}
+
 /// A template notice `template`, its `links`.
 pub fn notice(template: &str, links: &str) -> String {
     format!(
