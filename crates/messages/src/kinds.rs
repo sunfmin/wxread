@@ -466,13 +466,14 @@ fn group_notice(root: Node, a: Node) -> Parsed {
     }
     let item = text(a, "announcement").and_then(|announced| {
         xml(&announced, |n| {
-            let said: Vec<String> = child(n, "datalist")
-                .map(|list| named(list, "dataitem"))
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|i| attr(*i, "datatype").as_deref() == Some("1"))
-                .filter_map(|i| text(i, "datadesc"))
-                .collect();
+            let mut said: Vec<String> = Vec::new();
+            for i in child(n, "datalist").map(|list| named(list, "dataitem")).unwrap_or_default() {
+                if attr(i, "datatype").as_deref() == Some("1")
+                    && let Some(desc) = text(i, "datadesc")
+                {
+                    said.push(desc);
+                }
+            }
             Some(Item {
                 text: (!said.is_empty()).then(|| said.join("\n")),
                 by: text(n, "source/fromusr"),
