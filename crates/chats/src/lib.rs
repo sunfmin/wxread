@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
-use wxread_contacts::{QUERY_FLAG, display_name, unknown};
+use wxread_contacts::{QUERY_FLAG, shown_name, unknown};
 
 /// The option that finds the chats holding a contact.
 pub const WITH_FLAG: &str = "--with";
@@ -34,11 +34,14 @@ pub struct Row {
     pub contact: Option<Contact>,
 }
 
-/// What a contact is called: the account's remark for it, and its own name.
+/// What a contact is called: the account's remark for it, its own name,
+/// and for a group with neither, the names of its members besides the
+/// account, in the order WeChat lists them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Contact {
     pub remark: Option<String>,
     pub nick_name: Option<String>,
+    pub members: Vec<String>,
 }
 
 /// Whether a chat is with one contact or in a group.
@@ -69,7 +72,9 @@ impl Kind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Chat {
     pub id: String,
-    /// The account's remark for it, else its own name; "" for neither.
+    /// The account's remark for it, else its own name, else (a group) its
+    /// members' names besides the account's, as WeChat joins them; "" for
+    /// none.
     pub name: String,
     pub kind: Kind,
     /// When its last message was (RFC 3339, UTC), or None for none.
@@ -229,7 +234,7 @@ fn paged(
 
 fn chat(row: Row, rooms: &Rooms) -> Chat {
     let name = row.contact.map_or_else(String::new, |c| {
-        display_name(c.remark.as_deref(), None, c.nick_name.as_deref())
+        shown_name(c.remark.as_deref(), c.nick_name.as_deref(), &c.members)
     });
     Chat {
         kind: Kind::of(&row.id),
@@ -262,7 +267,10 @@ mod tests {
     }
 
     fn named(id: &str, name: &str) -> (String, Contact) {
-        (id.to_string(), Contact { remark: None, nick_name: Some(name.to_string()) })
+        (
+            id.to_string(),
+            Contact { remark: None, nick_name: Some(name.to_string()), members: Vec::new() },
+        )
     }
 
     /// The account, Amy and Bob: a chat with Amy, a big group of all three
@@ -403,6 +411,7 @@ mod tests {
             r.contact = Some(Contact {
                 remark: remark.map(String::from),
                 nick_name: nick.map(String::from),
+                members: Vec::new(),
             });
             chat(r, &Rooms::new()).name
         };
@@ -410,6 +419,22 @@ mod tests {
         assert_eq!(named(Some(""), Some("Mary")), "Mary");
         assert_eq!(named(None, None), "");
         assert_eq!(chat(row("wxid_b", 1), &Rooms::new()).name, "");
+    }
+
+    #[test]
+    fn an_unnamed_group_is_named_by_its_members_and_a_named_one_by_its_name() {
+        let named = |remark: &str, nick: &str| {
+            let mut r = row("9@chatroom", 1);
+            r.contact = Some(Contact {
+                remark: Some(remark.into()),
+                nick_name: Some(nick.into()),
+                members: vec!["孙凤君".into(), "秦俊斌 @qinjunbin".into()],
+            });
+            chat(r, &Rooms::new()).name
+        };
+        assert_eq!(named("", ""), "孙凤君、秦俊斌 @qinjunbin");
+        assert_eq!(named("", "Hiking"), "Hiking");
+        assert_eq!(named("Ours", "Hiking"), "Ours");
     }
 
     #[test]
@@ -450,7 +475,7 @@ mod tests {
                 let mut members = set(&["wxid_me", "wxid_amy"]);
                 members.extend((0..extra).map(|n| format!("wxid_{n}")));
                 rooms.insert(id.clone(), members);
-                contacts.insert(id.clone(), Contact { remark: None, nick_name: None });
+                contacts.insert(id.clone(), Contact { remark: None, nick_name: None, members: Vec::new() });
                 if sort > 0 {
                     rows.push(row(&id, sort));
                 }

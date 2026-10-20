@@ -93,7 +93,8 @@ RULES
     group's <n>@chatroom, an official account's gh_.... `wxread contacts
     --query <text>` finds an id by a name, a remark or a WeChat ID.
   - A name is shown as WeChat shows it, as display_name: the account's
-    remark, else the name in the group, else the contact's own name.
+    remark, else the name in the group, else the contact's own name; a
+    group with no name of its own by its members' names, joined by "、".
   - A list answers a page, and `next`: pass it as --cursor for the page
     after; null on the last.
   - A finding doctor makes is an answer, exit 0: read its `ok` and

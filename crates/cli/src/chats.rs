@@ -27,7 +27,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let account = Account::open(world, asked.account.as_deref(), &[SESSION_DB, CONTACT_DB])?;
     let sessions = account.database(SESSION_DB)?;
     let contact_db = account.database(CONTACT_DB)?;
-    let contacts = contacts(&contact_db)?;
+    let contacts = contacts(&account)?;
     let rooms = rooms(&contact_db)?;
     let rows = rows(&sessions, &contacts)?;
     let page = if asked.with.is_empty() {
@@ -80,20 +80,14 @@ fn rows(sessions: &Connection, contacts: &Contacts) -> anyhow::Result<Vec<Row>> 
     Ok(rows)
 }
 
-/// What the account calls each contact, by its id.
-fn contacts(db: &Connection) -> anyhow::Result<Contacts> {
-    let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(CONTACT_DB, &e.to_string()));
-    let mut query = db.prepare("SELECT username, remark, nick_name FROM contact").map_err(sql)?;
-    let rows = query
-        .query_map([], |r| {
-            Ok((
-                r.get::<_, Option<String>>(0)?.unwrap_or_default(),
-                Contact { remark: r.get(1)?, nick_name: r.get(2)? },
-            ))
-        })
-        .and_then(Iterator::collect)
-        .map_err(sql)?;
-    Ok(rows)
+/// What the account calls each contact, by its id: an unnamed group by
+/// its members' names.
+fn contacts(account: &Account) -> anyhow::Result<Contacts> {
+    let rows = crate::contacts::contacts(account, false)?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, r)| (id, Contact { remark: r.remark, nick_name: r.name, members: r.members }))
+        .collect())
 }
 
 /// The members of every group `chatroom_member` or `chat_room` keeps a

@@ -17,7 +17,9 @@ OPTIONS
   --account <id>    the account to read, as `wxread doctor` names it;
                     with only one logged in, that one
   --query <text>    only the contacts whose id, WeChat ID, name or remark
-                    holds it, whatever its case
+                    (or, for a group with no name of its own, a
+                    member's name it is shown by) holds it, whatever
+                    its case
   --limit <n>       how many contacts a page holds, 1 to 1000; 100 unless
                     given
   --cursor <next>   start after the page that answered this `next`
@@ -30,7 +32,11 @@ WHAT IT ANSWERS
                             account's gh_...: what `wxread contact`,
                             `wxread group` and `wxread chats` name it by
               display_name  as WeChat shows it: the account's remark,
-                            else its name; "" for neither
+                            else its name; a group with neither is
+                            named as WeChat names it, by its members'
+                            display names, the account's left out, in
+                            the order WeChat lists them, joined by "、"
+                            (e.g. "孙凤君、秦俊斌"); "" for none
               name          what it calls itself; "" for none
               remark        what the account calls it; null for none
               alias         the WeChat ID it chose (微信号); null for none
@@ -46,7 +52,8 @@ TRIPS YOU UP
   - In a group a member is shown by their name in it when the account has
     no remark for them: `wxread group <id>` answers that name.
   - A --query is matched against each contact as it is, by its text; it
-    does not match pinyin.
+    does not match pinyin. A group with no name of its own is found by
+    its members' names, the ones its display_name joins.
   - The keys must open both databases. One missing, or one that no longer
     opens its database (WeChat created its databases again: logging out
     and in, some updates), is an error naming the database; its fix is

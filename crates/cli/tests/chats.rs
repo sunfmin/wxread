@@ -318,3 +318,30 @@ fn a_limit_or_cursor_that_is_not_one_is_refused_with_its_fix() {
     let error = world.run(&["chats", "--cursor", "nope"], &[("WXREAD_KEYS", &keys)]).error();
     assert!(error.contains("leave --cursor out"), "{error}");
 }
+
+#[test]
+fn an_unnamed_group_is_named_by_its_members_as_wechat_shows_it() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.contacts = vec![
+        Contact("wxid_me", "Me", ""),
+        Contact("wxid_qin", "秦俊斌 @qinjunbin", ""),
+        Contact("wxid_sun", "Sun", "孙凤君"),
+        Contact("1@chatroom", "", ""),
+        Contact("2@chatroom", "Hiking", ""),
+        Contact("3@chatroom", "", "Ours"),
+    ];
+    let three = vec![("wxid_sun", ""), ("wxid_me", ""), ("wxid_qin", "")];
+    let group = |id| Group { id, owner: "wxid_me", members: three.clone(), notice: None };
+    account.groups = vec![group("1@chatroom"), group("2@chatroom"), group("3@chatroom")];
+    account.sessions = vec![
+        Session("1@chatroom", 1_760_000_300, 0),
+        Session("2@chatroom", 1_760_000_200, 0),
+        Session("3@chatroom", 1_760_000_100, 0),
+    ];
+    account.write();
+    let json = world.run(&["chats"], &[("WXREAD_KEYS", &account.keys(&DATABASES))]).ok();
+    let names: Vec<&str> =
+        json["chats"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["孙凤君、秦俊斌 @qinjunbin", "Hiking", "Ours"]);
+}

@@ -48,6 +48,17 @@ pub fn display_name(remark: Option<&str>, in_group: Option<&str>, name: Option<&
     [remark, in_group, name].into_iter().flatten().find(|s| !s.is_empty()).unwrap_or("").to_string()
 }
 
+/// What WeChat joins an unnamed group's members' names with.
+pub const MEMBER_SEPARATOR: &str = "、";
+
+/// The name WeChat shows a contact by: [`display_name`] of the account's
+/// `remark` and its own `name`; for a group with neither, the names of its
+/// members besides the account (`others`), joined as WeChat joins them.
+pub fn shown_name(remark: Option<&str>, name: Option<&str>, others: &[String]) -> String {
+    let named = display_name(remark, None, name);
+    if named.is_empty() { others.join(MEMBER_SEPARATOR) } else { named }
+}
+
 /// One row of `contact`, and whether `head_image` holds its avatar.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Row {
@@ -63,13 +74,17 @@ pub struct Row {
     /// Their signature (`description`).
     pub signature: Option<String>,
     pub has_avatar: bool,
+    /// For a group with no remark or name of its own, its [`others`]: the
+    /// names it is shown by. Empty for any other contact.
+    pub members: Vec<String>,
 }
 
 /// A contact as `wxread contacts` and `contact` answer it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Contact {
     pub id: String,
-    /// As WeChat shows it: [`display_name`] of the remark and the name.
+    /// As WeChat shows it: [`shown_name`] of the remark, the name and,
+    /// for an unnamed group, its members.
     pub display_name: String,
     /// Their own name; "" for none.
     pub name: String,
@@ -89,7 +104,7 @@ fn given(text: Option<String>) -> Option<String> {
 /// The contact `row` is.
 pub fn contact(row: Row) -> Contact {
     Contact {
-        display_name: display_name(row.remark.as_deref(), None, row.name.as_deref()),
+        display_name: shown_name(row.remark.as_deref(), row.name.as_deref(), &row.members),
         name: row.name.unwrap_or_default(),
         remark: given(row.remark),
         alias: given(row.alias),
@@ -100,14 +115,16 @@ pub fn contact(row: Row) -> Contact {
     }
 }
 
-/// Whether `row` is found by `query`: its id, WeChat ID, name or remark
-/// holds it, whatever their case. Every contact is found by "".
+/// Whether `row` is found by `query`: its id, WeChat ID, name or remark,
+/// or for an unnamed group a name it is shown by, holds it, whatever
+/// their case. Every contact is found by "".
 pub fn matches(row: &Row, query: &str) -> bool {
     let query = query.to_lowercase();
     let id = Some(row.id.as_str());
     [id, row.alias.as_deref(), row.name.as_deref(), row.remark.as_deref()]
         .into_iter()
         .flatten()
+        .chain(row.members.iter().map(String::as_str))
         .any(|text| text.to_lowercase().contains(&query))
 }
 
@@ -169,6 +186,20 @@ pub fn page(contacts: Contacts, query: Option<&str>, after: Option<&Cursor>, lim
     let contacts: Vec<Contact> = found.into_iter().map(contact).collect();
     let next = if more { contacts.last().map(|c| Cursor { id: c.id.clone() }) } else { None };
     Page { contacts, next }
+}
+
+/// The ids of the groups in `contacts` that have no remark or name of
+/// their own, which WeChat shows by their members' names: those whose
+/// [`Row::members`] are to be read.
+pub fn unnamed_groups(contacts: &Contacts) -> Vec<String> {
+    let mut unnamed = Vec::new();
+    for r in contacts.values() {
+        let named = !display_name(r.remark.as_deref(), None, r.name.as_deref()).is_empty();
+        if Kind::of(&r.id) == Kind::Group && !named {
+            unnamed.push(r.id.clone());
+        }
+    }
+    unnamed
 }
 
 /// What fixes asking for `id`, which is no contact of the account.
@@ -252,15 +283,16 @@ pub struct Group {
     pub members: Vec<Member>,
 }
 
-/// Group `id` of the account, whose contacts are `contacts`, with its
-/// `room` and `notice` as WeChat keeps them; or what fixes asking for it:
-/// `id` is no contact, or one that is not a group. Its members are those
-/// `chatroom_member` lists and those its `ext_buffer` does, each once.
+/// Group `id` of the account `account` (its own id), whose contacts are
+/// `contacts`, with its `room` and `notice` as WeChat keeps them; or what
+/// fixes asking for it: `id` is no contact, or one that is not a group.
+/// Its members are those [`listed`] in `room`.
 pub fn group(
     id: &str,
     contacts: &Contacts,
     room: Room,
     notice: Option<NoticeRow>,
+    account: &str,
 ) -> Result<Group, String> {
     let row = contacts.get(id).ok_or_else(|| unknown(id))?;
     let kind = Kind::of(id);
@@ -270,13 +302,8 @@ pub fn group(
             kind.name().replace('_', " ")
         ));
     }
-    let mut in_group: BTreeMap<String, Option<String>> =
-        members(&room).into_iter().map(|m| (m, None)).collect();
-    for (member, name) in names_in_group(room.ext_buffer.as_deref().unwrap_or_default()) {
-        if !name.is_empty() {
-            in_group.insert(member, Some(name));
-        }
-    }
+    let others = others(contacts, &room, account);
+    let in_group: BTreeMap<String, Option<String>> = listed(&room).into_iter().collect();
     let person = |who: &str| Person {
         id: who.to_string(),
         display_name: shown(contacts, who, in_group.get(who).cloned().flatten().as_deref()),
@@ -304,7 +331,7 @@ pub fn group(
         .collect();
     Ok(Group {
         id: id.to_string(),
-        display_name: display_name(row.remark.as_deref(), None, row.name.as_deref()),
+        display_name: shown_name(row.remark.as_deref(), row.name.as_deref(), &others),
         name: row.name.clone().unwrap_or_default(),
         remark: given(row.remark.clone()),
         owner,
@@ -316,9 +343,43 @@ pub fn group(
 /// The id of every member of the group `room` is: those `chatroom_member`
 /// lists and those its `ext_buffer` does, each once, by id.
 pub fn members(room: &Room) -> BTreeSet<String> {
-    let listed = room.members.iter().cloned();
-    let buffered = names_in_group(room.ext_buffer.as_deref().unwrap_or_default());
-    listed.chain(buffered.into_iter().map(|(id, _)| id)).filter(|id| !id.is_empty()).collect()
+    listed(room).into_iter().map(|(id, _)| id).collect()
+}
+
+/// Each member of the group `room` is, once, with their name in it (None
+/// for none set), in the order WeChat lists them: those its `ext_buffer`
+/// holds, then those only `chatroom_member` does.
+pub fn listed(room: &Room) -> Vec<(String, Option<String>)> {
+    let mut listed: Vec<(String, Option<String>)> = Vec::new();
+    let buffer = names_in_group(room.ext_buffer.as_deref().unwrap_or_default());
+    let all = buffer.into_iter().chain(room.members.iter().map(|m| (m.clone(), String::new())));
+    for (member, name) in all.filter(|(m, _)| !m.is_empty()) {
+        let name = Some(name).filter(|n| !n.is_empty());
+        match listed.iter_mut().find(|(m, _)| *m == member) {
+            Some((_, slot)) => {
+                if slot.is_none() {
+                    *slot = name;
+                }
+            }
+            None => listed.push((member, name)),
+        }
+    }
+    listed
+}
+
+/// The names the group `room` shows its members by, besides the account
+/// `account` (its own id), in the order WeChat lists them: what WeChat
+/// names a group with no name of its own by. A member it shows by no
+/// name is left out.
+pub fn others(contacts: &Contacts, room: &Room, account: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for (member, name) in listed(room) {
+        let name = shown(contacts, &member, name.as_deref());
+        if member != account && !name.is_empty() {
+            names.push(name);
+        }
+    }
+    names
 }
 
 /// How a group shows `id`, whose name in it is `in_group`.
@@ -513,7 +574,7 @@ mod tests {
             editor: Some("wxid_bob".into()),
             published: Some(1_760_000_000),
         };
-        let g = group("1@chatroom", &contacts(), room, Some(notice)).unwrap();
+        let g = group("1@chatroom", &contacts(), room, Some(notice), "wxid_me").unwrap();
         assert_eq!(
             (g.display_name.as_str(), g.name.as_str(), g.remark),
             ("Hiking", "Hiking", None)
@@ -561,19 +622,57 @@ mod tests {
     }
 
     #[test]
+    fn an_unnamed_group_is_named_by_its_other_members_in_the_order_wechat_lists_them() {
+        let mut contacts = contacts();
+        contacts.insert("2@chatroom".into(), row("2@chatroom", "", ""));
+        let room = Room {
+            owner: None,
+            ext_buffer: Some(
+                [member("wxid_me", ""), member("wxid_bob", "Bobby"), member("wxid_amy", "")]
+                    .concat(),
+            ),
+            members: vec!["wxid_x".into(), "wxid_me".into(), "wxid_carl".into()],
+        };
+        contacts.insert("wxid_carl".into(), row("wxid_carl", "Carl", ""));
+        let names = others(&contacts, &room, "wxid_me");
+        assert_eq!(names, ["Bobby", "Auntie", "Carl"]);
+        let g = group("2@chatroom", &contacts, room, None, "wxid_me").unwrap();
+        assert_eq!((g.display_name.as_str(), g.name.as_str()), ("Bobby、Auntie、Carl", ""));
+        let mut unnamed = contacts["2@chatroom"].clone();
+        unnamed.members = names;
+        assert!(matches(&unnamed, "bobby") && !matches(&unnamed, "Hiking"));
+        assert_eq!(contact(unnamed).display_name, "Bobby、Auntie、Carl");
+    }
+
+    #[test]
+    fn a_named_or_remarked_group_keeps_its_name_and_only_unnamed_groups_need_members() {
+        assert_eq!(shown_name(Some("Hikes"), Some("Hiking"), &["Bob".into()]), "Hikes");
+        assert_eq!(shown_name(None, Some("Hiking"), &["Bob".into()]), "Hiking");
+        assert_eq!(shown_name(Some(""), Some(""), &["Bob".into(), "Amy".into()]), "Bob、Amy");
+        assert_eq!(shown_name(None, None, &[]), "");
+        let contacts = by_id([
+            row("1@chatroom", "Hiking", ""),
+            row("2@chatroom", "", ""),
+            row("3@chatroom", "", "Ours"),
+            row("wxid_a", "", ""),
+        ]);
+        assert_eq!(unnamed_groups(&contacts), ["2@chatroom"]);
+    }
+
+    #[test]
     fn a_group_with_no_record_or_notice_has_none() {
         let empty = NoticeRow { text: Some(String::new()), ..NoticeRow::default() };
-        let g = group("1@chatroom", &contacts(), Room::default(), Some(empty)).unwrap();
+        let g = group("1@chatroom", &contacts(), Room::default(), Some(empty), "wxid_me").unwrap();
         assert_eq!((g.owner, g.notice, g.members), (None, None, vec![]));
     }
 
     #[test]
     fn an_unknown_id_or_one_not_a_group_is_refused_with_its_fix() {
-        let why = group("2@chatroom", &contacts(), Room::default(), None).unwrap_err();
+        let why = group("2@chatroom", &contacts(), Room::default(), None, "wxid_me").unwrap_err();
         assert!(why.contains("no contact 2@chatroom") && why.contains("wxread contacts --query"));
         let why = find(&contacts(), "wxid_nobody").unwrap_err();
         assert!(why.contains("no contact wxid_nobody") && why.contains("wxread contacts --query"));
-        let why = group("wxid_amy", &contacts(), Room::default(), None).unwrap_err();
+        let why = group("wxid_amy", &contacts(), Room::default(), None, "wxid_me").unwrap_err();
         assert!(
             why.contains("is a person, not a group") && why.contains("`wxread contact wxid_amy`")
         );
