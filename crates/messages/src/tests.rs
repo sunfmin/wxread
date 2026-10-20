@@ -486,15 +486,45 @@ fn a_range_is_read_from_its_times_and_refused_with_its_fix() {
 
 #[test]
 fn a_cursor_wxread_did_not_write_is_refused_with_its_fix() {
-    for text in ["", "x", "1.2.message_0", "a.2.message_0.4", "1.2..4", "1.2.message_0.4.5"] {
-        let why = Cursor::parse(text).unwrap_err();
-        assert!(why.contains("leave --cursor out"), "{text}: {why}");
+    for text in [
+        "",
+        "x",
+        "1.2.message_0",
+        "a.2.message_0.4",
+        "1.2..4",
+        "1.2.message_0.4.5",
+        "oldest.1.2.message_0",
+        "newest.1.2.message_0.4",
+    ] {
+        for order in [Order::NewestFirst, Order::OldestFirst] {
+            let why = Cursor::parse(text, order).unwrap_err();
+            assert!(why.contains("leave --cursor out"), "{text}: {why}");
+        }
     }
-    let c = Cursor::parse("10.-3.message_0.4").unwrap();
+    let c = Cursor::parse("10.-3.message_0.4", Order::NewestFirst).unwrap();
     assert_eq!(c.text(), "10.-3.message_0.4");
-    assert_eq!(c.below_in("message_0"), (10, -3, 4));
-    assert_eq!(c.below_in("biz_message_0"), (10, -3, i64::MAX));
-    assert_eq!(c.below_in("message_1"), (10, -3, i64::MIN));
+    assert_eq!(c.order(), Order::NewestFirst);
+    assert_eq!(c.bound_in("message_0"), (10, -3, 4));
+    assert_eq!(c.bound_in("biz_message_0"), (10, -3, i64::MAX));
+    assert_eq!(c.bound_in("message_1"), (10, -3, i64::MIN));
+    let c = Cursor::parse("oldest.10.-3.message_0.4", Order::OldestFirst).unwrap();
+    assert_eq!(c.text(), "oldest.10.-3.message_0.4");
+    assert_eq!(c.order(), Order::OldestFirst);
+    assert_eq!(c.bound_in("message_0"), (10, -3, 4));
+}
+
+#[test]
+fn a_cursor_of_one_order_given_with_the_other_is_refused_with_its_fix() {
+    let why = Cursor::parse("oldest.10.-3.message_0.4", Order::NewestFirst).unwrap_err();
+    assert!(
+        why.contains("a `next` of an --oldest-first read") && why.contains("pass --oldest-first"),
+        "{why}"
+    );
+    let why = Cursor::parse("10.-3.message_0.4", Order::OldestFirst).unwrap_err();
+    assert!(
+        why.contains("a `next` of a newest-first read") && why.contains("leave --oldest-first out"),
+        "{why}"
+    );
 }
 
 #[test]
@@ -533,7 +563,7 @@ fn messages_are_newest_first_and_by_their_order_in_one_second() {
         &Names::default(),
         rows.clone(),
         Range::default(),
-        None,
+        Start::First(Order::NewestFirst),
         Limit::default_limit(),
         none,
     );
@@ -541,9 +571,45 @@ fn messages_are_newest_first_and_by_their_order_in_one_second() {
     assert_eq!(all.messages[0]["at"], rfc3339(200).unwrap());
     assert_eq!(all.next, None);
     let range = Range { from: Some(100), to: Some(200) };
+    let first = Start::First(Order::NewestFirst);
     let some =
-        page(&chat("wxid_ann"), &Names::default(), rows, range, None, Limit::default_limit(), none);
+        page(&chat("wxid_ann"), &Names::default(), rows, range, first, Limit::default_limit(), none);
     assert_eq!(ids(&some), [2, 3, 1]);
+}
+
+#[test]
+fn with_oldest_first_messages_are_oldest_first_and_by_their_order_in_one_second() {
+    let rows = vec![
+        row("message_0", 1, 100, 100_000),
+        row("message_0", 2, 100, 100_002),
+        row("message_0", 3, 100, 100_001),
+        row("message_1", 1, 200, 0),
+        row("message_0", 9, 50, 0),
+    ];
+    let first = Start::First(Order::OldestFirst);
+    let read = |range: Range, limit: usize| {
+        let limit = Limit::new(limit).unwrap();
+        page(&chat("wxid_ann"), &Names::default(), rows.clone(), range, first, limit, none)
+    };
+    let all = read(Range::default(), 100);
+    assert_eq!(ids(&all), [9, 1, 3, 2, 1]);
+    assert_eq!(all.messages[0]["at"], rfc3339(50).unwrap());
+    assert_eq!(all.next, None);
+    assert_eq!(ids(&read(Range { from: Some(100), to: Some(200) }, 100)), [1, 3, 2]);
+    let two = read(Range::default(), 2);
+    let next = two.next.unwrap();
+    assert_eq!(next.text(), "oldest.100.100000.message_0.1");
+    let after = Cursor::parse(&next.text(), Order::OldestFirst).unwrap();
+    let rest = page(
+        &chat("wxid_ann"),
+        &Names::default(),
+        rows.clone(),
+        Range::default(),
+        Start::After(&after),
+        Limit::default_limit(),
+        none,
+    );
+    assert_eq!(ids(&rest), [3, 2, 1]);
 }
 
 proptest! {
@@ -551,27 +617,32 @@ proptest! {
     fn paging_with_next_returns_each_message_once_in_order(
         rows in proptest::collection::vec((0usize..3, 0i64..3, 0i64..3), 0..40),
         limit in 1usize..7,
+        oldest_first in any::<bool>(),
     ) {
         // Many messages in one second, some of one order in it, across
-        // databases: each is still on one page, in its place.
+        // databases: each is still on one page, in its place, either way.
+        let order = if oldest_first { Order::OldestFirst } else { Order::NewestFirst };
         let rows: Vec<Row> = rows
             .iter()
             .enumerate()
             .map(|(i, &(db, at, seq))| row(&format!("message_{db}"), i as i64, at, seq))
             .collect();
-        let read = |after: Option<&Cursor>, limit: usize| {
-            page(&chat("wxid_ann"), &Names::default(), rows.clone(), Range::default(), after, Limit::new(limit).unwrap(), none)
+        let read = |start: Start<'_>, limit: usize| {
+            page(&chat("wxid_ann"), &Names::default(), rows.clone(), Range::default(), start, Limit::new(limit).unwrap(), none)
         };
-        let whole = read(None, wxread_answer::MAX_LIMIT);
+        let whole = read(Start::First(order), wxread_answer::MAX_LIMIT);
         prop_assert_eq!(whole.messages.len(), rows.len());
+        let mut reversed = read(Start::First(order.reverse()), wxread_answer::MAX_LIMIT).messages;
+        reversed.reverse();
+        prop_assert_eq!(&reversed, &whole.messages);
         let mut paged = Vec::new();
-        let mut after = None;
+        let mut after: Option<Cursor> = None;
         loop {
-            let p = read(after.as_ref(), limit);
+            let p = read(after.as_ref().map_or(Start::First(order), Start::After), limit);
             prop_assert!(p.messages.len() <= limit);
             paged.extend(p.messages);
             match p.next {
-                Some(next) => after = Some(Cursor::parse(&next.text()).unwrap()),
+                Some(next) => after = Some(Cursor::parse(&next.text(), order).unwrap()),
                 None => break,
             }
         }
