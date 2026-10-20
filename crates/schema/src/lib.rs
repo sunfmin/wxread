@@ -49,7 +49,9 @@ pub const HEAD_IMAGE: &str = "CREATE TABLE head_image(username TEXT PRIMARY KEY,
 pub const MESSAGE_DBS: [&str; 2] = ["message/message_", "message/biz_message_"];
 
 /// In each message database: the ids its messages name, a message's
-/// `real_sender_id` being its sender's rowid here.
+/// `real_sender_id` being its sender's rowid here; in each media database,
+/// the chats its voice messages are in, a voice's `chat_name_id` being its
+/// chat's rowid here.
 pub const NAME2ID: &str = "CREATE TABLE Name2Id(user_name TEXT PRIMARY KEY, is_session INTEGER)";
 
 /// In a message database: one chat's messages, the table named

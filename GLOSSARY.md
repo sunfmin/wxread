@@ -85,6 +85,10 @@ _Avoid_: system message, event
 A file a message carries rather than holds: an image, a video, a voice message, a file.
 _Avoid_: attachment, resource
 
+**Transcription**:
+The text WeChat heard in a voice message, made only when the account chose to convert it to text in WeChat (转文字); wxread never transcribes.
+_Avoid_: transcript, speech-to-text, caption
+
 **Thumbnail**:
 The small copy WeChat keeps of an image or a video beside its file, often when it holds no file: an image's `_t.dat`, a video's `_thumb.jpg`.
 _Avoid_: preview, thumb

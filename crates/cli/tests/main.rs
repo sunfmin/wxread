@@ -14,3 +14,4 @@ mod messages;
 mod release;
 mod synthetic;
 mod version;
+mod voice;

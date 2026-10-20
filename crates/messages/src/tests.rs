@@ -352,7 +352,7 @@ fn a_media_message_says_whether_wechat_holds_its_file_and_thumbnail() {
     let m = message(&chat("wxid_ann"), &Names::default(), &voice, &none);
     assert_eq!(
         m["voice"],
-        json!({ "length_ms": null, "file_present": false, "thumbnail_present": null })
+        json!({ "length_ms": null, "transcription": null, "file_present": false, "thumbnail_present": null })
     );
     let text = row("message_0", 2, 1, 0);
     assert_eq!(

@@ -20,6 +20,7 @@ pub mod keys;
 pub mod media;
 mod memory;
 pub mod messages;
+pub mod voice;
 pub mod world;
 
 /// What this binary was built from, as `--version` says it: stamped by
@@ -147,6 +148,24 @@ enum Command {
     },
     /// Read every database key from the running WeChat
     Keys,
+    /// Write a voice message as a file that plays, and say what WeChat heard in it
+    Voice {
+        /// The voice message's id, as `wxread messages` answers it
+        #[arg(value_name = "ID")]
+        id: String,
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+        /// The chat the message is in, by its id as `wxread chats` lists it
+        #[arg(long, value_name = "ID")]
+        chat: Option<String>,
+        /// The file to write: a WAV, or with --raw the SILK as WeChat keeps it
+        #[arg(long, value_name = "PATH")]
+        out: Option<PathBuf>,
+        /// Write the SILK as WeChat keeps it, byte for byte
+        #[arg(long)]
+        raw: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -192,6 +211,7 @@ fn help_of(name: &str) -> Option<&'static str> {
         "group" => Some(include_str!("help/group.txt")),
         "keys" => Some(include_str!("help/keys.txt")),
         "messages" => Some(include_str!("help/messages.txt")),
+        "voice" => Some(include_str!("help/voice.txt")),
         _ => None,
     }
 }
@@ -276,6 +296,10 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
             })
         }
         Command::Keys => keys::run(cli.data_dir),
+        Command::Voice { id, account, chat, out, raw } => {
+            world::World::from_env(cli.data_dir, cli.keys)
+                .and_then(|w| voice::run(&w, &voice::Asked { id, account, chat, out, raw }))
+        }
     };
     answer(result, 1)
 }

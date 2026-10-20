@@ -100,8 +100,11 @@ THE KINDS AND THEIR FIELDS
               <stored_as>; size in bytes
   sticker     {md5, url, file_present, thumbnail_present}: url its address
               on WeChat's CDN, md5 that of its bytes
-  voice       {length_ms, file_present, thumbnail_present}: its sound is in
-              message/media_<n>.db, by the message's id
+  voice       {length_ms, transcription, file_present, thumbnail_present}:
+              transcription the text WeChat heard in it, when the account
+              converted it to text in WeChat (转文字); its sound is in
+              message/media_<n>.db, by the message's id; `wxread voice <id>
+              --chat <chat> --out <path>` writes it as a file that plays
   system      {text}: any other notice of WeChat's
   unknown     {}: anything else, read from content, type and subtype; a
               message whose XML does not read is unknown, never an error
@@ -121,5 +124,6 @@ TRIPS YOU UP
     again.
   - Media is named, not fetched: `wxread file get <id> --out <path>`
     writes a media message's file. Its file_present says whether WeChat
-    holds it, which it may never have downloaded, or cleared.
+    holds it, which it may never have downloaded, or cleared. `wxread voice`
+    writes a voice message as a file that plays.
   - Several accounts logged in is an error naming them: pass --account.

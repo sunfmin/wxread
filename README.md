@@ -13,6 +13,8 @@ wxread --keys <file> group <n>@chatroom     # a group's notice and members
 wxread --keys <file> messages --chat <id>   # a chat's messages, each as its kind
 wxread --keys <file> file get <id> --out <path>  # a media message's file, as it is
 wxread --keys <file> avatar <id> --out <path>    # a contact's avatar
+wxread --keys <file> voice <id> --chat <id> --out v.wav
+                                            # a voice message that plays
 wxread --help                               # the guide
 ```
 
@@ -35,7 +37,9 @@ npx skills add sunfmin/wxread
 
 macOS only, Apache-2.0 ([ADR 0001](docs/adr/0001-macos-only-and-apache-2.md)).
 The formats are as [wechat-cli](https://github.com/huohuoer/wechat-cli) and
-wechat-decrypt (both Apache-2.0) found them.
+wechat-decrypt (both Apache-2.0) found them. Voice messages are decoded by
+silk-decoder-rs (MIT), vendored in [crates/silk](crates/silk)
+([ADR 0005](docs/adr/0005-voice-is-decoded-in-process.md)).
 
 ## Developing
 
