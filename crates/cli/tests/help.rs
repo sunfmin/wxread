@@ -7,7 +7,7 @@ use std::process::Command;
 use serde_json::Value;
 
 use crate::common::World;
-use crate::synthetic::{Account, Contact, DATABASES, Group, Said, Session};
+use crate::synthetic::{Account, Contact, DATABASES, Group, Said, Session, Sound};
 use wxread_doctor::{DATA_DIR_FLAG, DATA_DIR_VAR, KEYS_FLAG, KEYS_VAR};
 
 /// What the binary prints for `args`, which must exit 0 and leave stderr empty.
@@ -59,7 +59,7 @@ fn run_in(text: &str) -> BTreeSet<String> {
 #[test]
 fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
     let existing = existing();
-    let names = ["chats", "contact", "contacts", "doctor", "group", "keys", "messages"];
+    let names = ["chats", "contact", "contacts", "doctor", "group", "keys", "messages", "voice"];
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
     let short = asked(&["-h"]);
@@ -112,13 +112,16 @@ fn answered(command: &str) -> BTreeSet<String> {
     keys.filter_map(|line| line.split_whitespace().next()).map(str::to_string).collect()
 }
 
-/// The keys the guide's row for `command` names.
+/// The keys the guide's row for `command` names, the lines that continue
+/// it (indented fourteen) too.
 fn guide_row(command: &str) -> BTreeSet<String> {
-    let row = between(wxread::GUIDE, "WHAT A COMMAND ANSWERS", "THE COMMANDS")
+    let mut lines = between(wxread::GUIDE, "WHAT A COMMAND ANSWERS", "THE COMMANDS")
         .into_iter()
-        .find(|line| line.starts_with(&format!("    {command} ")))
-        .expect("the guide has a row for the command");
-    row.split_whitespace().skip(1).map(str::to_string).collect()
+        .skip_while(|line| !line.starts_with(&format!("    {command} ")));
+    let row = lines.next().expect("the guide has a row for the command");
+    let more = lines.take_while(|line| line.starts_with(&" ".repeat(14)));
+    let words = row.split_whitespace().skip(1).chain(more.flat_map(str::split_whitespace));
+    words.map(str::to_string).collect()
 }
 
 #[test]
@@ -147,6 +150,32 @@ fn chats_answers_exactly_the_keys_its_help_and_the_guide_name() {
             "chats --help says what {field} is"
         );
     }
+}
+
+#[test]
+fn voice_answers_exactly_the_keys_its_help_and_the_guide_name() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    let mut said = Said::text("wxid_amy", 1, 1_760_000_000, "wxid_amy", "<msg/>");
+    said.local_type = 34;
+    account.messages = vec![said];
+    account.sounds = vec![Sound {
+        db: "media_0",
+        chat: "wxid_amy",
+        server_id: 1,
+        silk: include_bytes!("../../silk/tests/tone.silk").to_vec(),
+    }];
+    account.write();
+    let out = world.root.join("v.wav").display().to_string();
+    let json = world
+        .run(
+            &["voice", "1", "--chat", "wxid_amy", "--out", &out],
+            &[("WXREAD_KEYS", &account.all_keys())],
+        )
+        .ok();
+    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(answered("voice"), keys);
+    assert_eq!(guide_row("voice"), keys);
 }
 
 #[test]

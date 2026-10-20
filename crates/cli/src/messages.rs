@@ -16,7 +16,7 @@ use crate::account::Account;
 use crate::world::World;
 
 /// The message databases, as a refusal of missing keys names them.
-const MESSAGE_DBS: &str = "message/message_<n>.db";
+pub const MESSAGE_DBS: &str = "message/message_<n>.db";
 
 /// What `--account`, `--chat`, `--from`, `--to`, `--limit` and `--cursor`
 /// said.
@@ -31,11 +31,7 @@ pub struct Asked {
 
 /// What messages answers of `world`.
 pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
-    let chat = asked.chat.clone().filter(|c| !c.is_empty()).ok_or_else(|| {
-        anyhow!(
-            "no chat was named: pass {CHAT_FLAG} <id>, a chat's id as `wxread chats` lists it (a wxid, or a group's <n>@chatroom)"
-        )
-    })?;
+    let chat = chat(asked.chat.as_deref())?;
     let limit = Limit::parse(asked.limit.as_deref(), "messages").map_err(|e| anyhow!(e))?;
     let range = Range::parse(asked.from.as_deref(), asked.to.as_deref()).map_err(|e| anyhow!(e))?;
     let cursor = asked.cursor.as_deref().map(Cursor::parse).transpose().map_err(|e| anyhow!(e))?;
@@ -50,16 +46,8 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
         let path = wxread_messages::db_path(&db);
         let conn = account.database(&path)?;
         let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(&path, &e.to_string()));
-        let has: Option<i64> = conn
-            .query_row(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
-                [&table],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(sql)?;
         senders.extend(ids(&conn).map_err(sql)?);
-        if has.is_none() {
+        if !has_table(&conn, &table).map_err(sql)? {
             continue;
         }
         found = true;
@@ -81,6 +69,15 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     }))
 }
 
+/// The chat `--chat` names, or what fixes it.
+pub fn chat(given: Option<&str>) -> anyhow::Result<String> {
+    given.filter(|c| !c.is_empty()).map(str::to_string).ok_or_else(|| {
+        anyhow!(
+            "no chat was named: pass {CHAT_FLAG} <id>, a chat's id as `wxread chats` lists it (a wxid, or a group's <n>@chatroom)"
+        )
+    })
+}
+
 /// The page's worth of rows of the chat's table `table` in message
 /// database `db` past `cursor` within `range`: at most one more than
 /// `limit`, newest first, so the page knows whether another follows.
@@ -94,11 +91,10 @@ fn read(
 ) -> rusqlite::Result<Vec<Row>> {
     let below = cursor.map(|c| c.below_in(db));
     let mut query = conn.prepare(&format!(
-        "SELECT m.local_id, IFNULL(m.server_id, 0), IFNULL(m.local_type, 0), IFNULL(m.sort_seq, 0), IFNULL(m.create_time, 0), n.user_name, m.message_content, m.WCDB_CT_message_content, m.packed_info_data
-         FROM {table} m LEFT JOIN Name2Id n ON n.rowid = m.real_sender_id
-         WHERE (?1 IS NULL OR IFNULL(m.create_time, 0) >= ?1) AND (?2 IS NULL OR IFNULL(m.create_time, 0) < ?2)
+        "{} WHERE (?1 IS NULL OR IFNULL(m.create_time, 0) >= ?1) AND (?2 IS NULL OR IFNULL(m.create_time, 0) < ?2)
            AND (?3 IS NULL OR (IFNULL(m.create_time, 0), IFNULL(m.sort_seq, 0), m.local_id) < (?3, ?4, ?5))
-         ORDER BY 5 DESC, 4 DESC, 1 DESC LIMIT ?6"
+         ORDER BY 5 DESC, 4 DESC, 1 DESC LIMIT ?6",
+        select(table)
     ))?;
     let more = i64::try_from(limit.get()).unwrap_or(i64::MAX).saturating_add(1);
     query
@@ -111,22 +107,60 @@ fn read(
                 below.map(|b| b.2),
                 more
             ],
-            |r| {
-                Ok(Row {
-                    db: db.to_string(),
-                    local_id: r.get(0)?,
-                    server_id: r.get(1)?,
-                    local_type: r.get(2)?,
-                    sort_seq: r.get(3)?,
-                    create_time: r.get(4)?,
-                    sender: r.get::<_, Option<String>>(5)?.filter(|s| !s.is_empty()),
-                    content: bytes(r.get(6)?),
-                    compressed: r.get(7)?,
-                    packed: bytes(r.get(8)?),
-                })
-            },
+            |r| row(db, r),
         )?
         .collect()
+}
+
+/// The row of the chat's table `table` in message database `db` whose
+/// server id is `server_id`, if it has one.
+pub fn by_server_id(
+    conn: &Connection,
+    db: &str,
+    table: &str,
+    server_id: i64,
+) -> rusqlite::Result<Option<Row>> {
+    conn.query_row(&format!("{} WHERE m.server_id = ?1 LIMIT 1", select(table)), [server_id], |r| {
+        row(db, r)
+    })
+    .optional()
+}
+
+/// Whether the message database `conn` has the table `table`: a chat's,
+/// when it holds some of its messages.
+pub fn has_table(conn: &Connection, table: &str) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [table],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|found| found.is_some())
+}
+
+/// The query of a [`Row`] of the chat's table `table`, its sender's id
+/// joined from `Name2Id`, before its `WHERE`.
+fn select(table: &str) -> String {
+    format!(
+        "SELECT m.local_id, IFNULL(m.server_id, 0), IFNULL(m.local_type, 0), IFNULL(m.sort_seq, 0), IFNULL(m.create_time, 0), n.user_name, m.message_content, m.WCDB_CT_message_content, m.packed_info_data
+         FROM {table} m LEFT JOIN Name2Id n ON n.rowid = m.real_sender_id"
+    )
+}
+
+/// The [`Row`] of message database `db` that [`select`] read as `r`.
+fn row(db: &str, r: &rusqlite::Row) -> rusqlite::Result<Row> {
+    Ok(Row {
+        db: db.to_string(),
+        local_id: r.get(0)?,
+        server_id: r.get(1)?,
+        local_type: r.get(2)?,
+        sort_seq: r.get(3)?,
+        create_time: r.get(4)?,
+        sender: r.get::<_, Option<String>>(5)?.filter(|s| !s.is_empty()),
+        content: bytes(r.get(6)?),
+        compressed: r.get(7)?,
+        packed: bytes(r.get(8)?),
+    })
 }
 
 /// A column's value as the bytes it holds.

@@ -47,12 +47,6 @@ pub fn message_id(text: &str) -> Result<i64, String> {
     }
 }
 
-/// Whether `bytes` are a SILK v3 stream: with Tencent's leading 0x02, or
-/// without it.
-pub fn is_silk(bytes: &[u8]) -> bool {
-    bytes.starts_with(b"\x02#!SILK_V3") || bytes.starts_with(b"#!SILK_V3")
-}
-
 /// The media databases `databases` (each a path under `db_storage`) holds,
 /// by path (`message/media_0.db`), each by its number: where WeChat keeps
 /// the sound of voice messages.
@@ -166,14 +160,6 @@ mod tests {
         for bad in ["", "0", "-3", "abc", "1.5"] {
             assert!(message_id(bad).unwrap_err().contains("wxread messages"), "{bad}");
         }
-    }
-
-    #[test]
-    fn silk_is_known_by_its_header() {
-        assert!(is_silk(b"\x02#!SILK_V3\x0a\x00"));
-        assert!(is_silk(b"#!SILK_V3"));
-        assert!(!is_silk(b"#!AMR\n"));
-        assert!(!is_silk(b""));
     }
 
     #[test]

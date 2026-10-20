@@ -90,8 +90,10 @@ THE KINDS AND THEIR FIELDS
               msg/file/<YYYY-MM>/<stored_as>; size in bytes
   sticker     {md5, url}: url its address on WeChat's CDN, md5 that of its
               bytes
-  voice       {length_ms}: its sound is in message/media_<n>.db, by the
-              message's id
+  voice       {length_ms, transcription}: transcription the text WeChat
+              heard in it, when the account converted it to text in WeChat
+              (转文字); `wxread voice <id> --chat <chat> --out <path>`
+              writes its sound as a file that plays
   system      {text}: any other notice of WeChat's
   unknown     {}: anything else, read from content, type and subtype; a
               message whose XML does not read is unknown, never an error
@@ -108,6 +110,7 @@ TRIPS YOU UP
     databases again: logging out and in, some updates), is an error naming
     the database; its fix is `sudo wxread keys`, then supplying the keys
     again.
-  - Media is named, not fetched: the fields of image, video, file, sticker
-    and voice say where each file is kept, which WeChat may have cleared.
+  - Media is named, not fetched: the fields of image, video, file and
+    sticker say where each file is kept, which WeChat may have cleared;
+    `wxread voice` fetches a voice message's sound.
   - Several accounts logged in is an error naming them: pass --account.

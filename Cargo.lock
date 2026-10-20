@@ -758,6 +758,7 @@ dependencies = [
  "rusqlite",
  "ruzstd",
  "serde_json",
+ "silk",
  "tempfile",
  "wxread-account",
  "wxread-answer",
@@ -768,6 +769,7 @@ dependencies = [
  "wxread-messages",
  "wxread-schema",
  "wxread-sqlcipher",
+ "wxread-voice",
 ]
 
 [[package]]
