@@ -767,6 +767,7 @@ dependencies = [
  "libc",
  "mach2",
  "md5",
+ "roxmltree",
  "rusqlite",
  "ruzstd",
  "serde_json",
@@ -849,6 +850,18 @@ dependencies = [
  "flux-rs",
  "proptest",
  "wxread-keys",
+]
+
+[[package]]
+name = "wxread-favorites"
+version = "0.1.0"
+dependencies = [
+ "md5",
+ "proptest",
+ "roxmltree",
+ "serde_json",
+ "wxread-answer",
+ "wxread-messages",
 ]
 
 [[package]]
