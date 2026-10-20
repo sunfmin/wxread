@@ -1,0 +1,33 @@
+wxread keys: the keys of every database of the logged-in account.
+
+WHEN TO RUN IT
+  Once, before any command reads a chat, and again when doctor names a
+  database the keys do not open. Run by the person whose Mac it is, as
+  `sudo wxread keys`: the keys are in the running WeChat's memory, which
+  only root can read.
+
+WHAT IT READS AND WRITES
+  The running WeChat's memory, and each database's first page to check a
+  key against. It writes nothing: wxread keeps no keys.
+
+WHAT IT ANSWERS
+  One object of each database's path under db_storage to its key, in the
+  shape `wechat-cli init` writes its all_keys.json:
+    {"message/message_0.db": {"enc_key": "<64 hex>", "salt": "<32 hex>"}}
+  Entries whose name starts with "_" are a tool's own, and passed over.
+
+STORING AND SUPPLYING THEM
+  Store the answer where secrets go (a keychain, mytokens), then supply it
+  to every command:
+      wxread --keys <file> doctor
+  or, holding the keys themselves:
+      WXREAD_KEYS="$(cat <file>)" wxread doctor
+  A key stays valid until WeChat creates its databases again (logging out
+  and in, some updates); `wxread doctor` then names each database the keys
+  no longer open.
+
+TRIPS YOU UP
+  - This release does not read WeChat's memory yet: `wxread keys` fails
+    with the fix, which is to get the same file from
+    `sudo wechat-cli init` (https://github.com/huohuoer/wechat-cli) and
+    pass it with --keys.
