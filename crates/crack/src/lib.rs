@@ -102,15 +102,15 @@ pub const NOT_ROOT: &str = "wxread keys reads the keys out of the running WeChat
 /// No WeChat process was found.
 pub const NOT_RUNNING: &str = "WeChat is not running, so it holds no keys to read: open WeChat for Mac 4.x and log in, then run `sudo wxread keys`";
 /// WeChat is running and its memory was read, but no key in it opens any
-/// database: no account is logged in, or a signed WeChat was read in place of
-/// the re-signed copy.
-pub const NOT_LOGGED_IN: &str = "WeChat is running but no key in its memory opens a database on this Mac: log in to WeChat for Mac 4.x (and if you re-signed a copy of WeChat, quit WeChat and open that copy), then run `sudo wxread keys` again";
+/// database: no account is logged in, or the WeChat read was started before
+/// it was re-signed.
+pub const NOT_LOGGED_IN: &str = "WeChat is running but no key in its memory opens a database on this Mac: log in to WeChat for Mac 4.x (and if you just ran `wxread resign --yes`, quit WeChat and open it again), then run `sudo wxread keys` again";
 
 /// macOS refused reading WeChat's memory, for `cause`: WeChat is a signed
 /// build without `get-task-allow`, and must be re-signed to be read.
 pub fn refused(cause: &str) -> Failure {
     Failure(format!(
-        "macOS will not let wxread read WeChat's memory ({cause}): WeChat is a signed build without get-task-allow. `wxread keys --help` says how to re-sign a copy of WeChat and grant Full Disk Access so its memory can be read; then quit WeChat, open the re-signed copy, and run `sudo wxread keys` again"
+        "macOS will not let wxread read WeChat's memory ({cause}): WeChat is a signed build without get-task-allow. Run `wxread resign` to see how it re-signs WeChat so its memory can be read, then `wxread resign --yes`; then quit WeChat, open it again, grant the app running wxread Full Disk Access, and run `sudo wxread keys` again"
     ))
 }
 
@@ -207,7 +207,7 @@ mod tests {
         let cases = [
             (Access::NotRoot, &no_dbs[..], &[][..], "sudo wxread keys"),
             (Access::NotRunning, &no_dbs[..], &[][..], "not running"),
-            (Access::Refused("os error 5".into()), &no_dbs[..], &[][..], "get-task-allow"),
+            (Access::Refused("os error 5".into()), &no_dbs[..], &[][..], "`wxread resign --yes`"),
             // Read, but no candidate opens the one database: not logged in.
             (Access::Read, &dbs[..], &[[9u8; 32]][..], "no key in its memory opens"),
         ];

@@ -37,6 +37,7 @@ WHAT A COMMAND ANSWERS
     keys      each database's path under db_storage, to its enc_key and
               salt
     messages  account chat messages next
+    resign    app applied get_task_allow entitlements next
 
 THE COMMANDS
   Setting up, run by you or an agent:
@@ -47,11 +48,14 @@ THE COMMANDS
       articles
   Getting the keys, run by the person whose Mac it is, with sudo:
       keys
+  Letting keys read WeChat, run by the person whose Mac it is, once:
+      resign
 
 RULES
   - wxread reads and never writes WeChat's files, prompts for nothing,
     elevates nothing and keeps nothing between runs: every run reads the
-    data directory and the keys again.
+    data directory and the keys again. The one command that changes
+    anything, `wxread resign`, re-signs the WeChat app only with --yes.
   - A database is decrypted into memory and read there: no decrypted byte
     is written to disk, and what is read is what WeChat wrote last, its
     WAL included.

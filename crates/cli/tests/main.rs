@@ -11,5 +11,6 @@ mod errors;
 mod help;
 mod messages;
 mod release;
+mod resign;
 mod synthetic;
 mod version;

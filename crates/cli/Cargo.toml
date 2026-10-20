@@ -18,6 +18,7 @@ wxread-doctor = { path = "../doctor" }
 wxread-keys = { path = "../keys" }
 wxread-crack = { path = "../crack" }
 wxread-messages = { path = "../messages" }
+wxread-resign = { path = "../resign" }
 wxread-schema = { path = "../schema" }
 wxread-sqlcipher = { path = "../sqlcipher" }
 anyhow = "1"

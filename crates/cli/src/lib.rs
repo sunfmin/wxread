@@ -18,6 +18,7 @@ pub mod doctor;
 pub mod keys;
 mod memory;
 pub mod messages;
+pub mod resign;
 pub mod world;
 
 /// What this binary was built from, as `--version` says it: stamped by
@@ -128,6 +129,15 @@ enum Command {
     },
     /// Read every database key from the running WeChat
     Keys,
+    /// Re-sign WeChat with get-task-allow so `sudo wxread keys` can read it; only with --yes
+    Resign {
+        /// The WeChat app to re-sign (/Applications/WeChat.app, else Weixin.app, unless given)
+        #[arg(long, value_name = "PATH")]
+        app: Option<PathBuf>,
+        /// Re-sign it; without this, only say what it would do and change nothing
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 /// The help file of subcommand `name`: what `wxread <name> --help` prints.
@@ -141,6 +151,7 @@ fn help_of(name: &str) -> Option<&'static str> {
         "group" => Some(include_str!("help/group.txt")),
         "keys" => Some(include_str!("help/keys.txt")),
         "messages" => Some(include_str!("help/messages.txt")),
+        "resign" => Some(include_str!("help/resign.txt")),
         _ => None,
     }
 }
@@ -216,6 +227,7 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
             })
         }
         Command::Keys => keys::run(cli.data_dir),
+        Command::Resign { app, yes } => resign::run(app, yes),
     };
     answer(result, 1)
 }

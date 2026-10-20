@@ -59,7 +59,9 @@ fn run_in(text: &str) -> BTreeSet<String> {
 #[test]
 fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
     let existing = existing();
-    let names = ["articles", "chats", "contact", "contacts", "doctor", "group", "keys", "messages"];
+    let names = [
+        "articles", "chats", "contact", "contacts", "doctor", "group", "keys", "messages", "resign",
+    ];
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
     let short = asked(&["-h"]);
@@ -252,5 +254,33 @@ fn articles_answers_exactly_the_keys_its_help_and_the_guide_name() {
     }
     for field in json["articles"][0]["official_account"].as_object().unwrap().keys() {
         assert!(help.contains("{id, name}") && help.contains(field), "{field}");
+    }
+}
+
+#[test]
+fn resign_answers_exactly_the_keys_its_help_and_the_guide_name() {
+    // The object the command prints is the pure crate's answer;
+    // tests/resign.rs runs the command itself against a signed app.
+    let merge = wxread_resign::merge("W.app", "").unwrap();
+    let json = wxread_resign::answer("W.app", false, &merge, false);
+    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(answered("resign"), keys);
+    assert_eq!(guide_row("resign"), keys);
+}
+
+#[test]
+fn keys_help_points_at_resign_when_macos_refuses() {
+    let help = asked(&["keys", "--help"]);
+    let section = between(&help, "IF MACOS REFUSES TO READ WECHAT", "TRIPS YOU UP").join("\n");
+    assert!(section.contains("`wxread resign`") && section.contains("`wxread resign --yes`"));
+    let resign = asked(&["resign", "--help"]);
+    for needle in [
+        "WHEN TO RUN IT",
+        "WHAT IT READS AND WRITES",
+        "UNDOING IT",
+        "Full Disk Access",
+        "quit WeChat",
+    ] {
+        assert!(resign.contains(needle), "resign --help says {needle}");
     }
 }
