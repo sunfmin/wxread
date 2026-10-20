@@ -70,6 +70,7 @@ pub enum Kind {
     Transfer,
     RedPacket,
     Call,
+    GroupNotice,
     Image,
     Video,
     File,
@@ -81,7 +82,7 @@ pub enum Kind {
 
 impl Kind {
     /// Every kind, as the answer names them.
-    pub const ALL: [Kind; 22] = [
+    pub const ALL: [Kind; 23] = [
         Kind::Text,
         Kind::Link,
         Kind::Quote,
@@ -97,6 +98,7 @@ impl Kind {
         Kind::Transfer,
         Kind::RedPacket,
         Kind::Call,
+        Kind::GroupNotice,
         Kind::Image,
         Kind::Video,
         Kind::File,
@@ -123,6 +125,7 @@ impl Kind {
             Kind::Transfer => "transfer",
             Kind::RedPacket => "red_packet",
             Kind::Call => "call",
+            Kind::GroupNotice => "group_notice",
             Kind::Image => "image",
             Kind::Video => "video",
             Kind::File => "file",
@@ -411,6 +414,9 @@ pub fn message(
     if parsed.kind == Kind::Solitaire {
         members_named(&mut parsed.fields, names);
     }
+    if parsed.kind == Kind::GroupNotice {
+        posted(&mut parsed.fields, sender.as_deref(), row.create_time, names);
+    }
     let (t, sub) = kinds::split(row.local_type);
     let mut out = Map::new();
     out.insert("id".into(), json!((row.server_id != 0).then(|| row.server_id.to_string())));
@@ -439,6 +445,17 @@ fn members_named(fields: &mut Map<String, Value>, names: &Names) {
                 entry.insert("member_name".into(), member);
             }
         }
+    }
+}
+
+/// A group notice's `fields`, posted by whom and when its XML says, else
+/// by `sender` at `sent`: its poster shown as `names` shows them.
+fn posted(fields: &mut Map<String, Value>, sender: Option<&str>, sent: i64, names: &Names) {
+    let id = fields.get("by").and_then(|by| by["id"].as_str()).or(sender).map(str::to_string);
+    let by = id.map(|id| json!({ "display_name": names.of(&id), "id": id }));
+    fields.insert("by".into(), json!(by));
+    if fields.get("at").is_none_or(Value::is_null) {
+        fields.insert("at".into(), json!(rfc3339(sent)));
     }
 }
 
@@ -534,10 +551,15 @@ pub fn db_path(name: &str) -> String {
     format!("message/{name}.db")
 }
 
-/// What fixes a chat none of the account's message databases has.
+/// What fixes a chat none of the account's message databases has: one of
+/// WeChat's folders is refused naming what reads it; any other is no chat
+/// of the account's, or one WeChat on this Mac holds no message of.
 pub fn no_such_chat(chat: &str, account: &str) -> String {
+    if let Some(folder) = wxread_chats::Folder::of(chat) {
+        return folder.not_a_chat();
+    }
     format!(
-        "account {account} has no messages of chat {chat}: pass {CHAT_FLAG} an id `wxread chats` lists (a wxid, or a group's <n>@chatroom)"
+        "account {account} has no messages of chat {chat}: it is no chat of the account's, or WeChat on this Mac holds none of its messages (they were never synced to this Mac, or were deleted); `wxread chats` lists the chats, and `wxread chats --query {chat}` answers whether it is one"
     )
 }
 

@@ -215,7 +215,7 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
         (group(21, app(5), "<msg><appmsg><title>broken"), "unknown", json!({})),
         (
             group(
-                -1,
+                -2,
                 app(53),
                 "<?xml version=\"1.0\"?>\n<msg>\n\t<appmsg appid=\"\" sdkver=\"0\">\n\t\t<title>#接龙\nSaturday hike\n\n1. Bob\n2. Amy +1\n3. Zed</title>\n\t\t<type>53</type>\n\t\t<extinfo>\n\t\t\t<solitaire_info><![CDATA[<solitaire><tt>0-17</tt><s>.</s><au>wxid_bob</au><hrt>1</hrt><loss>0</loss><sid>1760000000000_1234</sid><content><s>3</s><i><u>wxid_bob</u><h>0</h><s>.</s><t>1760000000</t><r>22-3</r></i><i><u>wxid_amy</u><h>0</h><s>.</s><t>1760000060</t><r>29-6</r></i><i><u>wxid_zed</u><h>0</h><s>.</s><t>1760000120</t><r>39-3</r></i></content></solitaire>]]></solitaire_info>\n\t\t</extinfo>\n\t</appmsg>\n\t<fromusername>wxid_bob</fromusername>\n</msg>\n",
             ),
@@ -247,6 +247,15 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
             ),
             "call",
             json!({ "medium": "voice", "state": "connected", "seconds": 3890, "text": "通话时长 01:04:50" }),
+        ),
+        (
+            group(
+                -1,
+                app(87),
+                "<msg><appmsg><type>87</type><announcement><![CDATA[<group_notice_item><datalist count=\"1\"><dataitem datatype=\"1\"><datadesc>Ride at 9</datadesc></dataitem></datalist><source><fromusr>wxid_bob</fromusr></source><edittime>1759999000</edittime></group_notice_item>]]></announcement><textannouncement><![CDATA[Ride at 9]]></textannouncement></appmsg><fromusername>wxid_bob</fromusername></msg>",
+            ),
+            "group_notice",
+            json!({ "text": "Ride at 9", "by": { "id": "wxid_bob", "display_name": "Bobby" }, "at": "2025-10-09T08:36:40Z" }),
         ),
     ]
 }
@@ -573,6 +582,22 @@ fn a_chat_no_database_holds_points_at_chats() {
     );
     let error = world.run(&["messages"], &[("WXREAD_KEYS", &account.all_keys())]).error();
     assert!(error.contains("pass --chat <id>") && error.contains("`wxread chats`"), "{error}");
+}
+
+#[test]
+fn a_folder_is_refused_naming_the_command_that_reads_it() {
+    let world = World::new();
+    let account = account(&world);
+    let keys = account.all_keys();
+    for (folder, command) in [
+        ("brandsessionholder", "`wxread articles`"),
+        ("brandservicesessionholder", "`wxread articles`"),
+        ("@placeholder_foldgroup", "`wxread chats`"),
+    ] {
+        let error = world.run(&["messages", "--chat", folder], &[("WXREAD_KEYS", &keys)]).error();
+        assert!(error.contains("is WeChat's folder") && error.contains(command), "{error}");
+        assert!(!error.contains("an id `wxread chats` lists"), "{error}");
+    }
 }
 
 #[test]

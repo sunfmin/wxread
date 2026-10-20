@@ -34,7 +34,7 @@ A person in a group, whether or not the account has them as a contact, with the 
 _Avoid_: participant, user
 
 **Notice**:
-What a group pins for its members (群公告): its text, who posted it and when.
+What a group pins for its members (群公告): its text, who posted it and when. Posted into the group's chat, it is a message of the kind `group_notice`.
 _Avoid_: announcement, bulletin
 
 **Remark**:
@@ -60,6 +60,10 @@ _Avoid_: post, feed, timeline item, SNS
 **Chat**:
 A conversation the account has: direct, with one contact, or in one group.
 _Avoid_: session, conversation, thread
+
+**Folder**:
+An entry of WeChat's chat list that holds others and has no messages of its own: the groups folded away (折叠的群聊, `@placeholder_foldgroup`), what subscription accounts sent (订阅号消息, `brandsessionholder`), the service accounts (服务号, `brandservicesessionholder`); `wxread chats` lists each as kind `folder`, by WeChat's name, with the command that reads what it holds.
+_Avoid_: placeholder, holder, group folder
 
 **WAL**:
 The `-wal` file beside a database: what WeChat wrote last, not yet moved into the database itself, read with it.
