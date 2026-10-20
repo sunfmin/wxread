@@ -11,9 +11,12 @@ use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
 
 pub mod account;
+pub mod articles;
 pub mod chats;
 pub mod contacts;
 pub mod doctor;
+pub mod keys;
+mod memory;
 pub mod messages;
 pub mod voice;
 pub mod world;
@@ -25,9 +28,6 @@ pub const VERSION: &str = env!("WXREAD_VERSION");
 /// The guide `--help` prints, and the one screen `-h` prints.
 pub const GUIDE: &str = include_str!("help.txt");
 pub const SCREEN: &str = include_str!("short.txt");
-
-/// What fixes running `wxread keys` in this release.
-pub const KEYS_NOT_READ: &str = "this wxread does not read the keys out of WeChat's memory yet: get them with `sudo wechat-cli init` (https://github.com/huohuoer/wechat-cli), which writes ~/.wechat-cli/all_keys.json in the shape `wxread keys --help` describes, then pass `--keys ~/.wechat-cli/all_keys.json`";
 
 #[derive(Parser)]
 #[command(name = "wxread", version = VERSION, disable_help_flag = true, disable_help_subcommand = true)]
@@ -44,6 +44,21 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// List the articles official accounts sent, newest first, a page at a time
+    Articles {
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+        /// Only the articles of this official account, by its gh_ id
+        #[arg(long, value_name = "ID")]
+        official_account: Option<String>,
+        /// How many articles a page holds, 1 to 1000 (100 unless given)
+        #[arg(long, value_name = "N")]
+        limit: Option<String>,
+        /// Where the page starts: the `next` of the answer before
+        #[arg(long, value_name = "NEXT")]
+        cursor: Option<String>,
+    },
     /// List the account's chats, newest first, a page at a time
     Chats {
         /// The account to read, by its id, when several are logged in
@@ -137,6 +152,7 @@ enum Command {
 /// The help file of subcommand `name`: what `wxread <name> --help` prints.
 fn help_of(name: &str) -> Option<&'static str> {
     match name {
+        "articles" => Some(include_str!("help/articles.txt")),
         "chats" => Some(include_str!("help/chats.txt")),
         "contact" => Some(include_str!("help/contact.txt")),
         "contacts" => Some(include_str!("help/contacts.txt")),
@@ -197,6 +213,11 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
         }
     };
     let result = match cli.command {
+        Command::Articles { account, official_account, limit, cursor } => {
+            world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
+                articles::run(&w, &articles::Asked { account, official_account, limit, cursor })
+            })
+        }
         Command::Chats { account, limit, cursor } => world::World::from_env(cli.data_dir, cli.keys)
             .and_then(|w| chats::run(&w, &chats::Asked { account, limit, cursor })),
         Command::Contact { id, account } => world::World::from_env(cli.data_dir, cli.keys)
@@ -214,7 +235,7 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
                 messages::run(&w, &messages::Asked { account, chat, from, to, limit, cursor })
             })
         }
-        Command::Keys => Err(anyhow::anyhow!(KEYS_NOT_READ)),
+        Command::Keys => keys::run(cli.data_dir),
         Command::Voice { id, account, chat, out, raw } => {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| voice::run(&w, &voice::Asked { id, account, chat, out, raw }))

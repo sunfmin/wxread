@@ -31,8 +31,8 @@ impl World {
         let (data_dir, data_dir_from) = match (data_dir, var(DATA_DIR_VAR)) {
             (Some(dir), _) => (dir, Source::Flag),
             (None, Some(dir)) => (PathBuf::from(dir), Source::Var),
-            (None, None) => match std::env::var_os("HOME").filter(|h| !h.is_empty()) {
-                Some(home) => (PathBuf::from(home).join(DATA_DIR_UNDER_HOME), Source::Default),
+            (None, None) => match home() {
+                Some(home) => (home.join(DATA_DIR_UNDER_HOME), Source::Default),
                 None => bail!(
                     "HOME is not set, so WeChat's data directory is not known: set HOME, or pass {DATA_DIR_FLAG} <dir>"
                 ),
@@ -74,6 +74,37 @@ impl World {
             (None, None) => KeysSeen::None,
         }
     }
+}
+
+/// The home directory WeChat's files are under: the user `sudo` was run by,
+/// when there is one (so `sudo wxread keys` reads that user's data, not
+/// root's), else this process's own `HOME`.
+fn home() -> Option<PathBuf> {
+    if let Some(user) = std::env::var("SUDO_USER").ok().filter(|u| !u.is_empty())
+        && let Some(dir) = home_of(&user)
+    {
+        return Some(dir);
+    }
+    std::env::var_os("HOME").filter(|home| !home.is_empty()).map(PathBuf::from)
+}
+
+/// The home directory of user `name` from the password database, if it has
+/// one.
+fn home_of(name: &str) -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let name = std::ffi::CString::new(name).ok()?;
+    // getpwnam is not re-entrant, but wxread is one short-lived process.
+    let pw = unsafe { libc::getpwnam(name.as_ptr()) };
+    if pw.is_null() {
+        return None;
+    }
+    let dir = unsafe { (*pw).pw_dir };
+    if dir.is_null() {
+        return None;
+    }
+    let bytes = unsafe { std::ffi::CStr::from_ptr(dir) }.to_bytes();
+    Some(PathBuf::from(std::ffi::OsStr::from_bytes(bytes)))
 }
 
 /// The accounts under the data directory `dir`: each directory there that
