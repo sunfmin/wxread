@@ -885,6 +885,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "wxread-moments"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "roxmltree",
+ "wxread-answer",
+ "wxread-media",
+ "wxread-messages",
+]
+
+[[package]]
 name = "wxread-schema"
 version = "0.1.0"
 dependencies = [

@@ -15,7 +15,13 @@
 //!   share its name;
 //! - a voice message: its SILK bytes in `message/media_<n>.db`'s
 //!   `VoiceInfo`, by the message's server id;
-//! - a sticker: on WeChat's CDN, at its address, checked against its MD5.
+//! - a sticker: on WeChat's CDN, at its address, checked against its MD5;
+//! - a Moment's video: `cache/<YYYY-MM>/Sns/Video/<k[..2]>/<k[2..]>.mp4`,
+//!   its thumbnail the `.jpg` beside it, `k` its [`moment_video_key`], the
+//!   month the one WeChat loaded it in, as wx-workbench found it;
+//! - a Moment's image: `cache/<YYYY-MM>/Sns/Img/<k[..2]>/<k[2..]>`, sealed
+//!   as a message's image is ([`image`]), under a key nobody has yet found
+//!   how WeChat derives from the Moment (#28).
 
 pub mod image;
 
@@ -45,24 +51,33 @@ pub enum Media {
         url: Option<String>,
     },
     Voice,
+    /// A Moment's image, `key` the name WeChat caches it under, when it is
+    /// known.
+    MomentImage {
+        key: Option<String>,
+    },
+    /// A Moment's video, `key` its [`moment_video_key`].
+    MomentVideo {
+        key: Option<String>,
+    },
 }
 
 impl Media {
     /// Its kind, as `wxread messages` names it.
     pub fn kind(&self) -> &'static str {
         match self {
-            Media::Image { .. } => "image",
-            Media::Video { .. } => "video",
+            Media::Image { .. } | Media::MomentImage { .. } => "image",
+            Media::Video { .. } | Media::MomentVideo { .. } => "video",
             Media::File { .. } => "file",
             Media::Sticker { .. } => "sticker",
             Media::Voice => "voice",
         }
     }
 
-    /// Whether WeChat keeps a thumbnail of its kind: an image's and a
-    /// video's.
+    /// Whether WeChat keeps a thumbnail of its kind: a message's image's,
+    /// and a video's, a message's or a Moment's.
     pub fn has_thumbnail(&self) -> bool {
-        matches!(self, Media::Image { .. } | Media::Video { .. })
+        matches!(self, Media::Image { .. } | Media::Video { .. } | Media::MomentVideo { .. })
     }
 
     /// The directory under the account's whose months (`YYYY-MM`) hold its
@@ -73,6 +88,7 @@ impl Media {
             Media::Image { .. } => Some(format!("msg/attach/{chat_dir}")),
             Media::Video { .. } => Some("msg/video".into()),
             Media::File { .. } => Some("msg/file".into()),
+            Media::MomentImage { .. } | Media::MomentVideo { .. } => Some(MOMENT_SHELF.into()),
             Media::Sticker { .. } | Media::Voice => None,
         }
     }
@@ -89,6 +105,9 @@ impl Media {
             (Media::Video { name: Some(n) }, false) => vec![format!("{n}.mp4")],
             (Media::Video { name: Some(n) }, true) => vec![format!("{n}_thumb.jpg")],
             (Media::File { name: Some(n), .. }, false) if is_one_name(n) => vec![n.clone()],
+            (Media::MomentImage { key: Some(k) }, false) => cached("Img", k, ""),
+            (Media::MomentVideo { key: Some(k) }, false) => cached("Video", k, ".mp4"),
+            (Media::MomentVideo { key: Some(k) }, true) => cached("Video", k, ".jpg"),
             _ => Vec::new(),
         }
     }
@@ -97,7 +116,7 @@ impl Media {
     /// as an image is ([`image`]), so are decrypted before they are
     /// written.
     pub fn sealed(&self) -> bool {
-        matches!(self, Media::Image { .. })
+        matches!(self, Media::Image { .. } | Media::MomentImage { .. })
     }
 
     /// Of the files found, each with its size, the one to take: a file's of
@@ -121,6 +140,29 @@ impl Media {
 pub struct Held {
     pub file: bool,
     pub thumbnail: Option<bool>,
+}
+
+/// The directory under the account's whose months hold what WeChat
+/// caches of Moments.
+pub const MOMENT_SHELF: &str = "cache";
+
+/// The path in a month of [`MOMENT_SHELF`] of what WeChat caches of a
+/// Moment in `Sns/<dir>` under `key`, an MD5 in hex, split after its
+/// first two digits, and ending `ext`: none for a key that is no MD5.
+fn cached(dir: &str, key: &str, ext: &str) -> Vec<String> {
+    match key.split_at_checked(2) {
+        Some((head, rest)) if key.len() == 32 && key.bytes().all(|b| b.is_ascii_hexdigit()) => {
+            vec![format!("Sns/{dir}/{head}/{rest}{ext}")]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The name WeChat caches the video `media` (its `<media><id>`) of the
+/// Moment `post` (its `<TimelineObject><id>`) under: the MD5 of
+/// `<post>_<media>_3`, in lowercase hex.
+pub fn moment_video_key(post: &str, media: &str) -> String {
+    format!("{:x}", md5::compute(format!("{post}_{media}_3").as_bytes()))
 }
 
 /// Whether `name` is one name in a directory, not a path out of it.
@@ -206,6 +248,20 @@ pub fn sticker_fix(id: &str, served: bool) -> String {
     )
 }
 
+/// What makes WeChat load a `kind` of a Moment it does not hold: media
+/// `id` of the Moment `author` (as WeChat shows them) posted at `at`;
+/// `thumbnail` whether the answer holds the thumbnail in its place.
+pub fn moment_fix(kind: &str, id: &str, author: &str, at: &str, thumbnail: bool) -> String {
+    let instead = if thumbnail {
+        format!("; until then {OUT_FLAG} holds its thumbnail, which WeChat does hold")
+    } else {
+        String::new()
+    };
+    format!(
+        "WeChat for Mac on this Mac does not hold this {kind} of a Moment (it keeps only what it loaded while Moments were viewed, and clears that): open {author}'s Moment of {at} in WeChat's Moments and let the {kind} load, then run this again for {id}{instead}"
+    )
+}
+
 /// What makes WeChat fetch an avatar of `contact` it does not hold.
 pub fn avatar_fix(contact: &str) -> String {
     format!(
@@ -216,7 +272,7 @@ pub fn avatar_fix(contact: &str) -> String {
 /// What fixes asking for the thumbnail of a kind WeChat keeps none of.
 pub fn no_thumbnail(kind: &str, id: &str) -> String {
     format!(
-        "message {id} is a {kind}, of which WeChat keeps no thumbnail (only images and videos have one): leave {THUMBNAIL_FLAG} out"
+        "{id} is a {kind}, of which WeChat keeps no thumbnail (only a message's images, and videos, have one): leave {THUMBNAIL_FLAG} out"
     )
 }
 
@@ -292,6 +348,30 @@ mod tests {
     }
 
     #[test]
+    fn a_moments_video_lies_in_the_cache_under_its_key() {
+        let key = moment_video_key("14720510141367799999", "14720510155579726");
+        assert_eq!(key, format!("{:x}", md5::compute("14720510141367799999_14720510155579726_3")));
+        let video = Media::MomentVideo { key: Some(key.clone()) };
+        assert_eq!(video.shelf("ignored"), Some("cache".into()));
+        let (head, rest) = key.split_at(2);
+        assert_eq!(video.names(false), [format!("Sns/Video/{head}/{rest}.mp4")]);
+        assert_eq!(video.names(true), [format!("Sns/Video/{head}/{rest}.jpg")]);
+        assert!(video.has_thumbnail() && !video.sealed() && video.kind() == "video");
+        let image = Media::MomentImage { key: Some(key.clone()) };
+        assert_eq!(image.names(false), [format!("Sns/Img/{head}/{rest}")]);
+        assert!(image.names(true).is_empty() && !image.has_thumbnail() && image.sealed());
+        assert!(Media::MomentImage { key: None }.names(false).is_empty());
+    }
+
+    #[test]
+    fn a_moments_key_that_is_no_md5_names_nothing() {
+        for key in ["", "ab", "../../../../db_storage/x", &"z".repeat(32), &"a".repeat(33)] {
+            let video = Media::MomentVideo { key: Some(key.to_string()) };
+            assert!(video.names(false).is_empty() && video.names(true).is_empty(), "{key}");
+        }
+    }
+
+    #[test]
     fn a_files_name_never_leads_out_of_its_month() {
         for name in ["../../db_storage/x", "a/b", "..", "", "."] {
             let file = Media::File { name: Some(name.into()), size: None };
@@ -334,5 +414,11 @@ mod tests {
         );
         assert!(!fetch_fix("video", "1", "c", "t", false).contains("thumbnail"));
         assert!(no_thumbnail("file", "7").contains("leave --thumbnail out"));
+        let fix = moment_fix("video", "1:0", "Amy", "2025-10-09T08:53:35Z", true);
+        assert!(
+            fix.contains("open Amy's Moment of 2025-10-09T08:53:35Z")
+                && fix.contains("--out holds its thumbnail"),
+            "{fix}"
+        );
     }
 }

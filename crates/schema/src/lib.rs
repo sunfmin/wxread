@@ -86,3 +86,13 @@ pub const MEDIA_NAME2ID: &str = "CREATE TABLE Name2Id(user_name TEXT PRIMARY KEY
 /// In each media database: each voice message's SILK bytes, `voice_data`,
 /// by its `svr_id`, the message's server id.
 pub const VOICE_INFO: &str = "CREATE TABLE VoiceInfo(chat_name_id INTEGER, create_time INTEGER, local_id INTEGER, svr_id INTEGER, voice_data BLOB, data_index TEXT DEFAULT '0')";
+
+/// The Moments WeChat has loaded: `sns/sns.db`.
+pub const SNS_DB: &str = "sns/sns.db";
+
+/// One row a Moment (朋友圈) WeChat has loaded, as SIWX found WeChat 4.1
+/// writes it: `tid` its id (WeChat's unsigned id of it, read signed),
+/// `user_name` its author's id, `content` its `<SnsDataItem>` XML, the
+/// Moment as WeChat's server sent it (`TimelineObject`) and its likes and
+/// comments as WeChat last loaded them (`LocalExtraInfo`).
+pub const SNS_TIMELINE: &str = "CREATE TABLE SnsTimeLine(tid INTEGER PRIMARY KEY DESC, user_name TEXT, content TEXT, pack_info_buf TEXT)";
