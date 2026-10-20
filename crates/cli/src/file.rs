@@ -50,6 +50,9 @@ pub fn get(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     if asked.thumbnail && !media.has_thumbnail() {
         return Err(anyhow!(wxread_media::no_thumbnail(media.kind(), &asked.id)));
     }
+    if let Media::Sticker { md5, url } = &media {
+        return sticker(&asked.id, md5.as_deref(), url.as_deref(), &asked.out);
+    }
     let at = wxread_answer::rfc3339(found.row.create_time).unwrap_or_default();
     let mut key = None;
     let bytes = |thumbnail: bool, key: &mut _| -> anyhow::Result<Option<Vec<u8>>> {
@@ -58,7 +61,6 @@ pub fn get(world: &World, asked: &Asked) -> anyhow::Result<Value> {
                 .into_iter()
                 .next()
                 .map(|(_, silk)| silk)),
-            Media::Sticker { .. } => Ok(None),
             _ => match media::find(&account.dir(), &media, &found.chat_dir, thumbnail) {
                 Some(path) if media.sealed() => media::decrypted(&account, &path, key).map(Some),
                 Some(path) => media::read(&path).map(Some),
@@ -66,27 +68,29 @@ pub fn get(world: &World, asked: &Asked) -> anyhow::Result<Value> {
             },
         }
     };
-    let missing = |thumbnail: Option<Value>, fix: String| json!({ "missing": true, "thumbnail": thumbnail, "fix": fix });
-    if let Media::Sticker { md5, url } = &media {
-        return sticker(&asked.id, md5.as_deref(), url.as_deref(), &asked.out);
-    }
     if let Some(bytes) = bytes(asked.thumbnail, &mut key)? {
         return media::write(&asked.out, &bytes);
     }
     if asked.thumbnail {
         let fix = wxread_media::thumbnail_fix(media.kind(), &asked.id, &found.chat, &at);
-        return Ok(missing(None, fix));
+        return Ok(missing(None, &fix));
     }
     let thumbnail = if media.has_thumbnail() { bytes(true, &mut key)? } else { None };
     let written = thumbnail.map(|t| media::write(&asked.out, &t)).transpose()?;
     let fix = wxread_media::fetch_fix(media.kind(), &asked.id, &found.chat, &at, written.is_some());
-    Ok(missing(written, fix))
+    Ok(missing(written, &fix))
+}
+
+/// The answer of a file WeChat does not hold: the thumbnail written in its
+/// place, if any, and what makes WeChat fetch it.
+fn missing(thumbnail: Option<Value>, fix: &str) -> Value {
+    json!({ "missing": true, "thumbnail": thumbnail, "fix": fix })
 }
 
 /// A sticker fetched from WeChat's CDN, checked against its MD5, written
 /// at `out`; missing when there is nowhere to fetch it from.
 fn sticker(id: &str, md5: Option<&str>, url: Option<&str>, out: &Path) -> anyhow::Result<Value> {
-    let missing = |served| json!({ "missing": true, "thumbnail": null, "fix": wxread_media::sticker_fix(id, served) });
+    let missing = |served| missing(None, &wxread_media::sticker_fix(id, served));
     let Some(url) = url else {
         return Ok(missing(false));
     };
@@ -202,5 +206,5 @@ pub fn avatar(world: &World, account: Option<&str>, id: &str, out: &Path) -> any
     if known.is_none() {
         return Err(anyhow!(wxread_contacts::unknown(id)));
     }
-    Ok(json!({ "missing": true, "thumbnail": null, "fix": wxread_media::avatar_fix(id) }))
+    Ok(missing(None, &wxread_media::avatar_fix(id)))
 }
