@@ -221,6 +221,12 @@ fn messages_answers_exactly_the_keys_its_help_and_the_guide_name() {
     let all: BTreeSet<String> =
         wxread_messages::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
     assert_eq!(kinds, all);
+    // A channels feed's title is not WeChat's.
+    let words = help.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        words.contains("For a channels feed or live, title is its description"),
+        "messages --help says what title is for a channels feed"
+    );
 }
 
 /// Every key of each object in `value`, and of the objects and lists of
