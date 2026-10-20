@@ -102,6 +102,33 @@ fn a_link_says_what_it_links_to() {
     );
 }
 
+/// What WeChat writes as a channels feed's appmsg `<title>` and `<des>` for
+/// clients too old to show one.
+const PLACEHOLDER: &str = "当前微信版本不支持展示该内容，请升级至最新版本。";
+
+#[test]
+fn a_channels_feed_or_live_is_its_description_whatever_its_appmsg_title() {
+    let feed = format!(
+        "<msg><appmsg><title>{PLACEHOLDER}</title><des>{PLACEHOLDER}</des><type>51</type><url>https://support.weixin.qq.com/update/</url><finderFeed><nickname>Crag TV</nickname><desc>Bouldering at dawn</desc></finderFeed></appmsg></msg>"
+    );
+    assert_eq!(
+        read(app(51), &feed)["link"],
+        json!({ "to": "channels_feed", "title": "Bouldering at dawn", "summary": "Crag TV", "url": "https://support.weixin.qq.com/update/", "source": null })
+    );
+    let live = format!(
+        "<msg><appmsg><title>{PLACEHOLDER}</title><des>{PLACEHOLDER}</des><type>63</type><finderLive><nickname>Crag TV</nickname><desc>Live from the wall</desc></finderLive></appmsg></msg>"
+    );
+    assert_eq!(
+        read(app(63), &live)["link"],
+        json!({ "to": "channels_live", "title": "Live from the wall", "summary": "Crag TV", "url": null, "source": null })
+    );
+    // A feed with no description is its author's nickname.
+    let bare = format!(
+        "<msg><appmsg><title>{PLACEHOLDER}</title><type>51</type><finderFeed><nickname>Crag TV</nickname><desc></desc></finderFeed></appmsg></msg>"
+    );
+    assert_eq!(read(app(51), &bare)["link"]["title"], "Crag TV");
+}
+
 #[test]
 fn a_quote_has_the_reply_and_the_quoted_messages_id_sender_and_excerpt() {
     let quote = r#"<msg><appmsg><title>yes, 9am</title><type>57</type><refermsg><type>1</type><svrid>7001</svrid><fromusr>1@chatroom</fromusr><chatusr>wxid_ann</chatusr><displayname>Ann</displayname><content>Saturday?</content></refermsg></appmsg></msg>"#;

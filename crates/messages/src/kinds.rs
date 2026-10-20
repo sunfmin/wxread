@@ -351,16 +351,23 @@ fn app(root: Node, sub: i64) -> Option<Parsed> {
         }
         sub => {
             let (_, to) = LINKS.into_iter().find(|(s, _)| *s == sub)?;
+            // A channels feed or live is its own description and author:
+            // the appmsg's title and des are WeChat's placeholder for
+            // clients too old to show it.
             let feed = child(a, "finderFeed").or_else(|| child(a, "finderLive"));
-            let title = text(a, "title")
-                .or_else(|| feed.and_then(|f| text(f, "desc").or_else(|| text(f, "nickname"))))?;
+            let author = feed.and_then(|f| text(f, "nickname"));
+            let title = feed
+                .and_then(|f| text(f, "desc"))
+                .or_else(|| author.clone())
+                .or_else(|| text(a, "title"))?;
+            let summary = author.or_else(|| text(a, "des"));
             let app_name = child(a, "weappinfo").and_then(|w| text(w, "appname"));
             Some(Parsed::of(
                 Kind::Link,
                 json!({
                     "to": to,
                     "title": title,
-                    "summary": text(a, "des").or_else(|| feed.and_then(|f| text(f, "nickname"))),
+                    "summary": summary,
                     "url": text(a, "url"),
                     "source": text(a, "sourcedisplayname").or(app_name),
                 }),
