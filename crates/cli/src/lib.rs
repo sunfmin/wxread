@@ -10,7 +10,10 @@ use std::process::ExitCode;
 use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
 
+pub mod account;
+pub mod chats;
 pub mod doctor;
+pub mod world;
 
 /// What this binary was built from, as `--version` says it: stamped by
 /// `build.rs`.
@@ -38,6 +41,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// List the account's chats, newest first, a page at a time
+    Chats {
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+        /// How many chats a page holds, 1 to 1000 (100 unless given)
+        #[arg(long, value_name = "N")]
+        limit: Option<String>,
+        /// Where the page starts: the `next` of the answer before
+        #[arg(long, value_name = "NEXT")]
+        cursor: Option<String>,
+    },
     /// Find WeChat's accounts and the keys supplied; change nothing, name each fix
     Doctor,
     /// Read every database key from the running WeChat
@@ -47,6 +62,7 @@ enum Command {
 /// The help file of subcommand `name`: what `wxread <name> --help` prints.
 fn help_of(name: &str) -> Option<&'static str> {
     match name {
+        "chats" => Some(include_str!("help/chats.txt")),
         "doctor" => Some(include_str!("help/doctor.txt")),
         "keys" => Some(include_str!("help/keys.txt")),
         _ => None,
@@ -90,7 +106,9 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
         }
     };
     let result = match cli.command {
-        Command::Doctor => doctor::World::from_env(cli.data_dir, cli.keys).map(|w| doctor::run(&w)),
+        Command::Chats { account, limit, cursor } => world::World::from_env(cli.data_dir, cli.keys)
+            .and_then(|w| chats::run(&w, &chats::Asked { account, limit, cursor })),
+        Command::Doctor => world::World::from_env(cli.data_dir, cli.keys).map(|w| doctor::run(&w)),
         Command::Keys => Err(anyhow::anyhow!(KEYS_NOT_READ)),
     };
     answer(result, 1)

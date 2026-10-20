@@ -26,8 +26,16 @@ Another WeChat identity the account knows: a person, a group, or an official acc
 _Avoid_: friend, buddy
 
 **Chat**:
-A conversation the account has, with one contact or in one group.
+A conversation the account has: direct, with one contact, or in one group.
 _Avoid_: session, conversation, thread
+
+**WAL**:
+The `-wal` file beside a database: what WeChat wrote last, not yet moved into the database itself, read with it.
+_Avoid_: journal, log
+
+**Cursor**:
+The `next` a list answers, passed back as `--cursor` to get the page after; it names where the page ended, so nothing is kept between runs.
+_Avoid_: token, offset, page number
 
 **Message**:
 One thing said in a chat, by the account or another contact, at one time.

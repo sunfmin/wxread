@@ -1,0 +1,17 @@
+[package]
+name = "wxread-account"
+description = "Which account a command reads, and why one of its databases cannot be opened, each with its fix: pure functions, checked by Flux (docs/adr/0002-pure-crates-checked-by-flux.md)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+wxread-doctor = { path = "../doctor" }
+wxread-keys = { path = "../keys" }
+wxread-sqlcipher = { path = "../sqlcipher" }
+
+# `cargo flux` (through ../../verify.sh) checks every refinement in this crate.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"

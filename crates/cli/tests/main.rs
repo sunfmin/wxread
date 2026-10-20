@@ -2,9 +2,11 @@
 //! its JSON and exit code.
 #![cfg(unix)]
 
+mod chats;
 mod common;
 mod doctor;
 mod errors;
 mod help;
 mod release;
+mod synthetic;
 mod version;

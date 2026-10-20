@@ -6,6 +6,7 @@ failure names its fix. `wxread --help` is the manual.
 
 ```sh
 wxread doctor              # what it found, and the fix of everything missing
+wxread --keys <file> chats # the account's chats, newest first
 wxread --help              # the guide
 ```
 
@@ -45,7 +46,9 @@ runs on rustup's `nightly-2026-09-25` and needs the checker Cargo.toml pins:
 - cargo-nextest: `cargo install cargo-nextest --locked`
 
 `./verify.sh` names the one to install when one is missing or another build.
-Terms are in [GLOSSARY.md](GLOSSARY.md), decisions in [docs/adr](docs/adr).
+Each pure crate is listed in `verify.sh`'s `PURE`: a new one is added there,
+or Flux never checks it. Terms are in [GLOSSARY.md](GLOSSARY.md), decisions
+in [docs/adr](docs/adr).
 
 ## Cutting a release
 
