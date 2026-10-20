@@ -42,3 +42,33 @@ pub const HEAD_IMAGE_DB: &str = "head_image/head_image.db";
 
 /// Each avatar WeChat holds, a JPEG or a PNG, by its contact's `username`.
 pub const HEAD_IMAGE: &str = "CREATE TABLE head_image(username TEXT PRIMARY KEY, md5 TEXT, image_buffer BLOB, update_time INTEGER)";
+
+/// The databases a chat's messages are in, under `db_storage`: those of
+/// people and groups, `message/message_<n>.db`, and of official accounts,
+/// `message/biz_message_<n>.db`, `<n>` from 0, the oldest first.
+pub const MESSAGE_DBS: [&str; 2] = ["message/message_", "message/biz_message_"];
+
+/// In each message database: the ids its messages name, a message's
+/// `real_sender_id` being its sender's rowid here.
+pub const NAME2ID: &str = "CREATE TABLE Name2Id(user_name TEXT PRIMARY KEY, is_session INTEGER)";
+
+/// In a message database: one chat's messages, the table named
+/// [`messages_table`] of the chat. `server_id` is WeChat's id of the
+/// message, `local_type` its type (an app message's subtype in the high 32
+/// bits), `sort_seq` its order among those of one second, `create_time`
+/// when it was sent, in seconds since the epoch; `message_content` is
+/// zstd-compressed when `WCDB_CT_message_content` is [`ZSTD`].
+pub fn messages(table: &str) -> String {
+    format!(
+        "CREATE TABLE {table}(local_id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER, local_type INTEGER, sort_seq INTEGER, real_sender_id INTEGER, create_time INTEGER, status INTEGER, upload_status INTEGER, download_status INTEGER, server_seq INTEGER, origin_source INTEGER, source TEXT, message_content TEXT, compress_content TEXT, packed_info_data BLOB, WCDB_CT_message_content INTEGER DEFAULT NULL, WCDB_CT_source INTEGER DEFAULT NULL)"
+    )
+}
+
+/// The table of chat `chat`'s messages: `Msg_` and the MD5 of its id, in
+/// lowercase hex.
+pub fn messages_table(chat: &str) -> String {
+    format!("Msg_{:x}", md5::compute(chat.as_bytes()))
+}
+
+/// What `WCDB_CT_message_content` is when the content is zstd-compressed.
+pub const ZSTD: i64 = 4;
