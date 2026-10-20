@@ -926,3 +926,23 @@ proptest! {
         prop_assert!(Kind::ALL.contains(&p.kind));
     }
 }
+
+#[test]
+fn a_chat_no_database_holds_is_refused_without_calling_it_an_id_chats_lists() {
+    let why = no_such_chat("wxid_nobody", "wxid_me_1a2b");
+    assert!(
+        why.contains("no messages of chat wxid_nobody") && why.contains("`wxread chats`"),
+        "{why}"
+    );
+    assert!(why.contains("`wxread chats --query wxid_nobody`"), "{why}");
+    assert!(!why.contains("an id `wxread chats` lists"), "{why}");
+}
+
+#[test]
+fn a_folder_asked_for_as_a_chat_is_refused_naming_what_reads_it() {
+    for folder in wxread_chats::Folder::ALL {
+        let why = no_such_chat(folder.id(), "wxid_me_1a2b");
+        assert_eq!(why, folder.not_a_chat());
+        assert!(why.contains(&format!("`{}`", folder.read_with())), "{why}");
+    }
+}

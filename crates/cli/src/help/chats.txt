@@ -39,10 +39,11 @@ OPTIONS
 
 WHAT IT ANSWERS
     account   the account read: its directory's name, as doctor's id
-    chats     [{id, name, kind, last_message_at, unread, members}], newest
-              first (with --with, the smallest first):
+    chats     [{id, name, kind, read_with, last_message_at, unread,
+              members}], newest first (with --with, the smallest first):
               id               its contact's id: a wxid, or a group's
-                               <n>@chatroom
+                               <n>@chatroom; a folder's id in WeChat's
+                               list (see kind)
               name             as WeChat shows the chat: the account's
                                remark for it, else its own name; a group
                                with neither is named as WeChat names it,
@@ -50,14 +51,31 @@ WHAT IT ANSWERS
                                account's left out, in the order WeChat
                                lists them, joined by "、" (e.g.
                                "孙凤君、秦俊斌"); "" when the account has
-                               no contact of it
-              kind             "direct" (with one contact) or "group"
+                               no contact of it; a folder by WeChat's
+                               name for it
+              kind             "direct" (with one contact), "group", or
+                               "folder": an entry of WeChat's list that
+                               holds others and has no messages of its
+                               own, one of
+                               @placeholder_foldgroup     "折叠的群聊",
+                                 the groups folded away, each listed
+                                 here as a group of its own
+                               brandsessionholder         "订阅号消息",
+                                 what subscription accounts sent
+                               brandservicesessionholder  "服务号",
+                                 the service accounts
+              read_with        the command that reads what it holds:
+                               "wxread messages --chat <id>" for a direct
+                               chat or a group; for a folder,
+                               "wxread chats" (the folded groups) or
+                               "wxread articles" (official accounts')
               last_message_at  when its last message was, RFC 3339 in UTC;
                                null for none
               unread           its messages not yet read
               members          how many are in it, the account included:
                                2 for a direct chat; null for a group
-                               WeChat keeps no record of the members of
+                               WeChat keeps no record of the members of,
+                               and for a folder
     next      pass it as --cursor for the next page; null on the last one
 
 TRIPS YOU UP
@@ -65,6 +83,8 @@ TRIPS YOU UP
     a new message since moves to the front, so it is not on a later page,
     and a fresh run from the newest shows it.
   - An official account (gh_...) is a "direct" chat.
+  - A folder is no chat: `wxread messages --chat <folder>` is an error
+    naming its read_with.
   - A --query is matched against each chat's text as it is; it does not
     match pinyin. A member's name finds the direct chat with them and
     every unnamed group named by them, not a group with a name of its own

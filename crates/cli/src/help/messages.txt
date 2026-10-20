@@ -144,7 +144,9 @@ TRIPS YOU UP
     fresh run from the newest shows it. Oldest first, it is on the last.
   - The chat id is exact: a group's ends in @chatroom. A chat none of the
     account's message databases holds is an error pointing at
-    `wxread chats`.
+    `wxread chats`. A folder `wxread chats` lists (kind "folder") holds no
+    messages of its own: it is an error naming the command that reads
+    what it holds, its read_with.
   - The keys must open contact/contact.db and every message database,
     and when a page holds a voice message every message/media_<n>.db. One
     missing, or one that no longer opens its database (WeChat created its
