@@ -53,8 +53,9 @@ impl Query {
 /// The text a message is searched by, as WeChat's index has it: a text's
 /// or a quote's words, a link's title and summary, a file's name, a
 /// place's name and address, a card's name, a forward's title and what it
-/// holds, a transfer's or a red packet's memo. None for the kinds WeChat
-/// does not index: media and notices.
+/// holds, a note's paragraphs and its places' and files' names, a
+/// transfer's or a red packet's memo. None for the kinds WeChat does not
+/// index: media and notices.
 pub fn searchable(parsed: &wxread_messages::kinds::Parsed) -> Option<String> {
     let field = |name: &str| parsed.fields.get(name).and_then(Value::as_str);
     let parts: Vec<&str> = match parsed.kind {
@@ -68,10 +69,24 @@ pub fn searchable(parsed: &wxread_messages::kinds::Parsed) -> Option<String> {
             let held = held.into_iter().flatten().filter_map(|m| m["content"].as_str());
             field("title").into_iter().chain(held).collect()
         }
+        Kind::Note => {
+            let items = parsed.fields.get("items").and_then(Value::as_array);
+            items.into_iter().flatten().flat_map(note_words).collect()
+        }
         _ => Vec::new(),
     };
     let parts: Vec<&str> = parts.into_iter().filter(|p| !p.trim().is_empty()).collect();
     (!parts.is_empty()).then(|| parts.join("\n"))
+}
+
+/// What a note's item is searched by: a paragraph's words, a place's name
+/// and address, a file's name.
+fn note_words(item: &Value) -> Vec<&str> {
+    let of = |kind: &str, field: &str| item[kind][field].as_str();
+    [of("text", "text"), of("location", "name"), of("location", "address"), of("file", "name")]
+        .into_iter()
+        .flatten()
+        .collect()
 }
 
 /// One message found: its chat, its row, and the text it was found in.
