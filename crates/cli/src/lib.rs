@@ -173,7 +173,7 @@ enum Command {
     },
     /// Find messages across every chat, newest first, a page at a time
     Search {
-        /// The text to find, in any case
+        /// The text to find, in any case and with or without spaces between its words
         #[arg(value_name = "TEXT")]
         text: Option<String>,
         /// The account to read, by its id, when several are logged in

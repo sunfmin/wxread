@@ -10,7 +10,7 @@
 
 use roxmltree::Node;
 use serde_json::{Map, Value, json};
-use wxread_xml::{attr, child, inner, named, text, xml};
+use wxread_xml::{attr, child, inner, named, text, untrimmed, xml};
 
 use wxread_media::Media;
 
@@ -43,13 +43,16 @@ const LINKS: [(i64, &str); 7] = [
     (63, "channels_live"),
 ];
 /// The other subtypes of an app message wxread reads: a file, a sticker, a
-/// forwarded history, a note, a quote, a nudge, a transfer and a red packet.
+/// forwarded history, a note, a 接龙, a quote, a nudge, a group's notice
+/// posted into its chat, a transfer and a red packet.
 const APP_FILE: i64 = 6;
 const APP_STICKER: i64 = 8;
 const FORWARD: i64 = 19;
 const NOTE: i64 = 24;
+const SOLITAIRE: i64 = 53;
 const QUOTE: i64 = 57;
 const NUDGE: i64 = 62;
+const GROUP_NOTICE: i64 = 87;
 const TRANSFER: i64 = 2000;
 const RED_PACKET: i64 = 2001;
 
@@ -274,6 +277,8 @@ fn app(root: Node, sub: i64) -> Option<Parsed> {
             let files = crate::note::InChat { message: 0, rec: None, held: &|_: &Media| None };
             Some(Parsed::of(Kind::Note, Value::Object(crate::note::fields(a, &files)?)))
         }
+        SOLITAIRE => solitaire(a),
+        GROUP_NOTICE => Some(group_notice(root, a)),
         NUDGE => {
             let p = child(a, "patinfo")?;
             Some(Parsed::of(
@@ -343,6 +348,105 @@ fn app(root: Node, sub: i64) -> Option<Parsed> {
             ))
         }
     }
+}
+
+/// How WeChat starts the text of every 接龙, before its title.
+const SOLITAIRE_TAG: &str = "#接龙";
+
+/// A 接龙, the `<appmsg>` `a`: what it shows is its `<title>`, and its
+/// `<solitaire_info>`, an XML document of its own, says where in that text
+/// its title, its example and each entry are, and who added each and
+/// when, each person by id, their `display_name` null here: who they are
+/// shown as is the chat's to say ([`crate::message`]). Unknown when it has
+/// no list of entries.
+fn solitaire(a: Node) -> Option<Parsed> {
+    let shown = child(a, "title").map(untrimmed).unwrap_or_default();
+    let units: Vec<u16> = shown.encode_utf16().collect();
+    xml(&text(a, "extinfo/solitaire_info")?, |s| {
+        let mut entries = Vec::new();
+        for (at, i) in named(child(s, "content")?, "i").into_iter().enumerate() {
+            entries.push(json!({
+                "number": at.checked_add(1)?,
+                "member": person(text(i, "u")),
+                "text": text(i, "r").and_then(|r| spanned(&units, &r)),
+                "at": text(i, "t").and_then(|t| t.parse::<i64>().ok()).and_then(wxread_answer::rfc3339),
+            }));
+        }
+        let title = text(s, "tt").and_then(|r| spanned(&units, &r)).and_then(|t| {
+            let t = t.trim();
+            Some(t.strip_prefix(SOLITAIRE_TAG).unwrap_or(t).trim().to_string())
+                .filter(|t| !t.is_empty())
+        });
+        Some(Parsed::of(
+            Kind::Solitaire,
+            json!({
+                "id": text(s, "sid"),
+                "title": title,
+                "example": text(s, "ex").and_then(|r| spanned(&units, &r)),
+                "starter": person(text(s, "au")),
+                "entries": entries,
+                "text": shown.trim(),
+            }),
+        ))
+    })
+}
+
+/// Someone a message names by `id`, as the answer has a person: `{id,
+/// display_name}`; null when it names none.
+fn person(id: Option<String>) -> Value {
+    json!(id.map(|id| json!({ "id": id, "display_name": null })))
+}
+
+/// The part of a text, `units` its UTF-16 code units, that `range` names
+/// as WeChat counts it, `<start>-<length>` in those units (`19-4`): None
+/// when it names none, or past the text's end.
+pub fn spanned(units: &[u16], range: &str) -> Option<String> {
+    let (start, length) = range.trim().split_once('-')?;
+    let start: usize = start.parse().ok()?;
+    let end = start.checked_add(length.parse().ok()?)?;
+    let part = String::from_utf16(units.get(start..end)?).ok()?;
+    Some(part).filter(|p| !p.is_empty())
+}
+
+/// A group's notice posted into its chat, `root` the message and `a` its
+/// `<appmsg>`: its text as `<textannouncement>` holds it, else its items'
+/// text; who posted it and when, as the `<group_notice_item>` its
+/// `<announcement>` holds says, else who the message says sent it and no
+/// time. Its poster's `display_name` is null here: who they are shown as
+/// is the chat's to say ([`crate::message`]).
+fn group_notice(root: Node, a: Node) -> Parsed {
+    struct Item {
+        text: Option<String>,
+        by: Option<String>,
+        at: Option<i64>,
+    }
+    let item = text(a, "announcement").and_then(|announced| {
+        xml(&announced, |n| {
+            let mut said: Vec<String> = Vec::new();
+            for i in child(n, "datalist").map(|list| named(list, "dataitem")).unwrap_or_default() {
+                if attr(i, "datatype").as_deref() == Some("1")
+                    && let Some(desc) = text(i, "datadesc")
+                {
+                    said.push(desc);
+                }
+            }
+            Some(Item {
+                text: (!said.is_empty()).then(|| said.join("\n")),
+                by: text(n, "source/fromusr"),
+                at: text(n, "edittime").and_then(|t| t.parse().ok()),
+            })
+        })
+    });
+    let item = item.unwrap_or(Item { text: None, by: None, at: None });
+    let by = item.by.or_else(|| text(root, "fromusername"));
+    Parsed::of(
+        Kind::GroupNotice,
+        json!({
+            "text": text(a, "textannouncement").or(item.text).unwrap_or_default(),
+            "by": by.map(|id| json!({ "id": id, "display_name": null })),
+            "at": item.at.and_then(wxread_answer::rfc3339),
+        }),
+    )
 }
 
 /// An amount as WeChat shows it (`￥0.01`), in fen: None when it shows

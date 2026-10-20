@@ -104,6 +104,19 @@ THE KINDS AND THEIR FIELDS
               file_id and file_present null: where WeChat keeps it is not
               known. sender, sender_name and at are null: a note keeps
               none
+  solitaire   {id, title, example, starter: {id, display_name},
+              entries: [{number, member: {id, display_name}, text, at}],
+              text}: a 接龙 (a sign-up list in a group), as this
+              message shows it, each who adds or changes an entry
+              sending it again; id WeChat's solitaire id, the same in
+              every message of one 接龙, so the newest of them is its
+              list now (null when WeChat's record holds none, as some
+              do); title what it is for, without WeChat's "#接龙";
+              example the line it gives entries to follow; starter who
+              started it; entries in order: number its place (1 first),
+              member who added it, text what it says, at when it was
+              added (RFC 3339, UTC); each person by id and shown as the
+              sender is; text all it shows, as WeChat shows it
   recall      {text, recalled}: a message its sender recalled, which
               WeChat rewrites into this notice in its place; its sender
               is who recalled it: the account for its own, else the
@@ -126,6 +139,11 @@ THE KINDS AND THEIR FIELDS
               these (answered on another device); seconds how long a
               connected one lasted (通话时长 01:04:50 is 3890), null for
               the rest; text what WeChat shows of it
+  group_notice
+              {text, by: {id, display_name}, at}: the group's notice
+              (群公告) posted into its chat: its text; who posted it, by
+              id and shown as the sender is; when it was posted (RFC 3339,
+              UTC). `wxread group <id>` answers the notice it has now
   image       {name, md5, file_present, thumbnail_present}: name finds
               its file, msg/attach/<md5 of the chat id>/<YYYY-MM>/Img/
               <name>.dat under the account's directory, sealed
@@ -155,7 +173,9 @@ TRIPS YOU UP
     fresh run from the newest shows it. Oldest first, it is on the last.
   - The chat id is exact: a group's ends in @chatroom. A chat none of the
     account's message databases holds is an error pointing at
-    `wxread chats`.
+    `wxread chats`. A folder `wxread chats` lists (kind "folder") holds no
+    messages of its own: it is an error naming the command that reads
+    what it holds, its read_with.
   - The keys must open contact/contact.db and every message database,
     and when a page holds a voice message every message/media_<n>.db. One
     missing, or one that no longer opens its database (WeChat created its

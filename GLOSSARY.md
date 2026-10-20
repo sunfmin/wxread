@@ -34,7 +34,7 @@ A person in a group, whether or not the account has them as a contact, with the 
 _Avoid_: participant, user
 
 **Notice**:
-What a group pins for its members (群公告): its text, who posted it and when.
+What a group pins for its members (群公告): its text, who posted it and when. Posted into the group's chat, it is a message of the kind `group_notice`.
 _Avoid_: announcement, bulletin
 
 **Remark**:
@@ -61,6 +61,10 @@ _Avoid_: post, feed, timeline item, SNS
 A conversation the account has: direct, with one contact, or in one group.
 _Avoid_: session, conversation, thread
 
+**Folder**:
+An entry of WeChat's chat list that holds others and has no messages of its own: the groups folded away (折叠的群聊, `@placeholder_foldgroup`), what subscription accounts sent (订阅号消息, `brandsessionholder`), the service accounts (服务号, `brandservicesessionholder`); `wxread chats` lists each as kind `folder`, by WeChat's name, with the command that reads what it holds.
+_Avoid_: placeholder, holder, group folder
+
 **WAL**:
 The `-wal` file beside a database: what WeChat wrote last, not yet moved into the database itself, read with it.
 _Avoid_: journal, log
@@ -76,6 +80,14 @@ _Avoid_: msg, record, entry
 **Kind**:
 What a message is (text, image, voice, file, link, and so on), whatever number WeChat stores it under.
 _Avoid_: type, msg type
+
+**Solitaire**:
+A 接龙: a list a group's members add themselves to under its title, each message of it the whole list as it then stood, the kind `solitaire`; WeChat's solitaire id names one, across its messages.
+_Avoid_: chain, sign-up, poll, relay
+
+**Entry**:
+One line of a solitaire: its number in the list, the member who added it, what it says and when.
+_Avoid_: item, row, signup
 
 **Call**:
 A voice or video call in a chat, as the bubble WeChat leaves of it: whether it connected and for how long, or was cancelled, declined or missed.

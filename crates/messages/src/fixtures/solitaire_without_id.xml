@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<msg>
+	<appmsg>
+		<title>#接龙
+明早9点多龙井见
+
+1. 🐝Ann
+2. Bob 屁股</title>
+		<findernamecard>
+			<lastGMsgID />
+			<content_type>0</content_type>
+			<auth_icon_url />
+			<auth_icon>0</auth_icon>
+			<nickname />
+			<avatar />
+			<auth_job />
+			<ecSource />
+			<username />
+		</findernamecard>
+		<extinfo>
+			<solitaire_info>&lt;solitaire&gt;&lt;content&gt;&lt;i&gt;&lt;t&gt;1791868904&lt;/t&gt;&lt;s&gt;.&lt;/s&gt;&lt;r&gt;17-5&lt;/r&gt;&lt;u&gt;wxid_ann&lt;/u&gt;&lt;/i&gt;&lt;i&gt;&lt;t&gt;1791868973&lt;/t&gt;&lt;s&gt;.&lt;/s&gt;&lt;r&gt;26-6&lt;/r&gt;&lt;u&gt;wxid_bob&lt;/u&gt;&lt;/i&gt;&lt;s&gt;2&lt;/s&gt;&lt;/content&gt;&lt;au&gt;wxid_ann&lt;/au&gt;&lt;s&gt;.&lt;/s&gt;&lt;hrt&gt;1&lt;/hrt&gt;&lt;tt&gt;0-12&lt;/tt&gt;&lt;/solitaire&gt;</solitaire_info>
+		</extinfo>
+		<patMsg>
+			<records>
+				<recordNum>0</recordNum>
+			</records>
+		</patMsg>
+		<type>53</type>
+		<appattach />
+	</appmsg>
+	<fromusername>wxid_bob</fromusername>
+	<scene>0</scene>
+	<appinfo>
+		<version>1</version>
+		<appname></appname>
+	</appinfo>
+	<commenturl></commenturl>
+</msg>

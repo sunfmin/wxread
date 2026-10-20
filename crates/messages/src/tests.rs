@@ -317,6 +317,159 @@ fn a_nudge_has_who_nudged_whom() {
     );
 }
 
+/// 接龙 as WeChat for Mac wrote them, taken from an account's records with
+/// the people and their words made up and the ranges counted again: a
+/// 接龙's seventh entry, and its first message, its solitaire info kept as
+/// CDATA; one kept escaped, with an example line; and one written by
+/// another client, its parts in another order and with no solitaire id.
+const SOLITAIRE: &str = include_str!("fixtures/solitaire.xml");
+const SOLITAIRE_STARTED: &str = include_str!("fixtures/solitaire_started.xml");
+const SOLITAIRE_ESCAPED: &str = include_str!("fixtures/solitaire_escaped_with_example.xml");
+const SOLITAIRE_WITHOUT_ID: &str = include_str!("fixtures/solitaire_without_id.xml");
+
+/// Someone a 接龙 names, as the answer has them before the chat names them.
+fn person(id: &str) -> Value {
+    json!({ "id": id, "display_name": null })
+}
+
+/// An entry of a 接龙 as the answer has it before its member is named.
+fn entry(number: usize, member: &str, text: &str, at: &str) -> Value {
+    json!({ "number": number, "member": person(member), "text": text, "at": at })
+}
+
+#[test]
+fn a_solitaire_has_its_title_and_its_entries_in_order() {
+    let shown = "#接龙\n周四10:30莫干山\n\n1. 🐝Ann\n2. Bob\n3. 🐯Cat  Dan去才去\n4. Eve 你去我就去\n5. 🐔Fay +2\n6. Gus 再带一个就去\n7. Hal 🌺 在杭州就来";
+    assert_eq!(
+        read(app(53), SOLITAIRE),
+        json!({ "kind": "solitaire", "solitaire": {
+            "id": "1792387959382_6313",
+            "title": "周四10:30莫干山",
+            "example": null,
+            "starter": person("wxid_ann"),
+            "entries": [
+                entry(1, "wxid_ann", "🐝Ann", "2026-10-19T05:32:29Z"),
+                entry(2, "wxid_bob", "Bob", "2026-10-19T06:00:10Z"),
+                entry(3, "wxid_cat", "🐯Cat  Dan去才去", "2026-10-19T06:04:00Z"),
+                entry(4, "wxid_dan", "Eve 你去我就去", "2026-10-19T06:10:08Z"),
+                entry(5, "wxid_eve", "🐔Fay +2", "2026-10-19T06:10:19Z"),
+                entry(6, "wxid_fay", "Gus 再带一个就去", "2026-10-19T06:23:54Z"),
+                entry(7, "wxid_gus", "Hal 🌺 在杭州就来", "2026-10-19T06:32:56Z"),
+            ],
+            "text": shown,
+        } })
+    );
+    // The subtype from <type> when local_type has none.
+    assert_eq!(read(APP, SOLITAIRE)["kind"], "solitaire");
+}
+
+#[test]
+fn each_message_of_one_solitaire_has_its_id() {
+    let started = read(app(53), SOLITAIRE_STARTED);
+    let later = read(app(53), SOLITAIRE);
+    assert_eq!(started["solitaire"]["id"], later["solitaire"]["id"]);
+    assert_eq!(
+        started["solitaire"]["entries"],
+        json!([entry(1, "wxid_ann", "🐝Ann", "2026-10-19T05:32:29Z")])
+    );
+    // A record that holds no id has none, and is read all the same.
+    let without = read(app(53), SOLITAIRE_WITHOUT_ID);
+    assert_eq!(
+        without["solitaire"],
+        json!({
+            "id": null,
+            "title": "明早9点多龙井见",
+            "example": null,
+            "starter": person("wxid_ann"),
+            "entries": [
+                entry(1, "wxid_ann", "🐝Ann", "2026-10-13T05:21:44Z"),
+                entry(2, "wxid_bob", "Bob 屁股", "2026-10-13T05:22:53Z"),
+            ],
+            "text": "#接龙\n明早9点多龙井见\n\n1. 🐝Ann\n2. Bob 屁股",
+        })
+    );
+}
+
+#[test]
+fn a_solitaire_kept_escaped_reads_with_its_example() {
+    let s = &read(app(53), SOLITAIRE_ESCAPED)["solitaire"];
+    assert_eq!(
+        s["title"],
+        "9.12 14:00-17:00 新手专场的自由对弈(Casual game)\n\nAfterglowCoffee(拱墅区42号-6);"
+    );
+    assert_eq!(s["example"], "例 名字+分数");
+    assert_eq!(s["id"], Value::Null);
+    assert_eq!(
+        s["entries"],
+        json!([
+            entry(1, "wxid_ann", "Ann", "2026-09-10T08:00:03Z"),
+            entry(2, "wxid_bob", "____ （折后 ELO 600）", "2026-09-10T08:02:22Z"),
+            entry(3, "wxid_cat", "Cat-（很久没下棋了 elo没概念了）", "2026-09-10T10:27:04Z"),
+            entry(4, "wxid_dan", "Dan （国象联盟1000）", "2026-09-12T00:03:14Z"),
+        ])
+    );
+}
+
+#[test]
+fn an_entry_whose_range_is_not_in_the_title_has_no_text() {
+    let s = |info: &str| {
+        let xml = format!(
+            "<msg><appmsg><title>#接龙\nT\n\n1. a</title><type>53</type><extinfo><solitaire_info><![CDATA[<solitaire>{info}</solitaire>]]></solitaire_info></extinfo></appmsg></msg>"
+        );
+        read(app(53), &xml)
+    };
+    let one = |r: &str| {
+        s(&format!("<tt>0-5</tt><content><i><u>wxid_ann</u><t>x</t><r>{r}</r></i></content>"))
+    };
+    assert_eq!(one("10-1")["solitaire"]["entries"][0]["text"], "a");
+    for r in ["10-2", "99-1", "a-1", "10", "18446744073709551615-2", ""] {
+        assert_eq!(
+            one(r)["solitaire"]["entries"],
+            json!([{ "number": 1, "member": person("wxid_ann"), "text": null, "at": null }]),
+            "{r}"
+        );
+    }
+    // A title that is not WeChat's tag alone; no title at all.
+    assert_eq!(one("10-1")["solitaire"]["title"], "T");
+    assert_eq!(s("<content></content>")["solitaire"]["title"], Value::Null);
+    assert_eq!(s("<content></content>")["solitaire"]["entries"], json!([]));
+    // Solitaire info with no entries list at all is not one.
+    assert_eq!(s("<tt>0-5</tt>")["kind"], "unknown");
+}
+
+#[test]
+fn a_solitaires_starter_and_members_are_named_as_wechat_shows_them() {
+    let mut names = Names::default();
+    names.contacts.insert(
+        "wxid_ann".into(),
+        Contact { remark: Some("Annie".into()), nick_name: Some("Ann".into()) },
+    );
+    names
+        .contacts
+        .insert("wxid_bob".into(), Contact { remark: None, nick_name: Some("Bob".into()) });
+    names.in_group.insert("wxid_bob".into(), "Bobby".into());
+    let mut r = row("message_0", 1, 1_792_391_576, 0);
+    r.local_type = app(53);
+    r.sender = Some("wxid_bob".into());
+    r.content = format!("wxid_bob:\n{SOLITAIRE_WITHOUT_ID}").into_bytes();
+    let m = message(&chat("1@chatroom"), &names, &r, &none);
+    let s = &m["solitaire"];
+    assert_eq!(s["starter"], json!({ "id": "wxid_ann", "display_name": "Annie" }));
+    let members: Vec<Value> =
+        s["entries"].as_array().unwrap().iter().map(|e| e["member"].clone()).collect();
+    assert_eq!(
+        members,
+        vec![
+            json!({ "id": "wxid_ann", "display_name": "Annie" }),
+            json!({ "id": "wxid_bob", "display_name": "Bobby" }),
+        ]
+    );
+    // One nothing names is shown by no name.
+    let m = message(&chat("1@chatroom"), &Names::default(), &r, &none);
+    assert_eq!(m["solitaire"]["entries"][0]["member"], person("wxid_ann"));
+    assert_eq!(m["solitaire"]["starter"], person("wxid_ann"));
+}
+
 /// A template notice `template`, its `links`.
 pub fn notice(template: &str, links: &str) -> String {
     format!(
@@ -497,6 +650,97 @@ fn a_calls_duration_is_read_as_wechat_shows_it() {
     ] {
         assert_eq!(call_seconds(shown), seconds, "{shown}");
     }
+}
+
+/// A group's notice posted into its chat, as WeChat for Mac 4.x kept a
+/// real one (type 49, subtype 87): its ids, keys, digests and place
+/// replaced, the rest as it was.
+const GROUP_NOTICE: &str = include_str!("../fixtures/group_notice.xml");
+
+/// The text of [`GROUP_NOTICE`], as its `<textannouncement>` holds it.
+fn group_notice_text() -> String {
+    let (_, after) = GROUP_NOTICE.split_once("<textannouncement><![CDATA[").unwrap();
+    after.split_once("]]>").unwrap().0.to_string()
+}
+
+#[test]
+fn a_group_notice_has_its_text_its_poster_and_its_time() {
+    let text = group_notice_text();
+    assert!(text.starts_with("🍃【枫林苑・秋日便民活动通知】🍃\n秋意渐浓"), "{text}");
+    assert_eq!(
+        read(app(87), GROUP_NOTICE),
+        json!({ "kind": "group_notice", "group_notice": {
+            "text": text,
+            "by": { "id": "wxid_steward", "display_name": null },
+            "at": "2026-10-16T06:55:31Z",
+        } })
+    );
+    // Its subtype read from its XML, as WeChat stores some.
+    assert_eq!(read(APP, GROUP_NOTICE)["kind"], "group_notice");
+}
+
+#[test]
+fn a_group_notice_without_its_text_or_its_poster_reads_what_it_holds() {
+    // Another shape WeChat writes: no type, its source after its items,
+    // and no <textannouncement>: its text is its items' text.
+    let item = r#"<group_notice_item><datalist count="3"><dataitem datatype="8" htmlid="WeNoteHtmlFile"><datafmt>.htm</datafmt></dataitem><dataitem datatype="1" htmlid="-1"><datadesc>Ride at 9.</datadesc></dataitem><dataitem datatype="1" htmlid="-1"><datadesc>Bring water.</datadesc></dataitem></datalist><source><tousr>1@chatroom</tousr><fromusr>wxid_ann</fromusr></source><edittime>1792221368</edittime></group_notice_item>"#;
+    let notice = format!(
+        "<msg><appmsg><type>87</type><announcement><![CDATA[{item}]]></announcement></appmsg><fromusername><![CDATA[wxid_bob]]></fromusername></msg>"
+    );
+    assert_eq!(
+        read(app(87), &notice)["group_notice"],
+        json!({ "text": "Ride at 9.\nBring water.", "by": { "id": "wxid_ann", "display_name": null }, "at": "2026-10-17T07:16:08Z" })
+    );
+    // An announcement that does not read: its text alone, posted by who
+    // the message says sent it, at no time it says.
+    let bare = "<msg><appmsg><type>87</type><announcement><![CDATA[<group_notice_item>]]></announcement><textannouncement><![CDATA[Ride at 9.]]></textannouncement></appmsg><fromusername>wxid_bob</fromusername></msg>";
+    assert_eq!(
+        read(app(87), bare)["group_notice"],
+        json!({ "text": "Ride at 9.", "by": { "id": "wxid_bob", "display_name": null }, "at": null })
+    );
+    // One that says nothing is still a notice, its text empty.
+    assert_eq!(
+        read(app(87), "<msg><appmsg><type>87</type></appmsg></msg>")["group_notice"],
+        json!({ "text": "", "by": null, "at": null })
+    );
+}
+
+#[test]
+fn a_group_notices_poster_is_shown_as_wechat_shows_them() {
+    let mut names = Names::default();
+    names
+        .contacts
+        .insert("wxid_steward".into(), Contact { remark: None, nick_name: Some("Steward".into()) });
+    names.in_group.insert("wxid_steward".into(), "物业管家".into());
+    let mut r = row("message_0", 1, 1_792_133_732, 0);
+    r.local_type = app(87);
+    r.sender = Some("wxid_steward".into());
+    r.content = format!("wxid_steward:\n{GROUP_NOTICE}").into_bytes();
+    let m = message(&chat("12345678901@chatroom"), &names, &r, &none);
+    assert_eq!(
+        (&m["kind"], &m["sender"], &m["sender_name"]),
+        (&json!("group_notice"), &json!("wxid_steward"), &json!("物业管家"))
+    );
+    assert_eq!(
+        m["group_notice"],
+        json!({
+            "text": group_notice_text(),
+            "by": { "id": "wxid_steward", "display_name": "物业管家" },
+            "at": "2026-10-16T06:55:31Z",
+        })
+    );
+    // One whose XML names no poster or time is its sender's, when it was
+    // sent.
+    r.content = b"wxid_steward:\n<msg><appmsg><type>87</type></appmsg></msg>".to_vec();
+    let m = message(&chat("12345678901@chatroom"), &names, &r, &none);
+    assert_eq!(
+        m["group_notice"],
+        json!({
+            "text": "",
+            "by": { "id": "wxid_steward", "display_name": "物业管家" },
+            "at": "2026-10-16T06:55:32Z",
+        })
+    );
 }
 
 #[test]
@@ -970,4 +1214,23 @@ fn a_notes_item_is_found_by_its_file_id() {
     assert_eq!(note::item(&chat, &note_row(), "nope"), Ok(None));
     // A message that is not a note holds no item.
     assert_eq!(note::item(&chat, &row("message_0", 1, 1, 0), "a"), Ok(None));
+}
+#[test]
+fn a_chat_no_database_holds_is_refused_without_calling_it_an_id_chats_lists() {
+    let why = no_such_chat("wxid_nobody", "wxid_me_1a2b");
+    assert!(
+        why.contains("no messages of chat wxid_nobody") && why.contains("`wxread chats`"),
+        "{why}"
+    );
+    assert!(why.contains("`wxread chats --query wxid_nobody`"), "{why}");
+    assert!(!why.contains("an id `wxread chats` lists"), "{why}");
+}
+
+#[test]
+fn a_folder_asked_for_as_a_chat_is_refused_naming_what_reads_it() {
+    for folder in wxread_chats::Folder::ALL {
+        let why = no_such_chat(folder.id(), "wxid_me_1a2b");
+        assert_eq!(why, folder.not_a_chat());
+        assert!(why.contains(&format!("`{}`", folder.read_with())), "{why}");
+    }
 }

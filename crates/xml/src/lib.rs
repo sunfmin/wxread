@@ -106,13 +106,18 @@ pub fn text(node: Node, path: &str) -> Option<String> {
 
 /// The text a node holds, trimmed, CDATA or not: None when empty.
 pub fn inner(node: Node) -> Option<String> {
+    Some(untrimmed(node).trim().to_string()).filter(|t| !t.is_empty())
+}
+
+/// The text a node holds, CDATA or not, as it holds it.
+pub fn untrimmed(node: Node) -> String {
     let mut t = String::new();
     for n in node.children() {
         if let Some(text) = n.text().filter(|_| n.is_text()) {
             t.push_str(text);
         }
     }
-    Some(t.trim().to_string()).filter(|t| !t.is_empty())
+    t
 }
 
 /// Attribute `name` of `node`, trimmed: None when it is absent or empty.
