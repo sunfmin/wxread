@@ -89,6 +89,10 @@ _Avoid_: FTS, search index, fts db
 A file a message carries rather than holds: an image, a video, a voice message, a file.
 _Avoid_: attachment, resource
 
+**Moment**:
+One post the account's contacts or the account shared to their Moments (朋友圈), with its text, its media, likes and comments, as WeChat has cached it in `sns/sns.db`; WeChat caches its media under `cache/<YYYY-MM>/Sns`.
+_Avoid_: feed, timeline item, SNS
+
 **Re-signing**:
 Signing the WeChat app again, ad-hoc, with its entitlements and `get-task-allow` added, so root may read the running WeChat's memory; what `wxread resign --yes` does, undone by reinstalling WeChat.
 _Avoid_: patching, cracking, unsigning

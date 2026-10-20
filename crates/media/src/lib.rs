@@ -18,7 +18,7 @@
 //! - a sticker: on WeChat's CDN, at its address, checked against its MD5;
 //! - a Moment's image: `cache/<YYYY-MM>/Sns/Img/<k[..2]>/<k[2..]>`, no
 //!   extension, sealed ([`image`]), `k` the MD5 in lowercase hex of
-//!   `<post id>_<media id>_2` (`_1` its thumbnail, `_6` a 240-pixel copy),
+//!   `<post id>_<media id>_2` (`_1` its thumbnail, `_6` a smaller copy),
 //!   the ids as `sns/sns.db`'s XML says them (the post's `<id>`, which is
 //!   the row's `tid` read unsigned; the media's `<id>`) and the month the
 //!   one it was posted in; a Moment's video is
