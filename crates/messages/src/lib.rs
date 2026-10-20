@@ -151,7 +151,8 @@ impl Range {
         }
     }
 
-    fn holds(&self, at: i64) -> bool {
+    /// Whether `at` is within it.
+    pub fn holds(&self, at: i64) -> bool {
         self.from.is_none_or(|f| at >= f) && self.to.is_none_or(|t| at < t)
     }
 }
@@ -287,14 +288,12 @@ pub fn message(
     row: &Row,
     held: &impl Fn(&Media, &Row) -> Held,
 ) -> Value {
-    let (sender, content) = said(chat, row);
-    let mut parsed = kinds::parse(&chat.account, row.local_type, &content, &row.packed);
+    let Read { sender, content, mut parsed } = read(chat, row);
     if let Some(found) = media::locate(parsed.kind, &parsed.fields) {
         let h = held(&found, row);
         parsed.fields.insert("file_present".into(), json!(h.file));
         parsed.fields.insert("thumbnail_present".into(), json!(h.thumbnail));
     }
-    let sender = parsed.sender.or(sender);
     let (t, sub) = kinds::split(row.local_type);
     let mut out = Map::new();
     out.insert("id".into(), json!((row.server_id != 0).then(|| row.server_id.to_string())));
@@ -309,11 +308,27 @@ pub fn message(
     Value::Object(out)
 }
 
+/// A row of a chat, read: who said it, its content as the answer has it,
+/// and its kind.
+pub struct Read {
+    pub sender: Option<String>,
+    pub content: String,
+    pub parsed: kinds::Parsed,
+}
+
+/// `row` of `chat`, read: its sender, its content decompressed and without
+/// a group's `<sender>:\n`, and its kind with that kind's fields.
+pub fn read(chat: &Chat, row: &Row) -> Read {
+    let (sender, content) = said(chat, row);
+    let mut parsed = kinds::parse(&chat.account, row.local_type, &content, &row.packed);
+    let sender = parsed.sender.take().or(sender);
+    Read { sender, content, parsed }
+}
+
 /// What finds the file of `row`, a message of `chat`; or, for one that
 /// carries none, its kind.
 pub fn media_of(chat: &Chat, row: &Row) -> Result<Media, Kind> {
-    let (_, content) = said(chat, row);
-    let parsed = kinds::parse(&chat.account, row.local_type, &content, &row.packed);
+    let parsed = read(chat, row).parsed;
     media::locate(parsed.kind, &parsed.fields).ok_or(parsed.kind)
 }
 

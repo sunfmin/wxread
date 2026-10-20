@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/keys", "crates/sqlcipher", "crates/crack", "crates/schema", "crates/answer", "crates/contacts", "crates/chats", "crates/media", "crates/messages", "crates/articles", "crates/moments", "crates/silk", "crates/voice", "crates/doctor", "crates/account", "crates/cli"]
+members = ["crates/keys", "crates/sqlcipher", "crates/crack", "crates/resign", "crates/schema", "crates/answer", "crates/contacts", "crates/chats", "crates/media", "crates/messages", "crates/articles", "crates/moments", "crates/search", "crates/silk", "crates/voice", "crates/doctor", "crates/account", "crates/cli"]
 
 [workspace.package]
 version = "0.1.0"

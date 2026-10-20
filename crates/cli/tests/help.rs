@@ -61,7 +61,7 @@ fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
     let existing = existing();
     let names = [
         "articles", "avatar", "chats", "contact", "contacts", "doctor", "file", "group", "keys",
-        "messages", "moments", "voice",
+        "messages", "moments", "resign", "search", "voice",
     ];
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
@@ -356,5 +356,73 @@ fn moments_answers_exactly_the_keys_its_help_and_the_guide_name() {
         };
         let keys: BTreeSet<String> = object.as_object().unwrap().keys().cloned().collect();
         assert!(listed.contains(&keys), "{part}: {keys:?} listed in the help");
+    }
+}
+
+#[test]
+fn search_answers_exactly_the_keys_its_help_and_the_guide_name() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.messages = vec![Said::text("wxid_amy", 1, 1_760_000_000, "wxid_amy", "hi")];
+    account.write();
+    let json = world.run(&["search", "hi"], &[("WXREAD_KEYS", &account.all_keys())]).ok();
+    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(answered("search"), keys);
+    assert_eq!(guide_row("search"), keys);
+    let help = asked(&["search", "--help"]);
+    let messages = asked(&["messages", "--help"]);
+    let fields: BTreeSet<String> =
+        json["messages"][0].as_object().unwrap().keys().cloned().collect();
+    // Its own fields have their line; the rest are a message's, as
+    // `wxread messages --help` says them.
+    for field in fields.iter().filter(|f| *f != "text") {
+        let own = help.contains(&format!("              {field} "));
+        let listed = help.contains(&format!("{field},"))
+            && messages.contains(&format!("              {field} "));
+        assert!(own || listed, "search --help says what {field} is");
+    }
+    // Each kind it names, it names by its name.
+    let kinds: BTreeSet<String> =
+        wxread_messages::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
+    let searched = between(&help, "WHAT A MESSAGE IS SEARCHED BY", "TRIPS YOU UP");
+    let a_kinds_line = |l: &&&str| {
+        l.len() - l.trim_start().len() == 2
+            && l.trim_start().starts_with(|c: char| c.is_ascii_lowercase())
+    };
+    for line in searched.iter().filter(a_kinds_line) {
+        let named = line.split("  ").find(|s| !s.is_empty()).unwrap();
+        for kind in named.split(", ").map(str::trim).filter(|k| !k.is_empty()) {
+            if kind.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') {
+                assert!(kinds.contains(kind), "{kind} is a kind");
+            }
+        }
+    }
+}
+
+#[test]
+fn resign_answers_exactly_the_keys_its_help_and_the_guide_name() {
+    // The object the command prints is the pure crate's answer;
+    // tests/resign.rs runs the command itself against a signed app.
+    let merge = wxread_resign::merge("W.app", "").unwrap();
+    let json = wxread_resign::answer("W.app", false, &merge, false);
+    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(answered("resign"), keys);
+    assert_eq!(guide_row("resign"), keys);
+}
+
+#[test]
+fn keys_help_points_at_resign_when_macos_refuses() {
+    let help = asked(&["keys", "--help"]);
+    let section = between(&help, "IF MACOS REFUSES TO READ WECHAT", "TRIPS YOU UP").join("\n");
+    assert!(section.contains("`wxread resign`") && section.contains("`wxread resign --yes`"));
+    let resign = asked(&["resign", "--help"]);
+    for needle in [
+        "WHEN TO RUN IT",
+        "WHAT IT READS AND WRITES",
+        "UNDOING IT",
+        "Full Disk Access",
+        "quit WeChat",
+    ] {
+        assert!(resign.contains(needle), "resign --help says {needle}");
     }
 }

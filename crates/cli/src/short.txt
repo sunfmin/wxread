@@ -13,12 +13,12 @@ Commands:
   keys      read every database key from the running WeChat (sudo)
   messages  a chat's messages, each as its kind, a page at a time
   moments   the Moments WeChat loaded: text, media, likes, comments
+  resign    re-sign WeChat so keys can read it; changes it only with --yes
+  search    find messages across every chat, newest first
   voice     a voice message written as a file that plays; WeChat's 转文字
-
 Options:
   --data-dir <dir>   WeChat's xwechat_files (or WXREAD_DATA_DIR)
   --keys <file>      the keys of the account's databases (or WXREAD_KEYS)
   -h, --help         this screen; --help the guide: what wxread needs, answers
   --version          the version
-
-`wxread <command> --help` says what a command reads and answers.
+  <command> --help   what a command reads and answers

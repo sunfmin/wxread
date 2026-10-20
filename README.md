@@ -12,6 +12,7 @@ wxread --keys <file> contacts --query amy   # find a contact, and its id
 wxread --keys <file> group <n>@chatroom     # a group's notice and members
 wxread --keys <file> messages --chat <id>   # a chat's messages, each as its kind
 wxread --keys <file> moments --contact <id> # the Moments WeChat loaded, with likes and comments
+wxread --keys <file> search crag            # messages across every chat that hold a text
 wxread --keys <file> file get <id> --out <path>  # a message's or a Moment's file, as it is
 wxread --keys <file> avatar <id> --out <path>    # a contact's avatar
 wxread --keys <file> voice <id> --chat <id> --out v.wav
@@ -27,7 +28,7 @@ brew install sunfmin/tap/wxread
 
 `wxread --version` prints the release you have. The keys of WeChat's
 databases are the one thing the installer cannot get: `wxread keys --help`
-says how.
+says how, and when macOS refuses, `wxread resign --help` says how to let it.
 
 **For an AI agent**: a skill that sends an agent to `wxread --help` installs
 with:

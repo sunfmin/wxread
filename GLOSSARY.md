@@ -85,10 +85,17 @@ _Avoid_: author, from, user
 A message WeChat itself writes into a chat: a recall, a join or leave, a rename, and the like.
 _Avoid_: system message, event
 
+**Full-text index**:
+WeChat's own index of the chats' messages (`message/message_fts.db`): for each message it has indexed, the text WeChat searches it by; the newest messages are not in it yet.
+_Avoid_: FTS, search index, fts db
+
 **Media**:
 A file a message or a Moment carries rather than holds: an image, a video, a voice message, a file; one of them a medium.
 _Avoid_: attachment, resource
 
+**Re-signing**:
+Signing the WeChat app again, ad-hoc, with its entitlements and `get-task-allow` added, so root may read the running WeChat's memory; what `wxread resign --yes` does, undone by reinstalling WeChat.
+_Avoid_: patching, cracking, unsigning
 **Transcription**:
 The text WeChat heard in a voice message, made only when the account chose to convert it to text in WeChat (转文字); wxread never transcribes.
 _Avoid_: transcript, speech-to-text, caption
