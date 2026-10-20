@@ -16,6 +16,13 @@
 //! - a voice message: its SILK bytes in `message/media_<n>.db`'s
 //!   `VoiceInfo`, by the message's server id;
 //! - a sticker: on WeChat's CDN, at its address, checked against its MD5;
+//! - an item of a note sent into a chat: under the note's own directory,
+//!   `msg/attach/<md5 of the chat>/<YYYY-MM>/Rec/<dir>`, `<dir>` in the
+//!   message's `packed_info_data` (field 9, its field 1), by its place in
+//!   the note: an image `Img/<place>` (sealed), its thumbnail
+//!   `Img/<place>_t`; a file `F/<place>/<its name>`, the note's own body
+//!   `Dat/<place>/<its name, else its place>`, neither sealed. Found on
+//!   WeChat for Mac 4.1, every file of the 21 notes of one account named so;
 //! - a Moment's image: `cache/<YYYY-MM>/Sns/Img/<k[..2]>/<k[2..]>`, no
 //!   extension, sealed ([`image`]), `k` the MD5 in lowercase hex of
 //!   `<post id>_<media id>_2` (`_1` its thumbnail, `_6` a smaller copy),
@@ -54,6 +61,19 @@ pub enum Media {
         url: Option<String>,
     },
     Voice,
+    /// An image of a note sent into a chat, by the note's directory
+    /// (`Rec/<rec>`) and the image's place in the note.
+    NoteImage {
+        rec: Option<String>,
+        place: usize,
+    },
+    /// A file of a note sent into a chat, the note's own body among them,
+    /// by the note's directory, the file's place in the note and its name.
+    NoteFile {
+        rec: Option<String>,
+        place: usize,
+        name: Option<String>,
+    },
     /// A Moment's image, by the ids of its post and of its media, as
     /// `sns/sns.db` says them.
     MomentImage {
@@ -72,20 +92,21 @@ impl Media {
     /// Its kind, as `wxread messages` names it.
     pub fn kind(&self) -> &'static str {
         match self {
-            Media::Image { .. } | Media::MomentImage { .. } => "image",
+            Media::Image { .. } | Media::NoteImage { .. } | Media::MomentImage { .. } => "image",
             Media::Video { .. } | Media::MomentVideo { .. } => "video",
-            Media::File { .. } => "file",
+            Media::File { .. } | Media::NoteFile { .. } => "file",
             Media::Sticker { .. } => "sticker",
             Media::Voice => "voice",
         }
     }
 
     /// Whether WeChat keeps a thumbnail of its kind: an image's and a
-    /// video's, a message's or a Moment's.
+    /// video's, a message's, a note's or a Moment's.
     pub fn has_thumbnail(&self) -> bool {
         matches!(
             self,
             Media::Image { .. }
+                | Media::NoteImage { .. }
                 | Media::Video { .. }
                 | Media::MomentImage { .. }
                 | Media::MomentVideo { .. }
@@ -98,7 +119,9 @@ impl Media {
     /// which are not kept in one.
     pub fn shelf(&self, chat_dir: &str) -> Option<String> {
         match self {
-            Media::Image { .. } => Some(format!("msg/attach/{chat_dir}")),
+            Media::Image { .. } | Media::NoteImage { .. } | Media::NoteFile { .. } => {
+                Some(format!("msg/attach/{chat_dir}"))
+            }
             Media::Video { .. } => Some("msg/video".into()),
             Media::File { .. } => Some("msg/file".into()),
             Media::MomentImage { .. } | Media::MomentVideo { .. } => Some("cache".into()),
@@ -118,6 +141,17 @@ impl Media {
             (Media::Video { name: Some(n) }, false) => vec![format!("{n}.mp4")],
             (Media::Video { name: Some(n) }, true) => vec![format!("{n}_thumb.jpg")],
             (Media::File { name: Some(n), .. }, false) if is_one_name(n) => vec![n.clone()],
+            (Media::NoteImage { rec: Some(r), place }, thumbnail) if is_one_name(r) => {
+                let t = if thumbnail { "_t" } else { "" };
+                vec![format!("Rec/{r}/Img/{place}{t}")]
+            }
+            (Media::NoteFile { rec: Some(r), place, name }, false) if is_one_name(r) => {
+                let n = name.clone().unwrap_or_else(|| place.to_string());
+                if !is_one_name(&n) {
+                    return Vec::new();
+                }
+                vec![format!("Rec/{r}/F/{place}/{n}"), format!("Rec/{r}/Dat/{place}/{n}")]
+            }
             (Media::MomentImage { post, media }, false) => {
                 vec![moment("Img", *post, *media, 2, "")]
             }
@@ -138,7 +172,7 @@ impl Media {
     /// as an image is ([`image`]), so are decrypted before they are
     /// written.
     pub fn sealed(&self) -> bool {
-        matches!(self, Media::Image { .. } | Media::MomentImage { .. })
+        matches!(self, Media::Image { .. } | Media::NoteImage { .. } | Media::MomentImage { .. })
     }
 
     /// Of the files found, each with its size, the one to take: a file's of
@@ -354,6 +388,39 @@ mod tests {
         assert!(file.names(true).is_empty() && !file.has_thumbnail());
         assert_eq!(Media::Voice.shelf("x"), None);
         assert!(Media::Image { name: None }.names(false).is_empty());
+    }
+
+    #[test]
+    fn a_notes_item_lies_in_its_place_under_the_notes_directory() {
+        let rec = || Some("58d452fe52a3cf23".to_string());
+        let image = Media::NoteImage { rec: rec(), place: 3 };
+        assert_eq!(
+            image.shelf(&chat_dir("1@chatroom")),
+            Some(format!("msg/attach/{}", chat_dir("1@chatroom")))
+        );
+        assert_eq!(image.names(false), ["Rec/58d452fe52a3cf23/Img/3"]);
+        assert_eq!(image.names(true), ["Rec/58d452fe52a3cf23/Img/3_t"]);
+        assert!(image.sealed() && image.has_thumbnail() && image.kind() == "image");
+        let file = Media::NoteFile { rec: rec(), place: 4, name: Some("径山.gpx".into()) };
+        assert_eq!(
+            file.names(false),
+            ["Rec/58d452fe52a3cf23/F/4/径山.gpx", "Rec/58d452fe52a3cf23/Dat/4/径山.gpx"]
+        );
+        // A note's body, which names no file of its own, by its place.
+        let body = Media::NoteFile { rec: rec(), place: 0, name: None };
+        assert_eq!(
+            body.names(false),
+            ["Rec/58d452fe52a3cf23/F/0/0", "Rec/58d452fe52a3cf23/Dat/0/0"]
+        );
+        assert!(!body.has_thumbnail() && body.names(true).is_empty() && body.kind() == "file");
+        // Nothing found where the message names no directory, or one that
+        // leads out of it.
+        for rec in [None, Some("../x".to_string()), Some("..".to_string())] {
+            assert!(Media::NoteImage { rec: rec.clone(), place: 1 }.names(false).is_empty());
+            assert!(Media::NoteFile { rec, place: 1, name: None }.names(false).is_empty());
+        }
+        let out = Media::NoteFile { rec: rec(), place: 1, name: Some("../../db".into()) };
+        assert!(out.names(false).is_empty());
     }
 
     #[test]
