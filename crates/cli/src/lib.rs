@@ -15,6 +15,8 @@ pub mod articles;
 pub mod chats;
 pub mod contacts;
 pub mod doctor;
+pub mod keys;
+mod memory;
 pub mod messages;
 pub mod world;
 
@@ -25,9 +27,6 @@ pub const VERSION: &str = env!("WXREAD_VERSION");
 /// The guide `--help` prints, and the one screen `-h` prints.
 pub const GUIDE: &str = include_str!("help.txt");
 pub const SCREEN: &str = include_str!("short.txt");
-
-/// What fixes running `wxread keys` in this release.
-pub const KEYS_NOT_READ: &str = "this wxread does not read the keys out of WeChat's memory yet: get them with `sudo wechat-cli init` (https://github.com/huohuoer/wechat-cli), which writes ~/.wechat-cli/all_keys.json in the shape `wxread keys --help` describes, then pass `--keys ~/.wechat-cli/all_keys.json`";
 
 #[derive(Parser)]
 #[command(name = "wxread", version = VERSION, disable_help_flag = true, disable_help_subcommand = true)]
@@ -216,7 +215,7 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
                 messages::run(&w, &messages::Asked { account, chat, from, to, limit, cursor })
             })
         }
-        Command::Keys => Err(anyhow::anyhow!(KEYS_NOT_READ)),
+        Command::Keys => keys::run(cli.data_dir),
     };
     answer(result, 1)
 }

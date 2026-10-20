@@ -1,33 +1,58 @@
-wxread keys: the keys of every database of the logged-in account.
+wxread keys: the keys of every database of the logged-in account, read out
+of the running WeChat itself.
 
 WHEN TO RUN IT
   Once, before any command reads a chat, and again when doctor names a
-  database the keys do not open. Run by the person whose Mac it is, as
-  `sudo wxread keys`: the keys are in the running WeChat's memory, which
-  only root can read.
+  database the keys no longer open. Run by the person whose Mac it is, as
+  `sudo wxread keys`: the keys live only in the running WeChat's memory,
+  which only root can read.
 
 WHAT IT READS AND WRITES
-  The running WeChat's memory, and each database's first page to check a
-  key against. It writes nothing: wxread keeps no keys.
+  WeChat for Mac 4.x holds each database's key in its memory, as the raw
+  key the SQLCipher literal x'<64 hex><32 hex>' spells. keys reads the
+  running WeChat's readable-and-writable memory for those literals, and
+  checks each one against a database's first-page HMAC before reporting it,
+  so every key it answers opens its database. It also reads the first page
+  of each database under the account. It writes nothing: wxread keeps no
+  keys.
 
 WHAT IT ANSWERS
   One object of each database's path under db_storage to its key, in the
   shape `wechat-cli init` writes its all_keys.json:
     {"message/message_0.db": {"enc_key": "<64 hex>", "salt": "<32 hex>"}}
-  Entries whose name starts with "_" are a tool's own, and passed over.
+  A key is answered only for a database some key in memory opens, so with
+  no account logged in the answer is instead a failure that says so.
 
 STORING AND SUPPLYING THEM
-  Store the answer where secrets go (a keychain, mytokens), then supply it
-  to every command:
+  It keeps no keys of its own. Store the answer where secrets go (a
+  keychain, mytokens), then supply it to every command:
       wxread --keys <file> doctor
   or, holding the keys themselves:
       WXREAD_KEYS="$(cat <file>)" wxread doctor
   A key stays valid until WeChat creates its databases again (logging out
   and in, some updates); `wxread doctor` then names each database the keys
-  no longer open.
+  no longer open, and `sudo wxread keys` reads them again.
+
+IF MACOS REFUSES TO READ WECHAT
+  A WeChat installed from Tencent is a signed build without get-task-allow,
+  and macOS will not let even root read its memory. Re-sign a copy of it so
+  it can be read (this does not change what WeChat does), grant the app
+  running wxread Full Disk Access, then quit WeChat, open the re-signed
+  copy, and run `sudo wxread keys` again:
+      sudo codesign --force --sign - --entitlements /dev/stdin \
+        /Applications/WeChat.app <<'EOF'
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+        "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0"><dict>
+        <key>com.apple.security.get-task-allow</key><true/>
+      </dict></plist>
+      EOF
+  Re-signing can stop WeChat auto-updating; reinstall it to undo.
 
 TRIPS YOU UP
-  - This release does not read WeChat's memory yet: `wxread keys` fails
-    with the fix, which is to get the same file from
-    `sudo wechat-cli init` (https://github.com/huohuoer/wechat-cli) and
-    pass it with --keys.
+  - Run it with sudo, or it refuses: only root reads another app's memory.
+  - Under sudo it reads the databases of the user who ran sudo, not root's;
+    pass --data-dir <dir> to read another.
+  - With two accounts logged in, it answers the keys of each database its
+    memory holds a key for, under that database's own path.

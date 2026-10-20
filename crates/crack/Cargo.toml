@@ -1,0 +1,23 @@
+[package]
+name = "wxread-crack"
+description = "Finding a database's key in the running WeChat's memory and proving it opens the database: pure functions over the bytes, checked by Flux (docs/adr/0004-keys-from-memory.md)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+flux-rs.workspace = true
+wxread-keys = { path = "../keys" }
+wxread-sqlcipher = { path = "../sqlcipher" }
+
+[dev-dependencies]
+proptest.workspace = true
+
+# `cargo flux` (through ../../verify.sh) checks every refinement in this crate.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }
