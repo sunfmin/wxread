@@ -10,7 +10,7 @@ use rusqlite::{Connection, OptionalExtension as _, params};
 use serde_json::{Value, json};
 use wxread_answer::Limit;
 use wxread_media::Media;
-use wxread_messages::{CHAT_FLAG, Chat, Contact, Cursor, Names, Range, Row};
+use wxread_messages::{CHAT_FLAG, Chat, Contact, Cursor, Names, Order, Range, Row, Start};
 use wxread_schema::CONTACT_DB;
 
 use crate::account::Account;
@@ -20,8 +20,8 @@ use crate::world::World;
 /// The message databases, as a refusal of missing keys names them.
 pub const MESSAGE_DBS: &str = "message/message_<n>.db";
 
-/// What `--account`, `--chat`, `--from`, `--to`, `--limit` and `--cursor`
-/// said.
+/// What `--account`, `--chat`, `--from`, `--to`, `--limit`, `--cursor`
+/// and `--oldest-first` said.
 pub struct Asked {
     pub account: Option<String>,
     pub chat: Option<String>,
@@ -29,6 +29,7 @@ pub struct Asked {
     pub to: Option<String>,
     pub limit: Option<String>,
     pub cursor: Option<String>,
+    pub oldest_first: bool,
 }
 
 /// What messages answers of `world`.
@@ -36,7 +37,14 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let chat = chat(asked.chat.as_deref())?;
     let limit = Limit::parse(asked.limit.as_deref(), "messages").map_err(|e| anyhow!(e))?;
     let range = Range::parse(asked.from.as_deref(), asked.to.as_deref()).map_err(|e| anyhow!(e))?;
-    let cursor = asked.cursor.as_deref().map(Cursor::parse).transpose().map_err(|e| anyhow!(e))?;
+    let order = Order::of(asked.oldest_first);
+    let cursor = asked
+        .cursor
+        .as_deref()
+        .map(|c| Cursor::parse(c, order))
+        .transpose()
+        .map_err(|e| anyhow!(e))?;
+    let start = cursor.as_ref().map_or(Start::First(order), Start::After);
     let account =
         Account::open(world, asked.account.as_deref(), &[CONTACT_DB, MESSAGE_DBS, MEDIA_DB_PATHS])?;
     let contacts_db = account.database(CONTACT_DB)?;
@@ -55,7 +63,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
             continue;
         }
         found = true;
-        rows.extend(read(&conn, &db, &table, range, cursor.as_ref(), limit).map_err(sql)?);
+        rows.extend(read(&conn, &db, &table, range, start, limit).map_err(sql)?);
     }
     if !found {
         return Err(anyhow!(wxread_messages::no_such_chat(&chat, account.id())));
@@ -75,7 +83,7 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     };
     let (dir, chat_dir) = (account.dir(), wxread_media::chat_dir(&chat.id));
     let held = |m: &Media, r: &Row| media::held(&dir, m, &chat_dir, r.server_id, &voices);
-    let page = wxread_messages::page(&chat, &names, rows, range, cursor.as_ref(), limit, held);
+    let page = wxread_messages::page(&chat, &names, rows, range, start, limit, held);
     Ok(json!({
         "account": account.id(),
         "chat": chat.id,
@@ -94,21 +102,26 @@ pub fn chat(given: Option<&str>) -> anyhow::Result<String> {
 }
 
 /// The page's worth of rows of the chat's table `table` in message
-/// database `db` past `cursor` within `range`: at most one more than
-/// `limit`, newest first, so the page knows whether another follows.
+/// database `db` from `start` within `range`: at most one more than
+/// `limit`, in the order `start` reads, so the page knows whether another
+/// follows.
 fn read(
     conn: &Connection,
     db: &str,
     table: &str,
     range: Range,
-    cursor: Option<&Cursor>,
+    start: Start<'_>,
     limit: Limit,
 ) -> rusqlite::Result<Vec<Row>> {
-    let below = cursor.map(|c| c.below_in(db));
+    let below = start.after().map(|c| c.bound_in(db));
+    let (past, way) = match start.order() {
+        Order::NewestFirst => ("<", "DESC"),
+        Order::OldestFirst => (">", "ASC"),
+    };
     let mut query = conn.prepare(&format!(
         "{} WHERE (?1 IS NULL OR IFNULL(m.create_time, 0) >= ?1) AND (?2 IS NULL OR IFNULL(m.create_time, 0) < ?2)
-           AND (?3 IS NULL OR (IFNULL(m.create_time, 0), IFNULL(m.sort_seq, 0), m.local_id) < (?3, ?4, ?5))
-         ORDER BY 5 DESC, 4 DESC, 1 DESC LIMIT ?6",
+           AND (?3 IS NULL OR (IFNULL(m.create_time, 0), IFNULL(m.sort_seq, 0), m.local_id) {past} (?3, ?4, ?5))
+         ORDER BY 5 {way}, 4 {way}, 1 {way} LIMIT ?6",
         select(table)
     ))?;
     let more = i64::try_from(limit.get()).unwrap_or(i64::MAX).saturating_add(1);

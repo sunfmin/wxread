@@ -572,8 +572,15 @@ fn messages_are_newest_first_and_by_their_order_in_one_second() {
     assert_eq!(all.next, None);
     let range = Range { from: Some(100), to: Some(200) };
     let first = Start::First(Order::NewestFirst);
-    let some =
-        page(&chat("wxid_ann"), &Names::default(), rows, range, first, Limit::default_limit(), none);
+    let some = page(
+        &chat("wxid_ann"),
+        &Names::default(),
+        rows,
+        range,
+        first,
+        Limit::default_limit(),
+        none,
+    );
     assert_eq!(ids(&some), [2, 3, 1]);
 }
 
