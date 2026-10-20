@@ -1,0 +1,48 @@
+wxread reads WeChat for Mac 4.x directly: its own encrypted databases and
+files on this Mac, with no server in between. It is read by an agent: each
+command prints one JSON object, and every failure names its fix.
+
+WHAT IT NEEDS
+  - WeChat for Mac 4.x, installed and logged in on this Mac. Its data
+    directory is ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/
+    xwechat_files; pass --data-dir <dir> (or set WXREAD_DATA_DIR) when
+    WeChat keeps it elsewhere. Each account is a directory there that holds
+    a db_storage.
+  - The keys of the account's databases. WeChat keys each database apart,
+    and only the running WeChat holds the keys: `wxread keys --help` says
+    how to get them. wxread keeps no keys: store them yourself (a keychain,
+    mytokens) and supply them to every command, with --keys <file> or
+    their contents as WXREAD_KEYS.
+  - The app running wxread (a terminal, an agent's host) allowed to read
+    other apps' data, which macOS asks for: Full Disk Access.
+
+RUN FIRST
+  wxread doctor     what it found and what is missing, each with its fix
+
+WHAT A COMMAND ANSWERS
+  One JSON object on stdout. A failure is {"error": "…"} with a non-zero
+  exit (2 for a command line wxread cannot parse, 1 otherwise), and it
+  names every fault with its fix. Warnings go to stderr. The keys of each
+  answer; `wxread <command> --help` says what each one means:
+    doctor    ok data_dir accounts keys findings
+    keys      each database's path under db_storage, to its enc_key and
+              salt
+
+THE COMMANDS
+  Setting up, run by you or an agent:
+      doctor
+  Getting the keys, run by the person whose Mac it is, with sudo:
+      keys
+
+RULES
+  - wxread reads and never writes WeChat's files, prompts for nothing,
+    elevates nothing and keeps nothing between runs: every run reads the
+    data directory and the keys again.
+  - A finding doctor makes is an answer, exit 0: read its `ok` and
+    `findings`, and the exit code only to tell an answer from an error.
+  - Keys open the databases they were read from: after WeChat creates its
+    databases again (logging out and in, some updates), read them again.
+  - --help, -h and --version print text, not JSON: they are the only
+    exceptions to one JSON object on stdout.
+  - `wxread <command> --help` says when to run it, who runs it, what it
+    reads and writes, what it answers, and what trips you up.

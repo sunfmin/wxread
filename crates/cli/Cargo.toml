@@ -1,0 +1,22 @@
+[package]
+name = "wxread"
+description = "An agent CLI that reads WeChat for Mac 4.x directly"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+# One test program, tests/main.rs, not one a file.
+autotests = false
+
+[dependencies]
+wxread-doctor = { path = "../doctor" }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[[test]]
+name = "cli"
+path = "tests/main.rs"
