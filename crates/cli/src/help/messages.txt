@@ -8,11 +8,14 @@ WHEN TO RUN IT
 WHAT IT READS
   The account's message databases under its db_storage (message/
   message_<n>.db, and message/biz_message_<n>.db for official accounts)
-  and contact/contact.db, each with the WAL beside it (what WeChat wrote
-  last), with their keys: the file --keys names, else the contents of
-  WXREAD_KEYS. Each is decrypted into memory and read there, after its key
-  is checked against its first page. It writes nothing, anywhere: no
-  decrypted byte reaches the disk.
+  and contact/contact.db (and message/media_<n>.db, for whether WeChat
+  holds a voice message's sound), each with the WAL beside it (what
+  WeChat wrote last), with their keys: the file --keys names, else the
+  contents of WXREAD_KEYS. Each is decrypted into memory and read there, after its key
+  is checked against its first page; whether a media message's file and
+  thumbnail are there is read from the files WeChat keeps under the
+  account's directory. It writes nothing, anywhere: no decrypted byte
+  reaches the disk.
 
 OPTIONS
   --chat <id>       the chat to read, its id as `wxread chats` lists it (a
@@ -58,6 +61,12 @@ WHAT IT ANSWERS
 
 THE KINDS AND THEIR FIELDS
   Every field is null when the message does not say it.
+  Each media kind (image, video, file, sticker, voice) says whether
+      WeChat on this Mac holds what `wxread file get <id>` writes:
+      file_present its file, true or false (a sticker's, whether it
+      names its address on WeChat's CDN, which is not fetched to tell),
+      and thumbnail_present its thumbnail, an image's or a video's (null
+      for the kinds that have none).
   text        {text}
   link        {to, title, summary, url, source}: to is "web_page",
               "music", "video", "mini_program", "channels_feed" or
@@ -81,19 +90,21 @@ THE KINDS AND THEIR FIELDS
   transfer    {amount_fen, state, memo}: the amount in fen (1/100 yuan)
               when shown, state "sent", "received" or "returned"
   red_packet  {amount_fen, state, memo}: WeChat shows no amount
-  image       {name, md5}: name finds its file, msg/attach/<md5 of the
-              chat id>/<YYYY-MM>/Img/<name>.dat under the account's
-              directory, encrypted
-  video       {name, seconds, md5}: name finds msg/video/<YYYY-MM>/
-              <name>.mp4 and <name>_thumb.jpg
-  file        {name, stored_as, size, extension}: stored_as finds
-              msg/file/<YYYY-MM>/<stored_as>; size in bytes
-  sticker     {md5, url}: url its address on WeChat's CDN, md5 that of its
-              bytes
-  voice       {length_ms, transcription}: transcription the text WeChat
-              heard in it, when the account converted it to text in WeChat
-              (转文字); `wxread voice <id> --chat <chat> --out <path>`
-              writes its sound as a file that plays
+  image       {name, md5, file_present, thumbnail_present}: name finds
+              its file, msg/attach/<md5 of the chat id>/<YYYY-MM>/Img/
+              <name>.dat under the account's directory, sealed
+  video       {name, seconds, md5, file_present, thumbnail_present}: name
+              finds msg/video/<YYYY-MM>/<name>.mp4 and <name>_thumb.jpg
+  file        {name, stored_as, size, extension, file_present,
+              thumbnail_present}: stored_as finds msg/file/<YYYY-MM>/
+              <stored_as>; size in bytes
+  sticker     {md5, url, file_present, thumbnail_present}: url its address
+              on WeChat's CDN, md5 that of its bytes
+  voice       {length_ms, transcription, file_present, thumbnail_present}:
+              transcription the text WeChat heard in it, when the account
+              converted it to text in WeChat (转文字); its sound is in
+              message/media_<n>.db, by the message's id; `wxread voice <id>
+              --chat <chat> --out <path>` writes it as a file that plays
   system      {text}: any other notice of WeChat's
   unknown     {}: anything else, read from content, type and subtype; a
               message whose XML does not read is unknown, never an error
@@ -105,12 +116,14 @@ TRIPS YOU UP
   - The chat id is exact: a group's ends in @chatroom. A chat none of the
     account's message databases holds is an error pointing at
     `wxread chats`.
-  - The keys must open contact/contact.db and every message database. One
+  - The keys must open contact/contact.db and every message database,
+    and when a page holds a voice message every message/media_<n>.db. One
     missing, or one that no longer opens its database (WeChat created its
     databases again: logging out and in, some updates), is an error naming
     the database; its fix is `sudo wxread keys`, then supplying the keys
     again.
-  - Media is named, not fetched: the fields of image, video, file and
-    sticker say where each file is kept, which WeChat may have cleared;
-    `wxread voice` fetches a voice message's sound.
+  - Media is named, not fetched: `wxread file get <id> --out <path>`
+    writes a media message's file. Its file_present says whether WeChat
+    holds it, which it may never have downloaded, or cleared. `wxread voice`
+    writes a voice message as a file that plays.
   - Several accounts logged in is an error naming them: pass --account.

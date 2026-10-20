@@ -12,7 +12,7 @@ use rusqlite::{Connection, DatabaseName, params};
 use wxread_doctor::DB_STORAGE;
 use wxread_schema::{
     CHAT_ROOM, CHAT_ROOM_INFO_DETAIL, CHATROOM_MEMBER, CONTACT, CONTACT_DB, HEAD_IMAGE,
-    HEAD_IMAGE_DB, NAME2ID, SESSION, SESSION_DB, VOICE_INFO, ZSTD,
+    HEAD_IMAGE_DB, MEDIA_NAME2ID, NAME2ID, SESSION, SESSION_DB, VOICE_INFO, ZSTD,
 };
 use wxread_sqlcipher::{PAGE, RESERVE};
 
@@ -103,14 +103,18 @@ impl Said {
     }
 }
 
-/// The sound of a voice message, in media database `db` (`media_0`): its
-/// chat, its server id, and its SILK as WeChat keeps it.
-#[derive(Clone)]
-pub struct Sound {
-    pub db: &'static str,
-    pub chat: &'static str,
-    pub server_id: i64,
-    pub silk: Vec<u8>,
+/// A voice message's sound in `message/media_0.db`: its chat, the
+/// message's server id, and its SILK bytes.
+pub struct Voice(pub &'static str, pub i64, pub Vec<u8>);
+
+/// The media database a synthetic account's voice messages are in.
+pub const MEDIA_DB: &str = "message/media_0.db";
+
+/// The avatar WeChat holds of contact `id`: a JPEG's bytes of its own.
+pub fn avatar_of(id: &str) -> Vec<u8> {
+    let mut image = vec![0xff, 0xd8, 0xff, 0xe0];
+    image.extend(id.bytes().cycle().take(300));
+    image
 }
 
 /// One article of a push: its title, digest, url and cover.
@@ -125,9 +129,10 @@ pub const ARTICLES: i64 = 49 | 5 << 32;
 /// themselves, `recent` sessions and `recent_messages` only in committed
 /// frames of their database's WAL, and `uncommitted` sessions in frames
 /// after them that no commit ended; `profiles` more of some contacts,
-/// `avatars` the contacts WeChat holds an avatar of, `groups` each
-/// group's record and notice, and `sounds` the sound of voice messages in
-/// the media databases.
+/// `avatars` the contacts WeChat holds an avatar of, and `groups` each
+/// group's record and notice; `voices` its voice messages' sound, `files`
+/// the files under its directory (each by its path there), and `kvcomm`
+/// the codes of the kvcomm files WeChat wrote beside the data directory.
 pub struct Account {
     pub id: &'static str,
     pub storage: PathBuf,
@@ -140,7 +145,9 @@ pub struct Account {
     pub groups: Vec<Group>,
     pub messages: Vec<Said>,
     pub recent_messages: Vec<Said>,
-    pub sounds: Vec<Sound>,
+    pub voices: Vec<Voice>,
+    pub files: Vec<(String, Vec<u8>)>,
+    pub kvcomm: Vec<u32>,
 }
 
 /// The databases a synthetic account has.
@@ -160,13 +167,20 @@ impl Account {
             groups: Vec::new(),
             messages: Vec::new(),
             recent_messages: Vec::new(),
-            sounds: Vec::new(),
+            voices: Vec::new(),
+            files: Vec::new(),
+            kvcomm: Vec::new(),
         }
     }
 
     /// The account's directory, above its db_storage.
     pub fn dir(&self) -> PathBuf {
         self.storage.parent().unwrap().to_path_buf()
+    }
+
+    /// WeChat's Documents, the data directory's parent.
+    pub fn documents(&self) -> PathBuf {
+        self.dir().parent().unwrap().parent().unwrap().to_path_buf()
     }
 
     /// The test key of database `path`: its own, as WeChat's are.
@@ -204,7 +218,7 @@ impl Account {
 
     /// Every database it has: the contact and session databases, each
     /// message database its messages are in, and each media database its
-    /// sounds are in.
+    /// voice messages are in.
     pub fn databases(&self) -> Vec<String> {
         let mut all: Vec<String> = DATABASES.iter().map(|d| d.to_string()).collect();
         for said in self.messages.iter().chain(&self.recent_messages) {
@@ -213,11 +227,8 @@ impl Account {
                 all.push(path);
             }
         }
-        for sound in &self.sounds {
-            let path = format!("message/{}.db", sound.db);
-            if !all.contains(&path) {
-                all.push(path);
-            }
+        if !self.voices.is_empty() {
+            all.push(MEDIA_DB.to_string());
         }
         all
     }
@@ -280,8 +291,8 @@ impl Account {
         for id in &self.avatars {
             avatars
                 .execute(
-                    "INSERT INTO head_image(username, md5, image_buffer, update_time) VALUES (?1, 'md5', x'ffd8ffe0', 1760000000)",
-                    params![id],
+                    "INSERT INTO head_image(username, md5, image_buffer, update_time) VALUES (?1, 'md5', ?2, 1760000000)",
+                    params![id, avatar_of(id)],
                 )
                 .unwrap();
         }
@@ -300,24 +311,30 @@ impl Account {
             let path = format!("message/{db}.db");
             self.seal(&path, &before, &[(&before, &after, true)]);
         }
-        let mut media: Vec<&str> = self.sounds.iter().map(|s| s.db).collect();
-        media.sort();
-        media.dedup();
-        for db in media {
-            let conn = plain(&format!("{NAME2ID}; {VOICE_INFO};"));
-            for s in self.sounds.iter().filter(|s| s.db == db) {
-                conn.execute(
-                    "INSERT OR IGNORE INTO Name2Id(user_name, is_session) VALUES (?1, 1)",
-                    [s.chat],
-                )
-                .unwrap();
-                conn.execute(
-                    "INSERT INTO VoiceInfo(chat_name_id, create_time, local_id, svr_id, voice_data) SELECT rowid, 1760000000, 1, ?2, ?3 FROM Name2Id WHERE user_name = ?1",
-                    params![s.chat, s.server_id, s.silk],
-                )
-                .unwrap();
+        if !self.voices.is_empty() {
+            let media = plain(&format!("{MEDIA_NAME2ID}; {VOICE_INFO};"));
+            for Voice(chat, server_id, silk) in &self.voices {
+                media
+                    .execute("INSERT OR IGNORE INTO Name2Id(user_name) VALUES (?1)", [chat])
+                    .unwrap();
+                media
+                    .execute(
+                        "INSERT INTO VoiceInfo(chat_name_id, create_time, local_id, svr_id, voice_data) SELECT rowid, 1760000000, 1, ?2, ?3 FROM Name2Id WHERE user_name = ?1",
+                        params![chat, server_id, silk],
+                    )
+                    .unwrap();
             }
-            self.seal(&format!("message/{db}.db"), &bytes(&conn), &[]);
+            self.seal(MEDIA_DB, &bytes(&media), &[]);
+        }
+        for (path, bytes) in &self.files {
+            let file = self.dir().join(path);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, bytes).unwrap();
+        }
+        for code in &self.kvcomm {
+            let dir = self.documents().join("app_data/net/kvcomm");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(format!("key_{code}_1.statistic")), b"").unwrap();
         }
         let sessions = plain(SESSION);
         insert(&sessions, &self.sessions);
@@ -393,8 +410,8 @@ fn insert(db: &Connection, sessions: &[Session]) {
 }
 
 /// Writes `messages` into the message database `db`: each chat's table,
-/// made the first time one of its messages is written, and each sender in
-/// `Name2Id`.
+/// made the first time one of its messages is written, and each chat and
+/// sender in `Name2Id`.
 fn said(db: &Connection, messages: &[Said]) {
     for m in messages {
         let table = wxread_schema::messages_table(m.chat);
@@ -402,6 +419,9 @@ fn said(db: &Connection, messages: &[Said]) {
             &wxread_schema::messages(&table).replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"),
         )
         .unwrap();
+        // WeChat names each chat in Name2Id too, as a session.
+        db.execute("INSERT OR IGNORE INTO Name2Id(user_name, is_session) VALUES (?1, 1)", [m.chat])
+            .unwrap();
         let sender: Option<i64> = m.sender.map(|s| {
             db.execute("INSERT OR IGNORE INTO Name2Id(user_name, is_session) VALUES (?1, 0)", [s])
                 .unwrap();

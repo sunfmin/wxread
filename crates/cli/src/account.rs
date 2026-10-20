@@ -44,6 +44,19 @@ impl Account {
         &self.id
     }
 
+    /// Its directory, the one above its db_storage, which its media is
+    /// kept under.
+    pub fn dir(&self) -> PathBuf {
+        self.storage.parent().map_or_else(|| self.storage.clone(), PathBuf::from)
+    }
+
+    /// WeChat's Documents, the data directory's parent, which its kvcomm
+    /// files are kept under.
+    pub fn documents(&self) -> PathBuf {
+        let dir = self.dir();
+        dir.parent().and_then(|d| d.parent()).map_or(dir.clone(), PathBuf::from)
+    }
+
     /// Every database under its db_storage, by its path there.
     pub fn databases(&self) -> anyhow::Result<Vec<String>> {
         self.databases.clone().map_err(|why| anyhow!(wxread_account::unlisted(&self.id, &why)))

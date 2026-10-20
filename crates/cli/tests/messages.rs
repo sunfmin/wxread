@@ -182,22 +182,30 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
             "red_packet",
             json!({ "amount_fen": null, "state": null, "memo": "恭喜发财" }),
         ),
-        (image, "image", json!({ "name": "a1b2c3", "md5": "feed01" })),
-        (video, "video", json!({ "name": "v9", "seconds": 7, "md5": "beef02" })),
+        (
+            image,
+            "image",
+            json!({ "name": "a1b2c3", "md5": "feed01", "file_present": false, "thumbnail_present": false }),
+        ),
+        (
+            video,
+            "video",
+            json!({ "name": "v9", "seconds": 7, "md5": "beef02", "file_present": false, "thumbnail_present": false }),
+        ),
         (
             file,
             "file",
-            json!({ "name": "topo.pdf", "stored_as": "topo(1).pdf", "size": 4096, "extension": "pdf" }),
+            json!({ "name": "topo.pdf", "stored_as": "topo(1).pdf", "size": 4096, "extension": "pdf", "file_present": false, "thumbnail_present": null }),
         ),
         (
             group(18, 47, r#"<msg><emoji md5="ABC" cdnurl="https://cdn.example/s"/></msg>"#),
             "sticker",
-            json!({ "md5": "abc", "url": "https://cdn.example/s" }),
+            json!({ "md5": "abc", "url": "https://cdn.example/s", "file_present": true, "thumbnail_present": null }),
         ),
         (
             group(19, 34, r#"<msg><voicemsg voicelength="3200"/></msg>"#),
             "voice",
-            json!({ "length_ms": 3200, "transcription": null }),
+            json!({ "length_ms": 3200, "transcription": null, "file_present": false, "thumbnail_present": null }),
         ),
         (
             group(20, 10000, "Bobby is now an admin"),

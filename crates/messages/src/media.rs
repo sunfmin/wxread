@@ -17,6 +17,7 @@
 //! - a sticker: on WeChat's CDN, its address, checked against its MD5.
 
 use serde_json::{Map, Value, json};
+use wxread_media::Media;
 
 use crate::Kind;
 use crate::kinds::{attr, child, text, xml};
@@ -82,6 +83,23 @@ pub fn fields(kind: Kind, content: &str, packed: &[u8]) -> Map<String, Value> {
     }
 }
 
+/// What finds the file of a message of the media kind `kind` whose
+/// fields [`fields`] read as `fields`: None for a kind that carries none.
+pub fn locate(kind: Kind, fields: &Map<String, Value>) -> Option<Media> {
+    let text = |name: &str| fields.get(name).and_then(Value::as_str).map(str::to_string);
+    match kind {
+        Kind::Image => Some(Media::Image { name: text("name") }),
+        Kind::Video => Some(Media::Video { name: text("name") }),
+        Kind::File => Some(Media::File {
+            name: text("stored_as"),
+            size: fields.get("size").and_then(Value::as_u64),
+        }),
+        Kind::Sticker => Some(Media::Sticker { md5: text("md5"), url: text("url") }),
+        Kind::Voice => Some(Media::Voice),
+        _ => None,
+    }
+}
+
 /// The bytes base64 `text` writes, whitespace and padding passed over:
 /// None when a character is not base64's.
 fn base64(text: &str) -> Option<Vec<u8>> {
@@ -110,6 +128,21 @@ fn base64(text: &str) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
     use crate::proto::tests::bytes_field;
+
+    #[test]
+    fn each_media_kind_is_found_by_its_fields() {
+        let packed = bytes_field(3, &bytes_field(4, b"abc123"));
+        let image = fields(Kind::Image, "<msg><img/></msg>", &packed);
+        assert_eq!(locate(Kind::Image, &image), Some(Media::Image { name: Some("abc123".into()) }));
+        let xml = "<msg><appmsg><title>topo.pdf</title><type>6</type><appattach><totallen>2048</totallen></appattach></appmsg></msg>";
+        assert_eq!(
+            locate(Kind::File, &fields(Kind::File, xml, &[])),
+            Some(Media::File { name: Some("topo.pdf".into()), size: Some(2048) })
+        );
+        let voice = fields(Kind::Voice, "<msg/>", &[]);
+        assert_eq!(locate(Kind::Voice, &voice), Some(Media::Voice));
+        assert_eq!(locate(Kind::Text, &Map::new()), None);
+    }
 
     #[test]
     fn base64_reads_what_it_writes() {

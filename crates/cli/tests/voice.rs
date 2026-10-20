@@ -6,7 +6,7 @@
 use serde_json::{Value, json};
 
 use crate::common::{World, snapshot};
-use crate::synthetic::{Account, Said, Sound, field};
+use crate::synthetic::{Account, Said, Voice, field};
 
 /// 1.2 s of a 440 Hz tone at 24 kHz, encoded as WeChat encodes a voice
 /// message: the SILK decoder's own reference.
@@ -44,14 +44,9 @@ fn account(world: &World) -> Account {
         voice(103, 900, None),
         Said::text("wxid_amy", 104, T + 104, "wxid_amy", "hello"),
     ];
-    account.sounds = vec![
-        Sound { db: "media_0", chat: "wxid_amy", server_id: 101, silk: TONE.to_vec() },
-        Sound {
-            db: "media_0",
-            chat: "wxid_amy",
-            server_id: 103,
-            silk: b"#!AMR\nnot silk".to_vec(),
-        },
+    account.voices = vec![
+        Voice("wxid_amy", 101, TONE.to_vec()),
+        Voice("wxid_amy", 103, b"#!AMR\nnot silk".to_vec()),
     ];
     account.write();
     account
@@ -150,9 +145,18 @@ fn wechats_transcription_is_on_the_message_when_the_account_made_one_and_null_ot
     assert_eq!(
         voices,
         [
-            ("103", &json!({ "length_ms": 900, "transcription": null })),
-            ("102", &json!({ "length_ms": 3000, "transcription": null })),
-            ("101", &json!({ "length_ms": 1200, "transcription": "周六见" })),
+            (
+                "103",
+                &json!({ "length_ms": 900, "transcription": null, "file_present": true, "thumbnail_present": null })
+            ),
+            (
+                "102",
+                &json!({ "length_ms": 3000, "transcription": null, "file_present": false, "thumbnail_present": null })
+            ),
+            (
+                "101",
+                &json!({ "length_ms": 1200, "transcription": "周六见", "file_present": true, "thumbnail_present": null })
+            ),
         ]
     );
     let path = out(&world, "odd.silk");

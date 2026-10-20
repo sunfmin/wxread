@@ -75,12 +75,14 @@ pub fn messages_table(chat: &str) -> String {
 /// What `WCDB_CT_message_content` is when the content is zstd-compressed.
 pub const ZSTD: i64 = 4;
 
-/// The databases the sound of voice messages is in, under `db_storage`:
+/// The databases a chat's voice messages are in, under `db_storage`:
 /// `message/media_<n>.db`, `<n>` from 0.
 pub const MEDIA_DBS: &str = "message/media_";
 
-/// In each media database: each voice message's
-/// sound, as WeChat received it (SILK, `\x02#!SILK_V3…`), by its chat
-/// (`chat_name_id`, a rowid of the database's `Name2Id`) and its server id
-/// (`svr_id`, the message's `server_id`).
+/// In each media database: the chats its voice messages are in, a voice
+/// message's `chat_name_id` being its chat's rowid here.
+pub const MEDIA_NAME2ID: &str = "CREATE TABLE Name2Id(user_name TEXT PRIMARY KEY)";
+
+/// In each media database: each voice message's SILK bytes, `voice_data`,
+/// by its `svr_id`, the message's server id.
 pub const VOICE_INFO: &str = "CREATE TABLE VoiceInfo(chat_name_id INTEGER, create_time INTEGER, local_id INTEGER, svr_id INTEGER, voice_data BLOB, data_index TEXT DEFAULT '0')";

@@ -766,9 +766,11 @@ dependencies = [
  "clap",
  "libc",
  "mach2",
+ "md5",
  "rusqlite",
  "ruzstd",
  "serde_json",
+ "sha2",
  "silk",
  "tempfile",
  "wxread-account",
@@ -779,6 +781,7 @@ dependencies = [
  "wxread-crack",
  "wxread-doctor",
  "wxread-keys",
+ "wxread-media",
  "wxread-messages",
  "wxread-schema",
  "wxread-sqlcipher",
@@ -858,6 +861,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "wxread-media"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "md5",
+ "proptest",
+]
+
+[[package]]
 name = "wxread-messages"
 version = "0.1.0"
 dependencies = [
@@ -868,6 +880,7 @@ dependencies = [
  "wxread-answer",
  "wxread-chats",
  "wxread-contacts",
+ "wxread-media",
  "wxread-schema",
 ]
 

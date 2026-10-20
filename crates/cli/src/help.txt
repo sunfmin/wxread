@@ -22,6 +22,8 @@ RUN FIRST
   wxread contacts   the account's contacts and groups, with their ids
   wxread messages --chat <id>
                     one chat's messages, each as its kind, newest first
+  wxread file get <id> --out <path>
+                    a media message's file, written as the file it is
   wxread voice <id> --chat <id> --out <path>
                     a voice message as a file that plays, and its 转文字
 
@@ -31,16 +33,21 @@ WHAT A COMMAND ANSWERS
   names every fault with its fix. Warnings go to stderr. The keys of each
   answer; `wxread <command> --help` says what each one means:
     articles  account articles next
+    avatar    path size sha256 content_type missing thumbnail fix
     chats     account chats next
     contact   account contact
     contacts  account contacts next
     doctor    ok data_dir accounts keys findings
+    file      path size sha256 content_type missing thumbnail fix
     group     account group
     keys      each database's path under db_storage, to its enc_key and
               salt
     messages  account chat messages next
     voice     account chat id path format duration_ms size length_ms
               transcription
+  file get and avatar answer path, size, sha256 and content_type of the
+  file they wrote; or, when WeChat does not hold it, missing (true),
+  thumbnail and fix, exit 0.
 
 THE COMMANDS
   Setting up, run by you or an agent:
@@ -49,6 +56,8 @@ THE COMMANDS
       chats messages voice
       contacts contact group
       articles
+  Getting a media message's file or an avatar, run by you or an agent:
+      file avatar
   Getting the keys, run by the person whose Mac it is, with sudo:
       keys
 
@@ -57,8 +66,9 @@ RULES
     elevates nothing and keeps nothing between runs: every run reads the
     data directory and the keys again.
   - A database is decrypted into memory and read there: no decrypted byte
-    is written to disk but the one file `wxread voice --out` is told to
-    write, and what is read is what WeChat wrote last, its WAL included.
+    is written to disk, and what is read is what WeChat wrote last, its
+    WAL included. The one file written is the one `wxread file get`,
+    `wxread avatar` and `wxread voice` are told to write, at --out.
   - With several accounts logged in, a command that reads one is told
     which: --account <id>, as doctor names it.
   - A contact, a group and a chat are named by their id: a wxid, a

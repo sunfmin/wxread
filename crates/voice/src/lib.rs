@@ -1,9 +1,8 @@
 //! What `wxread voice` decides of a voice message: the message id it was
-//! given, which of the account's media databases hold its sound, the WAV
-//! its decoded samples are written as and how long they last, and each
-//! refusal with its fix. The effect crate reads the databases, decodes the
-//! SILK (docs/adr/0005-voice-is-decoded-in-process.md) and writes the file;
-//! nothing here reads or writes.
+//! given, the WAV its decoded samples are written as and how long they
+//! last, and each refusal with its fix. The effect crate reads the
+//! databases, decodes the SILK (docs/adr/0005-voice-is-decoded-in-process.md)
+//! and writes the file; nothing here reads or writes.
 
 /// The options of `wxread voice`.
 pub const OUT_FLAG: &str = "--out";
@@ -46,27 +45,6 @@ pub fn message_id(text: &str) -> Result<i64, String> {
         )),
     }
 }
-
-/// The media databases `databases` (each a path under `db_storage`) holds,
-/// by path (`message/media_0.db`), each by its number: where WeChat keeps
-/// the sound of voice messages.
-pub fn media_dbs(databases: &[String]) -> Vec<String> {
-    let mut found: Vec<(u32, String)> = databases
-        .iter()
-        .filter_map(|path| {
-            let n = path.strip_prefix(wxread_schema::MEDIA_DBS)?.strip_suffix(".db")?;
-            if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
-                return None;
-            }
-            Some((n.parse().ok()?, path.clone()))
-        })
-        .collect();
-    found.sort();
-    found.into_iter().map(|(_, path)| path).collect()
-}
-
-/// The media databases, as a refusal of missing keys names them.
-pub const MEDIA_DB_PATHS: &str = "message/media_<n>.db";
 
 /// How long `samples` samples last at `rate` Hz, in milliseconds, rounded
 /// down; None for a rate of 0.
@@ -160,24 +138,6 @@ mod tests {
         for bad in ["", "0", "-3", "abc", "1.5"] {
             assert!(message_id(bad).unwrap_err().contains("wxread messages"), "{bad}");
         }
-    }
-
-    #[test]
-    fn the_media_databases_are_in_their_numbers_order() {
-        let all: Vec<String> = [
-            "message/media_10.db",
-            "message/message_0.db",
-            "message/media_2.db",
-            "message/media_.db",
-            "message/media_x.db",
-            "message/media_0.db",
-        ]
-        .map(String::from)
-        .into();
-        assert_eq!(
-            media_dbs(&all),
-            ["message/media_0.db", "message/media_2.db", "message/media_10.db"]
-        );
     }
 
     #[test]

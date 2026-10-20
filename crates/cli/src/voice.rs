@@ -6,12 +6,13 @@
 use std::path::PathBuf;
 
 use anyhow::anyhow;
-use rusqlite::{Connection, OptionalExtension as _};
 use serde_json::{Value, json};
+use wxread_media::Held;
 use wxread_messages::{Chat, Names};
-use wxread_voice::{Format, MEDIA_DB_PATHS, SAMPLE_RATE};
+use wxread_voice::{Format, SAMPLE_RATE};
 
 use crate::account::Account;
+use crate::media::{self, MEDIA_DB_PATHS};
 use crate::messages::{self, MESSAGE_DBS};
 use crate::world::World;
 
@@ -53,12 +54,17 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     }
     let row = row.ok_or_else(|| anyhow!(wxread_voice::no_such_message(id, &chat, account.id())))?;
     let said = Chat { id: chat.clone(), account: account.id().to_string() };
-    let message = wxread_messages::message(&said, &Names::default(), &row);
+    // Voice answers none of what WeChat holds: the sound it writes is read below.
+    let message =
+        wxread_messages::message(&said, &Names::default(), &row, &|_: &_, _: &_| Held::default());
     let kind = message["kind"].as_str().unwrap_or_default();
     if kind != "voice" {
         return Err(anyhow!(wxread_voice::not_a_voice(id, &chat, kind)));
     }
-    let silk = sound(&account, &databases, &chat, id)?
+    let silk = media::voices(&account, Some(&chat), Some(id))?
+        .into_iter()
+        .next()
+        .map(|(_, silk)| silk)
         .ok_or_else(|| anyhow!(wxread_voice::no_sound(id, &chat, account.id())))?;
     let pcm = decode(&silk);
     let bytes = match format {
@@ -86,38 +92,6 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
         "length_ms": message["voice"]["length_ms"],
         "transcription": message["voice"]["transcription"],
     }))
-}
-
-/// The SILK of voice message `id` of `chat`, out of the first of the
-/// account's media databases (among `databases`) that holds it.
-fn sound(
-    account: &Account,
-    databases: &[String],
-    chat: &str,
-    id: i64,
-) -> anyhow::Result<Option<Vec<u8>>> {
-    for path in wxread_voice::media_dbs(databases) {
-        let conn = account.database(&path)?;
-        let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(&path, &e.to_string()));
-        if !messages::has_table(&conn, "VoiceInfo").map_err(sql)? {
-            continue;
-        }
-        if let Some(silk) = voice_data(&conn, chat, id).map_err(sql)? {
-            return Ok(Some(silk));
-        }
-    }
-    Ok(None)
-}
-
-/// The `voice_data` media database `conn` keeps of message `id` of `chat`.
-fn voice_data(conn: &Connection, chat: &str, id: i64) -> rusqlite::Result<Option<Vec<u8>>> {
-    conn.query_row(
-        "SELECT v.voice_data FROM VoiceInfo v JOIN Name2Id n ON n.rowid = v.chat_name_id
-         WHERE n.user_name = ?1 AND v.svr_id = ?2 AND v.voice_data IS NOT NULL LIMIT 1",
-        rusqlite::params![chat, id],
-        |r| r.get(0),
-    )
-    .optional()
 }
 
 /// The samples `silk` decodes to at [`SAMPLE_RATE`], or why it does not
