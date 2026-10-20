@@ -816,6 +816,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "wxread-media"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "md5",
+ "proptest",
+]
+
+[[package]]
 name = "wxread-messages"
 version = "0.1.0"
 dependencies = [
