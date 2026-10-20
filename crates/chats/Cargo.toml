@@ -7,7 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
-flux-rs.workspace = true
+wxread-page = { path = "../page" }
 
 [dev-dependencies]
 proptest.workspace = true

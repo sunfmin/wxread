@@ -725,6 +725,7 @@ dependencies = [
  "wxread-chats",
  "wxread-doctor",
  "wxread-keys",
+ "wxread-page",
  "wxread-schema",
  "wxread-sqlcipher",
 ]
@@ -742,8 +743,8 @@ dependencies = [
 name = "wxread-chats"
 version = "0.1.0"
 dependencies = [
- "flux-rs",
  "proptest",
+ "wxread-page",
 ]
 
 [[package]]
@@ -762,6 +763,14 @@ dependencies = [
  "flux-rs",
  "proptest",
  "serde_json",
+]
+
+[[package]]
+name = "wxread-page"
+version = "0.1.0"
+dependencies = [
+ "flux-rs",
+ "proptest",
 ]
 
 [[package]]

@@ -13,6 +13,7 @@ wxread-account = { path = "../account" }
 wxread-chats = { path = "../chats" }
 wxread-doctor = { path = "../doctor" }
 wxread-keys = { path = "../keys" }
+wxread-page = { path = "../page" }
 wxread-schema = { path = "../schema" }
 wxread-sqlcipher = { path = "../sqlcipher" }
 anyhow = "1"
