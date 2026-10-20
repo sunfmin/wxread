@@ -10,9 +10,16 @@ autotests = false
 
 [dependencies]
 wxread-doctor = { path = "../doctor" }
+wxread-crack = { path = "../crack" }
+wxread-keys = { path = "../keys" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde_json.workspace = true
+libc = "0.2.191"
+
+# Reading the running WeChat's memory is a macOS job (docs/adr/0001).
+[target.'cfg(target_os = "macos")'.dependencies]
+mach2 = "0.4.3"
 
 [dev-dependencies]
 tempfile = "3"

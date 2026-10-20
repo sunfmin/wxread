@@ -11,6 +11,9 @@ use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
 
 pub mod doctor;
+pub mod keys;
+mod memory;
+mod paths;
 
 /// What this binary was built from, as `--version` says it: stamped by
 /// `build.rs`.
@@ -19,9 +22,6 @@ pub const VERSION: &str = env!("WXREAD_VERSION");
 /// The guide `--help` prints, and the one screen `-h` prints.
 pub const GUIDE: &str = include_str!("help.txt");
 pub const SCREEN: &str = include_str!("short.txt");
-
-/// What fixes running `wxread keys` in this release.
-pub const KEYS_NOT_READ: &str = "this wxread does not read the keys out of WeChat's memory yet: get them with `sudo wechat-cli init` (https://github.com/huohuoer/wechat-cli), which writes ~/.wechat-cli/all_keys.json in the shape `wxread keys --help` describes, then pass `--keys ~/.wechat-cli/all_keys.json`";
 
 #[derive(Parser)]
 #[command(name = "wxread", version = VERSION, disable_help_flag = true, disable_help_subcommand = true)]
@@ -91,7 +91,7 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
     };
     let result = match cli.command {
         Command::Doctor => doctor::World::from_env(cli.data_dir, cli.keys).map(|w| doctor::run(&w)),
-        Command::Keys => Err(anyhow::anyhow!(KEYS_NOT_READ)),
+        Command::Keys => keys::run(cli.data_dir),
     };
     answer(result, 1)
 }

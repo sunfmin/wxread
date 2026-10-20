@@ -6,12 +6,13 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use anyhow::bail;
 use serde_json::{Value, json};
 use wxread_doctor::{
-    AccountSeen, DATA_DIR_FLAG, DATA_DIR_UNDER_HOME, DATA_DIR_VAR, DB_STORAGE, KEYS_FLAG, KEYS_VAR,
-    KeysSeen, Listing, Report, Seen, Source,
+    AccountSeen, DATA_DIR_VAR, DB_STORAGE, KEYS_FLAG, KEYS_VAR, KeysSeen, Listing, Report, Seen,
+    Source,
 };
+
+use crate::paths;
 
 /// Where doctor looks: the data directory and the keys, each with where
 /// it was named.
@@ -29,18 +30,9 @@ impl World {
         data_dir: Option<PathBuf>,
         keys_file: Option<PathBuf>,
     ) -> anyhow::Result<World> {
-        let var = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
-        let (data_dir, data_dir_from) = match (data_dir, var(DATA_DIR_VAR)) {
-            (Some(dir), _) => (dir, Source::Flag),
-            (None, Some(dir)) => (PathBuf::from(dir), Source::Var),
-            (None, None) => match std::env::var_os("HOME").filter(|h| !h.is_empty()) {
-                Some(home) => (PathBuf::from(home).join(DATA_DIR_UNDER_HOME), Source::Default),
-                None => bail!(
-                    "HOME is not set, so WeChat's data directory is not known: set HOME, or pass {DATA_DIR_FLAG} <dir>"
-                ),
-            },
-        };
-        Ok(World { data_dir, data_dir_from, keys_file, keys_var: var(KEYS_VAR) })
+        let home = std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from);
+        let (data_dir, data_dir_from) = paths::data_dir(data_dir, paths::var(DATA_DIR_VAR), home)?;
+        Ok(World { data_dir, data_dir_from, keys_file, keys_var: paths::var(KEYS_VAR) })
     }
 
     fn seen(&self) -> Seen {
@@ -130,24 +122,5 @@ fn listing(dir: &Path) -> Listing {
 /// Every `.db` file under `storage`, by its path there with `/` between
 /// its parts, sorted; or why they could not all be listed.
 fn databases(storage: &Path) -> Result<Vec<String>, String> {
-    let mut found = Vec::new();
-    let mut dirs = vec![storage.to_path_buf()];
-    while let Some(dir) = dirs.pop() {
-        let entries = fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        for entry in entries {
-            let entry = entry.map_err(|e| format!("{}: {e}", dir.display()))?;
-            let path = entry.path();
-            let kind = entry.file_type().map_err(|e| format!("{}: {e}", path.display()))?;
-            if kind.is_dir() {
-                dirs.push(path);
-            } else if kind.is_file() && path.extension().is_some_and(|e| e == "db") {
-                let under = path.strip_prefix(storage).unwrap_or(&path);
-                let parts: Vec<_> =
-                    under.components().map(|c| c.as_os_str().to_string_lossy()).collect();
-                found.push(parts.join("/"));
-            }
-        }
-    }
-    found.sort();
-    Ok(found)
+    Ok(paths::databases(storage)?.into_iter().map(|(rel, _)| rel).collect())
 }
