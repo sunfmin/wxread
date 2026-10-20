@@ -11,6 +11,7 @@ wxread --keys <file> articles               # what official accounts sent, newes
 wxread --keys <file> contacts --query amy   # find a contact, and its id
 wxread --keys <file> group <n>@chatroom     # a group's notice and members
 wxread --keys <file> messages --chat <id>   # a chat's messages, each as its kind
+wxread --keys <file> search crag            # messages across every chat that hold a text
 wxread --keys <file> favorites              # what the account saved (收藏), each as its kind
 wxread --keys <file> file get <id> --out <path>  # a media message's or a favorite's file, as it is
 wxread --keys <file> avatar <id> --out <path>    # a contact's avatar
@@ -27,7 +28,7 @@ brew install sunfmin/tap/wxread
 
 `wxread --version` prints the release you have. The keys of WeChat's
 databases are the one thing the installer cannot get: `wxread keys --help`
-says how.
+says how, and when macOS refuses, `wxread resign --help` says how to let it.
 
 **For an AI agent**: a skill that sends an agent to `wxread --help` installs
 with:
@@ -45,8 +46,9 @@ silk-decoder-rs (MIT), vendored in [crates/silk](crates/silk)
 ## Developing
 
 `./gate.sh` decides whether a change may land, run where the change is made: `cargo fmt
---check`, `./verify.sh` (Flux over the pure crates, which must report `0
-trusted; 0 ignored`), `cargo clippy -D warnings` and `cargo nextest run`. It
+--check`, `./verify.sh` (Flux over the pure crates, each of which must report `0
+trusted; 0 ignored`, as `./flux-summary.sh` reads it; `./flux-summary-test.sh`
+tests that reading), `cargo clippy -D warnings` and `cargo nextest run`. It
 runs on rustup's `nightly-2026-09-25` and needs the checker Cargo.toml pins:
 
 - cargo-flux, built from the Flux revision pinned there:

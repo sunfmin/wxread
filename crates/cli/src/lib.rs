@@ -21,6 +21,8 @@ pub mod keys;
 pub mod media;
 mod memory;
 pub mod messages;
+pub mod resign;
+pub mod search;
 pub mod voice;
 pub mod world;
 
@@ -159,8 +161,41 @@ enum Command {
         #[arg(long, value_name = "NEXT")]
         cursor: Option<String>,
     },
+    /// Find messages across every chat, newest first, a page at a time
+    Search {
+        /// The text to find, in any case
+        #[arg(value_name = "TEXT")]
+        text: Option<String>,
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+        /// Only this chat's messages, by its id as `wxread chats` lists it
+        #[arg(long, value_name = "ID")]
+        chat: Option<String>,
+        /// The first time read: RFC 3339, or a date
+        #[arg(long, value_name = "TIME")]
+        from: Option<String>,
+        /// The time reading stops before: RFC 3339, or a date
+        #[arg(long, value_name = "TIME")]
+        to: Option<String>,
+        /// How many messages a page holds, 1 to 1000 (100 unless given)
+        #[arg(long, value_name = "N")]
+        limit: Option<String>,
+        /// Where the page starts: the `next` of the answer before
+        #[arg(long, value_name = "NEXT")]
+        cursor: Option<String>,
+    },
     /// Read every database key from the running WeChat
     Keys,
+    /// Re-sign WeChat with get-task-allow so `sudo wxread keys` can read it; only with --yes
+    Resign {
+        /// The WeChat app to re-sign (/Applications/WeChat.app, else Weixin.app, unless given)
+        #[arg(long, value_name = "PATH")]
+        app: Option<PathBuf>,
+        /// Re-sign it; without this, only say what it would do and change nothing
+        #[arg(long)]
+        yes: bool,
+    },
     /// Write a voice message as a file that plays, and say what WeChat heard in it
     Voice {
         /// The voice message's id, as `wxread messages` answers it
@@ -225,6 +260,8 @@ fn help_of(name: &str) -> Option<&'static str> {
         "group" => Some(include_str!("help/group.txt")),
         "keys" => Some(include_str!("help/keys.txt")),
         "messages" => Some(include_str!("help/messages.txt")),
+        "resign" => Some(include_str!("help/resign.txt")),
+        "search" => Some(include_str!("help/search.txt")),
         "voice" => Some(include_str!("help/voice.txt")),
         _ => None,
     }
@@ -313,7 +350,14 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
                 messages::run(&w, &messages::Asked { account, chat, from, to, limit, cursor })
             })
         }
+        Command::Search { text, account, chat, from, to, limit, cursor } => {
+            world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
+                let asked = search::Asked { text, account, chat, from, to, limit, cursor };
+                search::run(&w, &asked)
+            })
+        }
         Command::Keys => keys::run(cli.data_dir),
+        Command::Resign { app, yes } => resign::run(app, yes),
         Command::Voice { id, account, chat, out, raw } => {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| voice::run(&w, &voice::Asked { id, account, chat, out, raw }))

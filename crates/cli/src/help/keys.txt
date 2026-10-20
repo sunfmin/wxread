@@ -35,20 +35,12 @@ STORING AND SUPPLYING THEM
 
 IF MACOS REFUSES TO READ WECHAT
   A WeChat installed from Tencent is a signed build without get-task-allow,
-  and macOS will not let even root read its memory. Re-sign a copy of it so
-  it can be read (this does not change what WeChat does), grant the app
-  running wxread Full Disk Access, then quit WeChat, open the re-signed
-  copy, and run `sudo wxread keys` again:
-      sudo codesign --force --sign - --entitlements /dev/stdin \
-        /Applications/WeChat.app <<'EOF'
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-        "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0"><dict>
-        <key>com.apple.security.get-task-allow</key><true/>
-      </dict></plist>
-      EOF
-  Re-signing can stop WeChat auto-updating; reinstall it to undo.
+  and macOS will not let even root read its memory. `wxread resign` says
+  how it would re-sign WeChat so it can be read (this does not change what
+  WeChat does), and `wxread resign --yes` does it. Then quit WeChat, open it
+  again, grant the app running wxread Full Disk Access, and run
+  `sudo wxread keys` again. Re-signing can stop WeChat updating itself;
+  reinstall it to undo. `wxread resign --help` says the rest.
 
 TRIPS YOU UP
   - Run it with sudo, or it refuses: only root reads another app's memory.
