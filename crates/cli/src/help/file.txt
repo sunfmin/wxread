@@ -1,0 +1,84 @@
+wxread file get: write one media message's file (an image, a video, a
+file, a sticker or a voice message), or its thumbnail, as the file it is.
+
+  wxread file get <id> --out <path> [--thumbnail]
+
+WHEN TO RUN IT
+  To see or keep what a message carries, once `wxread messages` has
+  answered its id and said, in its file_present and thumbnail_present,
+  that WeChat holds it. Run by you or an agent, once the keys are
+  supplied.
+
+WHAT IT READS
+  The message, by its id, in the account's message databases (message/
+  message_<n>.db and message/biz_message_<n>.db), then its file where
+  WeChat for Mac keeps it under the account's directory (the one above
+  db_storage):
+    image    msg/attach/<md5 of the chat id>/<YYYY-MM>/Img/<name>_h.dat,
+             else <name>.dat; its thumbnail <name>_t.dat. Sealed: the
+             older XOR format, V1, or V2 under the account's image key,
+             which wxread derives from WeChat's kvcomm files
+             (key_<code>_….statistic, under WeChat's Documents/app_data/
+             net/kvcomm) and the account's id, the one that opens the
+             account's first image. Decrypted in memory.
+    video    msg/video/<YYYY-MM>/<name>.mp4; its thumbnail
+             <name>_thumb.jpg
+    file     msg/file/<YYYY-MM>/<stored_as>, the one of the size the
+             message says when several share its name
+    voice    its SILK bytes in message/media_<n>.db
+    sticker  fetched from WeChat's CDN at its url, with macOS's own curl,
+             into memory, and checked against its md5
+  Each database is decrypted into memory, with its key: the file --keys
+  names, else the contents of WXREAD_KEYS.
+
+WHAT IT WRITES
+  The one file, at --out, and nothing anywhere else: a decrypted image or
+  a fetched sticker is never written but there. A file --out already
+  holds with the same bytes is left as it is, so running it again
+  changes nothing.
+
+OPTIONS
+  <id>              the message's id, its "id" as `wxread messages`
+                    answers it; required
+  --out <path>      the file to write; required. Its directory must exist.
+  --thumbnail       the thumbnail WeChat keeps of an image or a video,
+                    instead of its file
+  --account <id>    the account to read, as `wxread doctor` names it;
+                    with only one logged in, that one
+
+WHAT IT ANSWERS
+  Written:
+    path          where it was written: --out, made absolute
+    size          its bytes
+    sha256        the SHA-256 of them, in lowercase hex
+    content_type  what its first bytes say it is: image/jpeg, image/png,
+                  image/gif, image/wxgf (WeChat's own image format, which
+                  few viewers read), video/mp4, audio/silk,
+                  application/pdf, …; application/octet-stream for what
+                  they do not say
+  When WeChat does not hold the file (it holds only the thumbnail, or
+  cleared it, or never downloaded it), the answer, exit 0:
+    missing       true
+    thumbnail     the thumbnail written at --out in its place, as
+                  {path, size, sha256, content_type}, when WeChat holds
+                  one; else null, and nothing is written
+    fix           what makes WeChat fetch it: open the message in WeChat,
+                  which downloads it, then run this again
+
+TRIPS YOU UP
+  - The answer is written or missing: read its `missing` before its
+    `path`. A missing image's --out holds its thumbnail, not the image.
+  - Only images and videos have thumbnails: --thumbnail on another kind
+    is an error saying to leave it out.
+  - A message that carries no file (a text, a link, …) is an error
+    naming its kind.
+  - Images sealed under the account's key need the kvcomm files WeChat
+    for Mac writes on this Mac: with none that opens them, the error says
+    to log in to WeChat for Mac here and run again.
+  - A sticker is fetched from WeChat's CDN, so it needs the network; one
+    the CDN no longer serves is missing.
+  - A voice message is SILK (audio/silk), as WeChat records it: convert
+    it with a SILK decoder to play it elsewhere.
+  - The keys must open every message database, and for a voice message
+    every message/media_<n>.db; one missing is an error naming it, fixed
+    by `sudo wxread keys`, then supplying the keys again.

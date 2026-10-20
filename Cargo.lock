@@ -642,6 +642,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "silk"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -759,9 +766,12 @@ dependencies = [
  "clap",
  "libc",
  "mach2",
+ "md5",
  "rusqlite",
  "ruzstd",
  "serde_json",
+ "sha2",
+ "silk",
  "tempfile",
  "wxread-account",
  "wxread-answer",
@@ -771,10 +781,12 @@ dependencies = [
  "wxread-crack",
  "wxread-doctor",
  "wxread-keys",
+ "wxread-media",
  "wxread-messages",
  "wxread-schema",
  "wxread-search",
  "wxread-sqlcipher",
+ "wxread-voice",
 ]
 
 [[package]]
@@ -850,6 +862,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "wxread-media"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "md5",
+ "proptest",
+]
+
+[[package]]
 name = "wxread-messages"
 version = "0.1.0"
 dependencies = [
@@ -860,6 +881,7 @@ dependencies = [
  "wxread-answer",
  "wxread-chats",
  "wxread-contacts",
+ "wxread-media",
  "wxread-schema",
 ]
 
@@ -877,6 +899,7 @@ dependencies = [
  "proptest",
  "serde_json",
  "wxread-answer",
+ "wxread-media",
  "wxread-messages",
 ]
 
@@ -891,6 +914,14 @@ dependencies = [
  "proptest",
  "sha2",
  "wxread-keys",
+]
+
+[[package]]
+name = "wxread-voice"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "wxread-schema",
 ]
 
 [[package]]

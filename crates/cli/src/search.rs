@@ -9,16 +9,15 @@ use anyhow::anyhow;
 use rusqlite::{Connection, OptionalExtension as _, params};
 use serde_json::{Value, json};
 use wxread_answer::Limit;
+use wxread_media::Media;
 use wxread_messages::{Names, Range, Row};
 use wxread_schema::{CONTACT_DB, FTS_CONTENT, MESSAGE_FTS_DB, messages_table};
 use wxread_search::{BY_INDEX, BY_MESSAGE, Cursor, Db, Entry, Found, Index, Indexed, Query};
 
 use crate::account::Account;
-use crate::messages::{COLUMNS, contacts, ids, in_group, row_of};
+use crate::media;
+use crate::messages::{MESSAGE_DBS, contacts, ids, in_group, row, select};
 use crate::world::World;
-
-/// The message databases, as a refusal of missing keys names them.
-const MESSAGE_DBS: &str = "message/message_<n>.db";
 
 /// What `<text>`, `--account`, `--chat`, `--from`, `--to`, `--limit` and
 /// `--cursor` said.
@@ -130,6 +129,9 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     }
     let page = wxread_search::page(found, range, cursor.as_ref(), limit);
     let mut names: BTreeMap<String, Names> = BTreeMap::new();
+    // A voice message has no text to be found by, so no voice is on the
+    // page and the media databases are not read.
+    let (dir, voices) = (account.dir(), BTreeSet::new());
     let mut messages = Vec::new();
     for f in &page.found {
         if !names.contains_key(&f.chat) {
@@ -139,7 +141,10 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
         let chat_name = contacts.get(&f.chat).map(|c| {
             wxread_contacts::display_name(c.remark.as_deref(), None, c.nick_name.as_deref())
         });
-        messages.push(wxread_search::answer(f, &own, &names[&f.chat], chat_name.as_deref()));
+        let chat_dir = wxread_media::chat_dir(&f.chat);
+        let held = |m: &Media, r: &Row| media::held(&dir, m, &chat_dir, r.server_id, &voices);
+        let shown = &names[&f.chat];
+        messages.push(wxread_search::answer(f, &own, shown, chat_name.as_deref(), &held));
     }
     Ok(json!({
         "account": account.id(),
@@ -219,14 +224,8 @@ fn index(fts: &Connection, dbs: &[Db]) -> anyhow::Result<(Index, Vec<Entry>)> {
 /// it is there.
 fn one(conn: &Connection, db: &str, chat: &str, local_id: i64) -> rusqlite::Result<Option<Row>> {
     let table = messages_table(chat);
-    conn.query_row(
-        &format!(
-            "SELECT {COLUMNS} FROM {table} m LEFT JOIN Name2Id n ON n.rowid = m.real_sender_id WHERE m.local_id = ?1"
-        ),
-        [local_id],
-        row_of(db),
-    )
-    .optional()
+    conn.query_row(&format!("{} WHERE m.local_id = ?1", select(&table)), [local_id], |r| row(db, r))
+        .optional()
 }
 
 /// The rows of one chat in one database to read message by message: those
@@ -251,12 +250,11 @@ fn scan(
     let table = messages_table(unindexed.chat);
     let below = unindexed.cursor.map(|c| c.below_in(unindexed.chat, db));
     let mut query = conn.prepare(&format!(
-        "SELECT {COLUMNS}
-         FROM {table} m LEFT JOIN Name2Id n ON n.rowid = m.real_sender_id
-         WHERE (?1 IS NULL OR IFNULL(m.create_time, 0) >= ?1) AND (?2 IS NULL OR IFNULL(m.create_time, 0) < ?2)
+        "{} WHERE (?1 IS NULL OR IFNULL(m.create_time, 0) >= ?1) AND (?2 IS NULL OR IFNULL(m.create_time, 0) < ?2)
            AND (?3 IS NULL OR (IFNULL(m.create_time, 0), IFNULL(m.sort_seq, 0), m.local_id) < (?3, ?4, ?5))
            AND (?6 IS NULL OR m.local_id < ?6 OR m.local_id > ?7)
-         ORDER BY 5 DESC, 4 DESC, 1 DESC"
+         ORDER BY 5 DESC, 4 DESC, 1 DESC",
+        select(&table)
     ))?;
     let rows = query.query_map(
         params![
@@ -268,7 +266,7 @@ fn scan(
             unindexed.covered.map(|c| c.0),
             unindexed.covered.map(|c| c.1),
         ],
-        row_of(db),
+        |r| row(db, r),
     )?;
     let mut found = Vec::new();
     for row in rows {

@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 wxread-answer = { path = "../answer" }
+wxread-media = { path = "../media" }
 wxread-messages = { path = "../messages" }
 serde_json.workspace = true
 

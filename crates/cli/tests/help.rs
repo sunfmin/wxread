@@ -7,7 +7,7 @@ use std::process::Command;
 use serde_json::Value;
 
 use crate::common::World;
-use crate::synthetic::{Account, Article, Contact, DATABASES, Group, Said, Session};
+use crate::synthetic::{Account, Article, Contact, DATABASES, Group, Said, Session, Voice};
 use wxread_doctor::{DATA_DIR_FLAG, DATA_DIR_VAR, KEYS_FLAG, KEYS_VAR};
 
 /// What the binary prints for `args`, which must exit 0 and leave stderr empty.
@@ -60,7 +60,8 @@ fn run_in(text: &str) -> BTreeSet<String> {
 fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
     let existing = existing();
     let names = [
-        "articles", "chats", "contact", "contacts", "doctor", "group", "keys", "messages", "search",
+        "articles", "avatar", "chats", "contact", "contacts", "doctor", "file", "group", "keys",
+        "messages", "search", "voice",
     ];
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
@@ -114,13 +115,16 @@ fn answered(command: &str) -> BTreeSet<String> {
     keys.filter_map(|line| line.split_whitespace().next()).map(str::to_string).collect()
 }
 
-/// The keys the guide's row for `command` names.
+/// The keys the guide's row for `command` names, the lines that continue
+/// it (indented fourteen) too.
 fn guide_row(command: &str) -> BTreeSet<String> {
-    let row = between(wxread::GUIDE, "WHAT A COMMAND ANSWERS", "THE COMMANDS")
+    let mut lines = between(wxread::GUIDE, "WHAT A COMMAND ANSWERS", "THE COMMANDS")
         .into_iter()
-        .find(|line| line.starts_with(&format!("    {command} ")))
-        .expect("the guide has a row for the command");
-    row.split_whitespace().skip(1).map(str::to_string).collect()
+        .skip_while(|line| !line.starts_with(&format!("    {command} ")));
+    let row = lines.next().expect("the guide has a row for the command");
+    let more = lines.take_while(|line| line.starts_with(&" ".repeat(14)));
+    let words = row.split_whitespace().skip(1).chain(more.flat_map(str::split_whitespace));
+    words.map(str::to_string).collect()
 }
 
 #[test]
@@ -149,6 +153,28 @@ fn chats_answers_exactly_the_keys_its_help_and_the_guide_name() {
             "chats --help says what {field} is"
         );
     }
+}
+
+#[test]
+fn voice_answers_exactly_the_keys_its_help_and_the_guide_name() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    let mut said = Said::text("wxid_amy", 1, 1_760_000_000, "wxid_amy", "<msg/>");
+    said.local_type = 34;
+    account.messages = vec![said];
+    account.voices =
+        vec![Voice("wxid_amy", 1, include_bytes!("../../silk/tests/tone.silk").to_vec())];
+    account.write();
+    let out = world.root.join("v.wav").display().to_string();
+    let json = world
+        .run(
+            &["voice", "1", "--chat", "wxid_amy", "--out", &out],
+            &[("WXREAD_KEYS", &account.all_keys())],
+        )
+        .ok();
+    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(answered("voice"), keys);
+    assert_eq!(guide_row("voice"), keys);
 }
 
 #[test]
@@ -230,6 +256,41 @@ fn contacts_contact_and_group_answer_exactly_the_keys_their_help_and_the_guide_n
                 args[0]
             );
         }
+    }
+}
+
+#[test]
+fn file_get_and_avatar_answer_exactly_the_keys_their_help_and_the_guide_name() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.contacts = vec![Contact("wxid_amy", "Amy", ""), Contact("wxid_bob", "Bob", "")];
+    account.avatars = vec!["wxid_amy"];
+    let mut image = Said::text("wxid_amy", 7, 1_760_000_000, "wxid_amy", "<msg><img/></msg>");
+    image.local_type = 3;
+    image.packed = crate::synthetic::field(3, &crate::synthetic::field(4, b"gone"));
+    let mut video = image.clone();
+    (video.server_id, video.local_type) = (8, 43);
+    video.packed = crate::synthetic::field(4, &crate::synthetic::field(8, b"v"));
+    account.messages = vec![image, video];
+    account.files = vec![("msg/video/2025-10/v.mp4".into(), b"\0\0\0\x18ftypmp42".to_vec())];
+    account.write();
+    let keys = account.all_keys();
+    let out = world.root.join("out");
+    let out = out.to_str().unwrap();
+    for (command, args) in [
+        ("file", [&["file", "get", "8", "--out", out][..], &["file", "get", "7", "--out", out]]),
+        (
+            "avatar",
+            [&["avatar", "wxid_amy", "--out", out][..], &["avatar", "wxid_bob", "--out", out]],
+        ),
+    ] {
+        let mut keys_answered = BTreeSet::new();
+        for args in args {
+            let json = world.run(args, &[("WXREAD_KEYS", &keys)]).ok();
+            keys_answered.extend(json.as_object().unwrap().keys().cloned());
+        }
+        assert_eq!(answered(command), keys_answered, "{command}");
+        assert_eq!(guide_row(command), keys_answered, "{command}");
     }
 }
 

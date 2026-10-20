@@ -49,7 +49,9 @@ pub const HEAD_IMAGE: &str = "CREATE TABLE head_image(username TEXT PRIMARY KEY,
 pub const MESSAGE_DBS: [&str; 2] = ["message/message_", "message/biz_message_"];
 
 /// In each message database: the ids its messages name, a message's
-/// `real_sender_id` being its sender's rowid here.
+/// `real_sender_id` being its sender's rowid here; in each media database,
+/// the chats its voice messages are in, a voice's `chat_name_id` being its
+/// chat's rowid here.
 pub const NAME2ID: &str = "CREATE TABLE Name2Id(user_name TEXT PRIMARY KEY, is_session INTEGER)";
 
 /// In a message database: one chat's messages, the table named
@@ -107,3 +109,15 @@ pub fn fts_content(n: u32) -> String {
         FTS_CONTENT.0, FTS_CONTENT.1
     )
 }
+
+/// The databases a chat's voice messages are in, under `db_storage`:
+/// `message/media_<n>.db`, `<n>` from 0.
+pub const MEDIA_DBS: &str = "message/media_";
+
+/// In each media database: the chats its voice messages are in, a voice
+/// message's `chat_name_id` being its chat's rowid here.
+pub const MEDIA_NAME2ID: &str = "CREATE TABLE Name2Id(user_name TEXT PRIMARY KEY)";
+
+/// In each media database: each voice message's SILK bytes, `voice_data`,
+/// by its `svr_id`, the message's server id.
+pub const VOICE_INFO: &str = "CREATE TABLE VoiceInfo(chat_name_id INTEGER, create_time INTEGER, local_id INTEGER, svr_id INTEGER, voice_data BLOB, data_index TEXT DEFAULT '0')";

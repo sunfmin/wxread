@@ -17,14 +17,20 @@ wxread-contacts = { path = "../contacts" }
 wxread-doctor = { path = "../doctor" }
 wxread-keys = { path = "../keys" }
 wxread-crack = { path = "../crack" }
+wxread-media = { path = "../media" }
 wxread-messages = { path = "../messages" }
 wxread-schema = { path = "../schema" }
 wxread-search = { path = "../search" }
 wxread-sqlcipher = { path = "../sqlcipher" }
+wxread-voice = { path = "../voice" }
+# WeChat's voice codec, decoded in-process (docs/adr/0005-voice-is-decoded-in-process.md).
+silk = { path = "../silk" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde_json.workspace = true
 libc = "0.2.191"
+# The SHA-256 a written file is answered with.
+sha2 = "0.10"
 # WeChat's databases, decrypted, opened from memory.
 rusqlite = { version = "0.32", features = ["bundled", "serialize"] }
 
@@ -36,6 +42,8 @@ mach2 = "0.4.3"
 tempfile = "3"
 # Content compressed as WeChat compresses it, in the synthetic accounts.
 ruzstd = "0.8"
+# A sticker's MD5, as its message names it.
+md5 = "0.7"
 
 [[test]]
 name = "cli"

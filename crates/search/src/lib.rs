@@ -16,6 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Value, json};
 use wxread_answer::{CURSOR_FLAG, Limit};
+use wxread_media::{Held, Media};
 use wxread_messages::{CHAT_FLAG, Chat, FROM_FLAG, Kind, Names, Range, Row, TO_FLAG};
 
 /// What `searched` answers: WeChat's index searched, with what it has not
@@ -357,10 +358,17 @@ pub fn page(found: Vec<Found>, range: Range, after: Option<&Cursor>, limit: Limi
 /// `found` as the answer has it: the message as `wxread messages` answers
 /// it, with its chat's id and name, and the text it was found in;
 /// `account` the account's own id, `names` the names of the chat's
-/// senders, `chat_name` what WeChat shows the chat as.
-pub fn answer(found: &Found, account: &str, names: &Names, chat_name: Option<&str>) -> Value {
+/// senders, `chat_name` what WeChat shows the chat as, and `held` whether
+/// WeChat holds a media message's file and thumbnail.
+pub fn answer(
+    found: &Found,
+    account: &str,
+    names: &Names,
+    chat_name: Option<&str>,
+    held: &impl Fn(&Media, &Row) -> Held,
+) -> Value {
     let chat = Chat { id: found.chat.clone(), account: account.into() };
-    let mut message = wxread_messages::message(&chat, names, &found.row);
+    let mut message = wxread_messages::message(&chat, names, &found.row, held);
     if let Value::Object(fields) = &mut message {
         fields.insert("chat".into(), json!(found.chat));
         fields.insert("chat_name".into(), json!(chat_name.filter(|n| !n.is_empty())));

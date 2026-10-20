@@ -207,7 +207,7 @@ fn an_answer_is_the_message_with_its_chat_and_what_matched() {
         "wxid_amy".into(),
         wxread_messages::Contact { remark: Some("Amy W".into()), nick_name: None },
     );
-    let value = answer(&f, "wxid_me", &names, Some("Amy W"));
+    let value = answer(&f, "wxid_me", &names, Some("Amy W"), &none_held);
     assert_eq!(
         value,
         json!({
@@ -216,7 +216,7 @@ fn an_answer_is_the_message_with_its_chat_and_what_matched() {
             "kind": "text", "text": {"text": "x"}, "type": 1, "subtype": 0, "content": "x",
         })
     );
-    assert_eq!(answer(&f, "wxid_me", &names, Some(""))["chat_name"], Value::Null);
+    assert_eq!(answer(&f, "wxid_me", &names, Some(""), &none_held)["chat_name"], Value::Null);
 }
 
 proptest! {
@@ -246,3 +246,8 @@ proptest! {
 }
 
 const MAX: usize = wxread_answer::MAX_LIMIT;
+
+/// WeChat holds no media message's file or thumbnail.
+fn none_held(_: &Media, _: &Row) -> Held {
+    Held { file: false, thumbnail: None }
+}
