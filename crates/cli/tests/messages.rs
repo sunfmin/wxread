@@ -115,7 +115,7 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
                 r#"<sysmsg type="revokemsg"><revokemsg><content><![CDATA["Bobby" 撤回了一条消息]]></content></revokemsg></sysmsg>"#,
             ),
             "recall",
-            json!({ "text": "\"Bobby\" 撤回了一条消息" }),
+            json!({ "text": "\"Bobby\" 撤回了一条消息", "recalled": null }),
         ),
         (
             group(
@@ -217,6 +217,15 @@ fn every_kind() -> Vec<(Said, &'static str, Value)> {
             zstd,
             "link",
             json!({ "to": "web_page", "title": "Packed", "summary": null, "url": "https://e.com/z", "source": null }),
+        ),
+        (
+            group(
+                0,
+                50,
+                "<voipmsg type=\"VoIPBubbleMsg\"><VoIPBubbleMsg><msg><![CDATA[通话时长 01:04:50]]></msg><room_type>1</room_type><msg_type>100</msg_type><duration>0</duration></VoIPBubbleMsg></voipmsg>",
+            ),
+            "call",
+            json!({ "medium": "voice", "state": "connected", "seconds": 3890, "text": "通话时长 01:04:50" }),
         ),
     ]
 }
@@ -320,6 +329,11 @@ fn each_kind_is_read_as_its_kind_with_its_fields() {
         (&json!("wxid_dan"), &json!("Dan"))
     );
     assert_eq!(by_id("9002")["content"], "hi");
+    // A recall is its recaller's, by the name its notice shows them by.
+    assert_eq!(
+        (&by_id("9008")["sender"], &by_id("9008")["sender_name"]),
+        (&json!("wxid_bob"), &json!("Bobby"))
+    );
     assert_eq!(
         (&by_id("9012")["sender"], &by_id("9012")["sender_name"]),
         (&Value::Null, &Value::Null)

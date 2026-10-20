@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 
 use wxread_contacts::display_name;
 
+use crate::Chat;
+
 /// What a contact is called: the account's remark for it, and its own name.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Contact {
@@ -32,6 +34,30 @@ impl Names {
             contact.and_then(|c| c.nick_name.as_deref()),
         );
         (!shown.is_empty()).then_some(shown)
+    }
+
+    /// Who other than the account goes by `name` in `chat`: in a direct
+    /// chat, the contact it is with; in a group, the one member whose
+    /// remark, name in the group or own name it is. None when no member
+    /// does, or more than one.
+    pub fn who(&self, chat: &Chat, name: &str) -> Option<String> {
+        if !chat.is_group() {
+            return Some(chat.id.clone());
+        }
+        let goes_by = |id: &str| {
+            let contact = self.contacts.get(id);
+            [
+                contact.and_then(|c| c.remark.as_deref()),
+                self.in_group.get(id).map(String::as_str),
+                contact.and_then(|c| c.nick_name.as_deref()),
+            ]
+            .contains(&Some(name))
+        };
+        let mut found = self.in_group.keys().filter(|id| goes_by(id));
+        match (found.next(), found.next()) {
+            (Some(id), None) => Some(id.clone()),
+            _ => None,
+        }
     }
 }
 

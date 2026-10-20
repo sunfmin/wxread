@@ -64,6 +64,8 @@ fn each_kind_is_searched_by_the_text_wechat_indexes() {
     // Media and notices are not searched, whatever their XML holds.
     assert_eq!(matched(3, r#"<msg><img md5="x"/></msg>"#), None);
     assert_eq!(matched(10000, "x joined"), None);
+    let call = r#"<voipmsg type="VoIPBubbleMsg"><VoIPBubbleMsg><msg><![CDATA[x 已取消]]></msg><room_type>1</room_type></VoIPBubbleMsg></voipmsg>"#;
+    assert_eq!(matched(50, call), None);
     // A text that does not hold the query is not found.
     assert_eq!(matched(1, "nothing"), None);
 }

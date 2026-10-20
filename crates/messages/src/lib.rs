@@ -68,6 +68,7 @@ pub enum Kind {
     Renamed,
     Transfer,
     RedPacket,
+    Call,
     Image,
     Video,
     File,
@@ -79,7 +80,7 @@ pub enum Kind {
 
 impl Kind {
     /// Every kind, as the answer names them.
-    pub const ALL: [Kind; 20] = [
+    pub const ALL: [Kind; 21] = [
         Kind::Text,
         Kind::Link,
         Kind::Quote,
@@ -93,6 +94,7 @@ impl Kind {
         Kind::Renamed,
         Kind::Transfer,
         Kind::RedPacket,
+        Kind::Call,
         Kind::Image,
         Kind::Video,
         Kind::File,
@@ -117,6 +119,7 @@ impl Kind {
             Kind::Renamed => "renamed",
             Kind::Transfer => "transfer",
             Kind::RedPacket => "red_packet",
+            Kind::Call => "call",
             Kind::Image => "image",
             Kind::Video => "video",
             Kind::File => "file",
@@ -385,7 +388,8 @@ pub fn page(
     Page { messages: rows.iter().map(|r| message(chat, names, r, &held)).collect(), next }
 }
 
-/// `row` as the answer has it: its id, time and sender, its kind and that
+/// `row` as the answer has it: its id, time and sender (one its content
+/// names only by name, who goes by it in `names`), its kind and that
 /// kind's fields, a media kind's with whether WeChat holds its file and
 /// thumbnail as `held` says, and beside them WeChat's content and type.
 pub fn message(
@@ -395,6 +399,7 @@ pub fn message(
     held: &impl Fn(&Media, &Row) -> Held,
 ) -> Value {
     let Read { sender, content, mut parsed } = read(chat, row);
+    let sender = sender.or_else(|| parsed.named.as_deref().and_then(|n| names.who(chat, n)));
     if let Some(found) = media::locate(parsed.kind, &parsed.fields) {
         let h = held(&found, row);
         parsed.fields.insert("file_present".into(), json!(h.file));
