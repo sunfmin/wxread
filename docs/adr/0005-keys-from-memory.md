@@ -13,7 +13,7 @@ So every key `wxread keys` answers opens its database, and a database no key in 
 
 ## How macOS is handled
 
-Reading another process's memory on macOS needs the `task_for_pid` port, which needs two things: root, and a target that allows being read. A WeChat installed from Tencent carries the hardened runtime without the `com.apple.security.get-task-allow` entitlement, so `task_for_pid` fails even as root. wxread does **not** elevate itself, inject into WeChat, or disable SIP. It refuses, naming the cause and the fix: `wxread resign --yes`, which re-signs WeChat ad-hoc with `get-task-allow` added to its existing entitlements (docs/adr/0006), then quit WeChat, open it again, grant the app running wxread Full Disk Access, and run `sudo wxread keys` again. Why wxread re-signs WeChat rather than ask for SIP to be disabled is decided there.
+Reading another process's memory on macOS needs the `task_for_pid` port, which needs two things: root, and a target that allows being read. A WeChat installed from Tencent carries the hardened runtime without the `com.apple.security.get-task-allow` entitlement, so `task_for_pid` fails even as root. wxread does **not** elevate itself, inject into WeChat, or disable SIP. It refuses, naming the cause and the fix: `wxread resign --yes`, which re-signs WeChat ad-hoc with `get-task-allow` added to its existing entitlements (docs/adr/0008), then quit WeChat, open it again, grant the app running wxread Full Disk Access, and run `sudo wxread keys` again. Why wxread re-signs WeChat rather than ask for SIP to be disabled is decided there.
 
 ## Why keys touches privilege, and nothing else does
 
@@ -26,4 +26,4 @@ Under `sudo`, the process's `HOME` is root's, but WeChat's databases are the inv
 - `keys` requires root and refuses without it; `doctor` and every reader run unprivileged with the stored keys.
 - A key is reported only once it is proved against its database, so a wrong candidate is never answered and the output is safe to trust and store.
 - The crypto parameters are WeChat for Mac 4.x's; a WeChat that changes them (a new major version, a new cipher) makes this command report nothing, and is a new decision, not a silent fix.
-- Re-signing WeChat is the user's to do, by `wxread resign --yes` (docs/adr/0006) — never something wxread does to WeChat on its own.
+- Re-signing WeChat is the user's to do, by `wxread resign --yes` (docs/adr/0008) — never something wxread does to WeChat on its own.

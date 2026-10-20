@@ -1,5 +1,5 @@
 //! `wxread keys`: reads every database's key out of the running WeChat's
-//! memory and prints them (docs/adr/0004-keys-from-memory.md). It reads the
+//! memory and prints them (docs/adr/0005-keys-from-memory.md). It reads the
 //! world — whether wxread is root, whether WeChat is running and readable,
 //! and the first page of each database — and asks [`wxread_crack`] which keys
 //! open which databases. It keeps nothing and writes nothing.

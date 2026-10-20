@@ -26,7 +26,7 @@ wxread-schema = { path = "../schema" }
 wxread-search = { path = "../search" }
 wxread-sqlcipher = { path = "../sqlcipher" }
 wxread-voice = { path = "../voice" }
-# WeChat's voice codec, decoded in-process (docs/adr/0005-voice-is-decoded-in-process.md).
+# WeChat's voice codec, decoded in-process (docs/adr/0007-voice-is-decoded-in-process.md).
 silk = { path = "../silk" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

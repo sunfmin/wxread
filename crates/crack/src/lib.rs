@@ -1,5 +1,5 @@
 //! Finding each database's key in the running WeChat's memory
-//! (docs/adr/0004-keys-from-memory.md).
+//! (docs/adr/0005-keys-from-memory.md).
 //!
 //! WeChat for Mac 4.x keeps every database's key in memory as the raw
 //! 32-byte key, written as the SQLCipher literal `x'<64 hex key><32 hex

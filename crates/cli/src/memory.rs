@@ -1,6 +1,6 @@
 //! Reading the running WeChat's memory on macOS: finding its process and,
 //! as root, scanning its readable-and-writable regions for the key literals
-//! WeChat holds (docs/adr/0004-keys-from-memory.md). This is the one piece of
+//! WeChat holds (docs/adr/0005-keys-from-memory.md). This is the one piece of
 //! wxread that reaches into another process; it reads, and changes nothing.
 //!
 //! The pure crate [`wxread_crack`] reads the keys out of the bytes; this

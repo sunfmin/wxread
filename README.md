@@ -46,7 +46,7 @@ macOS only, Apache-2.0 ([ADR 0001](docs/adr/0001-macos-only-and-apache-2.md)).
 The formats are as [wechat-cli](https://github.com/huohuoer/wechat-cli) and
 wechat-decrypt (both Apache-2.0) found them. Voice messages are decoded by
 silk-decoder-rs (MIT), vendored in [crates/silk](crates/silk)
-([ADR 0005](docs/adr/0005-voice-is-decoded-in-process.md)).
+([ADR 0007](docs/adr/0007-voice-is-decoded-in-process.md)).
 
 ## Developing
 

@@ -1,6 +1,6 @@
 [package]
 name = "wxread-resign"
-description = "Re-signing WeChat so its memory can be read: its entitlements with get-task-allow added, the answer and every failure's fix, as pure functions checked by Flux (docs/adr/0006-wxread-resign-re-signs-wechat-when-asked.md)"
+description = "Re-signing WeChat so its memory can be read: its entitlements with get-task-allow added, the answer and every failure's fix, as pure functions checked by Flux (docs/adr/0008-wxread-resign-re-signs-wechat-when-asked.md)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
