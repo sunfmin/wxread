@@ -87,6 +87,20 @@ impl<'a> Store<'a> {
         Ok(Store { account, contacts_db, contacts, dbs, senders })
     }
 
+    /// The message databases holding messages of `chat`, by their names.
+    pub fn holding(&self, chat: &str) -> anyhow::Result<Vec<String>> {
+        let table = wxread_schema::messages_table(chat);
+        let mut names = Vec::new();
+        for (db, path, conn) in &self.dbs {
+            let sql =
+                |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(path, &e.to_string()));
+            if has_table(conn, &table).map_err(sql)? {
+                names.push(db.clone());
+            }
+        }
+        Ok(names)
+    }
+
     /// The page of chat `chat`'s messages from `start` within `range`, at
     /// most `limit`, as `wxread messages` answers them; [`NoMessages`] when
     /// WeChat on this Mac holds none of its messages.
@@ -195,6 +209,25 @@ fn read(
             |r| row(db, r),
         )?
         .collect()
+}
+
+/// The newest row of chat `chat` in message database `db`, read out of its
+/// file now, if it holds one.
+pub fn newest(account: &Account, db: &str, chat: &str) -> anyhow::Result<Option<Row>> {
+    let path = wxread_messages::db_path(db);
+    let conn = account.database(&path)?;
+    let table = wxread_schema::messages_table(chat);
+    let sql = |e: rusqlite::Error| anyhow!(wxread_account::not_wechats(&path, &e.to_string()));
+    if !has_table(&conn, &table).map_err(sql)? {
+        return Ok(None);
+    }
+    conn.query_row(
+        &format!("{} ORDER BY 5 DESC, 4 DESC, 1 DESC LIMIT 1", select(&table)),
+        [],
+        |r| row(db, r),
+    )
+    .optional()
+    .map_err(sql)
 }
 
 /// The row of the chat's table `table` in message database `db` whose

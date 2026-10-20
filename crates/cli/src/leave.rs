@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use std::io::Read as _;
 use std::path::PathBuf;
 use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, bail};
 use rusqlite::Connection;
@@ -21,8 +21,8 @@ use serde_json::{Value, json};
 use wxread_answer::Limit;
 use wxread_contacts::{Contacts, Group};
 use wxread_leave::{
-    COMPARED, IDLE_SECONDS, IDLE_WAIT_SECONDS, LEFT_WAIT_SECONDS, Look, Mode, Move, Outcome,
-    POLL_MILLIS, Path, Refusal, Said, Target, WeChat,
+    COMPARED, IDLE_SECONDS, IDLE_WAIT_SECONDS, LEFT_WAIT_SECONDS, Look, Mode, Move, Newest,
+    Outcome, POLL_MILLIS, Path, Refusal, Said, Target, WeChat,
 };
 use wxread_messages::{Order, Range, Start};
 use wxread_schema::CONTACT_DB;
@@ -30,7 +30,7 @@ use wxread_schema::CONTACT_DB;
 use crate::account::Account;
 use crate::contacts::{contacts, group_in, members, own_id};
 use crate::media::MEDIA_DB_PATHS;
-use crate::messages::{MESSAGE_DBS, NoMessages, Store};
+use crate::messages::{self, MESSAGE_DBS, NoMessages, Store};
 use crate::world::World;
 use crate::{Failed, window};
 
@@ -70,11 +70,15 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
     let store = Store::open(&account)?;
     let mut read = Vec::new();
     let mut faults = Vec::new();
+    // The message databases holding each group's chat: where its notice of
+    // the account leaving is looked for.
+    let mut holding: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for id in &ids {
         match target(&contact_db, &contacts, &own, &store, id) {
             Ok(target) => read.push(target),
             Err(e) => faults.push(format!("{e:#}")),
         }
+        holding.insert(id.clone(), store.holding(id)?);
     }
     if !faults.is_empty() {
         bail!("{}", faults.join("; and "));
@@ -133,7 +137,8 @@ pub fn run(world: &World, asked: &Asked) -> anyhow::Result<Value> {
         let done = session.go(&mut path, &mut took).and_then(|clicked| match clicked {
             None => Ok(Outcome::Identified),
             Some(clicked) => {
-                let confirmed = confirm(&account, target, &own, clicked);
+                let dbs = holding.get(&target.id).map(Vec::as_slice).unwrap_or_default();
+                let confirmed = confirm(&account, dbs, target, &own, clicked);
                 took.confirm = clicked.elapsed();
                 confirmed.map(Outcome::Left)
             }
@@ -411,12 +416,36 @@ fn watch(window: &mut window::Window, path: &mut Path, look: Look) -> anyhow::Re
     }
 }
 
-/// Reads `target`'s members out of the account's contact database every
-/// [`POLL_MILLIS`] from `clicked`, OK's click, until the account `own` is
-/// no longer among them: the seconds that took. Not within
-/// [`LEFT_WAIT_SECONDS`], the leave is not confirmed.
-fn confirm(account: &Account, target: &Target, own: &str, clicked: Instant) -> anyhow::Result<u64> {
+/// Reads, every [`POLL_MILLIS`] from `clicked` (OK's click), the newest
+/// message of `target`'s chat out of the message databases `dbs` hold it
+/// in, and its members out of the contact database, until the chat holds
+/// the account `own`'s notice of leaving it or the account is no longer
+/// among them: the seconds that took. Not within [`LEFT_WAIT_SECONDS`],
+/// the leave is not confirmed.
+fn confirm(
+    account: &Account,
+    dbs: &[String],
+    target: &Target,
+    own: &str,
+    clicked: Instant,
+) -> anyhow::Result<u64> {
+    let ok_at = SystemTime::now()
+        .checked_sub(clicked.elapsed())
+        .and_then(|at| at.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |since| i64::try_from(since.as_secs()).unwrap_or(i64::MAX));
     loop {
+        for db in dbs {
+            let newest = messages::newest(account, db, &target.id)?.map(|row| Newest {
+                system: wxread_messages::kinds::split(row.local_type).0
+                    == wxread_messages::kinds::SYSTEM,
+                server_id: row.server_id,
+                sender: row.sender,
+                at: row.create_time,
+            });
+            if newest.is_some_and(|n| wxread_leave::left_by_notice(&n, own, ok_at)) {
+                return Ok(clicked.elapsed().as_secs());
+            }
+        }
         let now = members(&account.database(CONTACT_DB)?, &target.id)?;
         let seconds = clicked.elapsed().as_secs();
         if wxread_leave::left(&now, own) {

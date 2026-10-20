@@ -1,8 +1,10 @@
 wxread group leave: leaves the account's groups given, one after another,
 the way a person does, in WeChat's own window. It cannot be undone: to
 rejoin, a member of the group must invite the account back. Without --yes
-it says what it would do and changes nothing. It stops at the first group
-it fails to leave; run the same command again and it leaves only the rest.
+it says what it would do and changes nothing; with --dry-run it opens
+each group's chat and says whether it is told to be the group, and leaves
+none. It stops at the first group it fails to leave; run the same command
+again and it leaves only the rest.
 
 WHEN TO RUN IT
   To leave groups the account no longer wants, found by reading them with
@@ -12,36 +14,47 @@ WHEN TO RUN IT
   them; the person whose Mac it is picks which to leave.
   Run by that person, or by an agent they told to leave those groups:
   first `wxread group leave <id> <id>...` to see what it would do, then
-  the same with --yes.
+  the same with --dry-run to check every group's chat is told apart, then
+  with --yes.
 
 WHAT IT READS AND DOES
   - Each group, out of contact/contact.db (its display name, its own
-    name, its members) and its newest message, out of the message
+    name, its members) and its 8 newest messages, out of the message
     databases, with their keys: the file --keys names, else WXREAD_KEYS.
-    A group the account is not in is passed over (not_member): there is
-    nothing to leave. It refuses a group another group the account is in
-    is shown the same as (nothing in WeChat's window tells two such
-    groups apart), and an id that is no group; any group refused stops
-    the whole run before anything is touched, every one named at once.
-  - What stops it before the window is touched, answered as blockers:
-    WeChat not running, or logged in as another account (told by which
-    account's databases the running WeChat has open), and either
-    permission below missing.
-  - With --yes only, WeChat's window, group after group in the order
-    given, for about ten seconds each, once the keyboard and mouse have
-    been left alone for 3 s (waited for at most a minute): WeChat is brought to the front, its search given the
-    group's name through the pasteboard (put back right after), the chat
-    it lists by that name opened, its title checked to read the name and
-    the member count, its chat info (···) opened and its Group Name
-    checked, Leave clicked, and OK clicked once the confirmation quotes
-    the name. Each step is checked on a screenshot of the window, by the
-    text macOS recognizes in it; the screenshot is kept only while it is
-    read, in a directory only you can read. The app that was in front
-    gets it back. Clear Chat History is left unticked: the chat and its
+    Every database is read once a run, before the window is touched. A
+    group the account is not in is passed over (not_member): there is
+    nothing to leave. An id that is no group refuses the whole run
+    before anything is touched, every one named at once.
+  - What stops --dry-run and --yes before the window is touched, answered
+    as blockers: WeChat not running, or logged in as another account
+    (told by which account's databases the running WeChat has open), and
+    either permission below missing.
+  - With --dry-run or --yes, WeChat's window, group after group in the
+    order given, a few seconds each. Once a run, before the first group,
+    it waits for the keyboard and mouse to have been left alone for 1 s
+    (at most 30 s) and brings WeChat to the front, where it stays until
+    the last group is done; then the app that was in front gets it back.
+    For each group: its search is given the group's name through the
+    pasteboard (put back right after), and the chat it lists whose name
+    reads most like it is opened. The name is only searched for: the
+    chat is told to be the group when its title shows the group's member
+    count and most of the group's newest messages are in it, in order
+    (by their text, or, for an image or a sticker, by their sender's
+    name or time). A chat that is not is passed for the next one the
+    search lists, up to 4. --dry-run clicks nothing more. --yes then
+    opens its chat info (···), clicks Leave, and clicks OK once the
+    confirmation quotes the name. Each step is checked on a screenshot
+    of the window, by the text macOS recognizes in it, looked at again
+    until the step's screen comes (a few seconds at most); the
+    screenshot is kept only while it is read, in a directory only you
+    can read. Clear Chat History is left unticked: the chat and its
     messages stay.
-  - Then the databases, once a second for at most 30 s, until they no
-    longer list the account among the group's members: only then does it
-    answer that it left, and go on to the next group.
+  - With --yes, then the databases, every 200 ms for at most 30 s, until
+    the chat holds the notice WeChat writes when the account leaves (a
+    system message of the account's own, written after OK, about a
+    second after it), or the account is no longer among the group's
+    members: only then does it answer that it left, and go on to the
+    next group.
 
 WHAT MACOS MUST ALLOW
   The app running wxread (a terminal, an agent's host) needs, in System
@@ -53,8 +66,8 @@ WHAT MACOS MUST ALLOW
   `wxread doctor` says whether each is allowed.
 
 USAGE
-  wxread group leave <id>... [--account <id>] [--yes]
-  ... | wxread group leave - [--account <id>] [--yes]
+  wxread group leave <id>... [--account <id>] [--dry-run | --yes]
+  ... | wxread group leave - [--account <id>] [--dry-run | --yes]
 
   <id>...           each group's id, <n>@chatroom, as `wxread contacts`
                     and `wxread chats` answer it; one given twice is left
@@ -63,12 +76,15 @@ USAGE
                     line), in their place among the others
   --account <id>    the account to read, as `wxread doctor` names it;
                     with only one logged in, that one
+  --dry-run         open each one's chat and say whether it is told to be
+                    the group; leave none, every one tried
   --yes             leave them; without it, nothing is changed
 
 WHAT IT ANSWERS
     account       the account read: its directory's name, as doctor's id
     groups        [{id, display_name, name, members, last_message,
-                  outcome, confirmed_in, plan}], in the order given:
+                  outcome, confirmed_in, identity, seconds, error,
+                  plan}], in the order given:
                 id            the group's id
                 display_name  what WeChat shows it as
                 name          its own name; "" for none
@@ -76,37 +92,59 @@ WHAT IT ANSWERS
                               them
                 last_message  its newest message as `wxread messages`
                               answers it; null for none
-                outcome       "planned" (without --yes: it would be
-                              left), "not_member" (the account is not in
-                              it: nothing to leave), "left" (this run left
-                              it), "stopped" (leaving it failed: error
-                              says why) or "not_tried" (a group before it
-                              stopped the run)
+                outcome       "planned" (without --yes or --dry-run: it
+                              would be left), "not_member" (the account is
+                              not in it: nothing to leave), "identified"
+                              (--dry-run told its chat is the group),
+                              "not_identified" (--dry-run did not: error
+                              says what was read and what did not match),
+                              "left" (this run left it), "stopped"
+                              (leaving it failed: error says why) or
+                              "not_tried" (a group before it stopped the
+                              run)
                 confirmed_in  the seconds after OK the databases took to
-                              no longer list the account among its
-                              members; null unless left
+                              show the account left it; null unless left
+                identity      what the chat opened showed of which group
+                              it is: {members_shown (null when none was
+                              read), messages_found, messages_compared};
+                              null unless a chat was opened
+                seconds       how long it took, in seconds: {search,
+                              identify, leave, confirm, total}; null
+                              unless it was tried
+                error         why it was not identified or stopped the
+                              run, what was read and what did not match;
+                              null for none
                 plan          the steps it takes for it, in order; [] for
                               one not_member
-    blockers      [line]: what stops --yes before the window is touched,
-                  each with its fix; [] when nothing does, or nothing is
-                  to be left
+    blockers      [line]: what stops --dry-run and --yes before the window
+                  is touched, each with its fix; [] when nothing does, or
+                  nothing is to be left
     next          what to do now: after a stop, the command that leaves
                   only the groups still to leave
-  A run that stops at a group answers the same object, error added (the
-  group it stopped at, and why), and exits 1.
+    seconds       how long the run took, in seconds: {read (the
+                  databases), idle (waiting for the Mac to be left
+                  alone), total}
+  A run that stops at a group, or a --dry-run that does not tell every
+  group, answers the same object, error added, and exits 1.
 
 TRIPS YOU UP
-  - Without --yes nothing changes: read plan and blockers, then add --yes.
+  - Without --yes nothing changes: read plan and blockers, run it with
+    --dry-run, then add --yes. --dry-run and --yes together are refused.
   - It stops at the first group it fails to leave: the groups before it
     are left, it is stopped, and the ones after it are not tried. Run the
     same command again (or the one next names) once the cause is fixed:
     a group the account has left is not_member, so only the rest are
-    left.
-  - Anything in the window that does not read as expected stops it where
-    it is, naming the screen it stopped on and what it read there, with
-    nothing clicked after it; a confirmation already up is cancelled.
-    Running it again with the Mac left alone usually gets past a screen
-    that was still drawing; WeChat itself can always leave the group.
+    left. --dry-run tries every group.
+  - Anything in the window that does not come to read as expected stops
+    it where it is, naming the screen it stopped on and what it read
+    there, with nothing clicked after it; a confirmation already up is
+    cancelled. Running it again with the Mac left alone usually gets past
+    a screen that was still drawing; WeChat itself can always leave the
+    group.
+  - A chat is told only by what it shows: a group whose newest messages
+    WeChat on this Mac does not hold, or whose chat shows images only
+    with members' names hidden, is not told, and is left in WeChat
+    itself. Groups of the same name are told apart the same way.
   - The person at the Mac comes first: it waits for the keyboard and mouse
     to be left alone, and typing while it runs can stop it.
   - Opening the group's chat marks its messages read, as a person opening
@@ -114,8 +152,7 @@ TRIPS YOU UP
   - WeChat whose screens read otherwise than 4.1.15's (another version, a
     new layout) is refused at the step that no longer matches.
   - A group with no name of its own is searched for by the names WeChat
-    shows it by; a group whose display name another group the account is
-    in shares is refused: give one of them a remark in WeChat first.
+    shows it by.
   - An answer that the leave is not confirmed means OK was clicked but the
-    databases still list the account after 30 s: read `wxread group <id>`
-    again, and look at WeChat's window.
+    databases still list the account after 30 s, with no notice of it
+    leaving: read `wxread group <id>` again, and look at WeChat's window.

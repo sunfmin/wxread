@@ -27,7 +27,9 @@ the same points.
 - `chat-truncated.jsonl`, `chat-ads.jsonl` and `chat-images.jsonl` are
   written for the tests: a title with its parentheses read half full-width,
   a chat of ads that another group is fed too, and a chat of images
-  only, told by its senders' names and times.
+  only, told by its senders' names and times. `info-chat.jsonl` is
+  `info.jsonl` with the chat's message beside it; `info-other.jsonl` is
+  the chat info under another group's title.
 
 No screenshot is kept, and none of the owner's chats: the chat list's lines
 are left out of every screen.

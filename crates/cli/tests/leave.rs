@@ -15,9 +15,9 @@ use crate::synthetic::{Account, Contact, Group, Said};
 const GROUP: &str = "123@chatroom";
 const AT: i64 = 1_760_000_000;
 
-/// An account in group "Ads" with Amy, who said the last thing in it; Amy
-/// and Bob are in "Hiking" without the account; and two groups the account
-/// is in show as "Twins".
+/// An account in group "Ads" with Amy, who said the last things in it;
+/// Amy and Bob are in "Hiking" without the account; and two groups the
+/// account is in show as "Twins".
 fn account(world: &World) -> Account {
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     account.contacts = vec![
@@ -89,8 +89,18 @@ fn without_yes_it_answers_the_plan_and_changes_nothing() {
     assert_eq!((&group["outcome"], &group["confirmed_in"]), (&json!("planned"), &Value::Null));
     assert_eq!(group["last_message"]["content"], "cheaper flats", "its newest message");
     let plan = strings(&group["plan"]);
-    assert!(plan.iter().any(|s| s.contains("title reads Ads (2)")), "{plan:?}");
-    assert!(plan.iter().any(|s| s.contains("Group Name reads Ads")), "{plan:?}");
+    assert!(
+        plan.iter().any(|s| s.contains("title shows 2 members, and most of the 2 newest messages")),
+        "{plan:?}"
+    );
+    assert!(plan.iter().any(|s| s.contains("click Leave")), "{plan:?}");
+    assert_eq!(
+        (&group["identity"], &group["seconds"], &group["error"]),
+        (&Value::Null, &Value::Null, &Value::Null),
+        "no chat was opened"
+    );
+    assert!(json["seconds"]["read"].as_f64().unwrap() >= 0.0, "{json}");
+    assert_eq!(json["seconds"]["idle"], 0.0, "the Mac was not waited for");
     // No WeChat is logged in as a synthetic account: that blocks --yes.
     let blockers = strings(&json["blockers"]);
     assert!(
@@ -113,11 +123,9 @@ fn several_groups_are_each_planned_in_the_order_given() {
     assert!(
         strings(&group_of(&json, "6@chatroom")["plan"])
             .iter()
-            .any(|s| s.contains("title reads Left (2)"))
+            .any(|s| s.contains("search for Left"))
     );
-    assert!(
-        strings(&group_of(&json, GROUP)["plan"]).iter().any(|s| s.contains("title reads Ads (2)"))
-    );
+    assert!(strings(&group_of(&json, GROUP)["plan"]).iter().any(|s| s.contains("search for Ads")));
 }
 
 #[test]
@@ -158,10 +166,31 @@ fn with_yes_what_blocks_it_is_refused_before_the_window_is_touched() {
 }
 
 #[test]
+fn with_dry_run_what_blocks_it_is_refused_before_the_window_is_touched() {
+    let world = World::new();
+    let account = account(&world);
+    let before = snapshot(&world.root);
+    let args = ["group", "leave", GROUP, "--dry-run"];
+    let error = world.run(&args, &[("WXREAD_KEYS", &keys(&account))]).error();
+    assert!(error.starts_with("nothing was touched: "), "{error}");
+    assert!(error.contains("--dry-run"), "says to run --dry-run again: {error}");
+    assert_eq!(snapshot(&world.root), before);
+}
+
+#[test]
+fn dry_run_and_yes_together_are_refused() {
+    let world = World::new();
+    let account = account(&world);
+    let args = ["group", "leave", GROUP, "--dry-run", "--yes"];
+    let error = world.run(&args, &[("WXREAD_KEYS", &keys(&account))]).error();
+    assert!(error.starts_with("--dry-run never leaves and --yes leaves"), "{error}");
+}
+
+#[test]
 fn a_group_the_account_is_not_in_is_answered_as_nothing_to_leave() {
     let world = World::new();
     let account = account(&world);
-    for yes in [&[][..], &["--yes"]] {
+    for yes in [&[][..], &["--yes"], &["--dry-run"]] {
         let mut args = vec!["group", "leave", "9@chatroom", "5@chatroom"];
         args.extend(yes);
         let json = world.run(&args, &[("WXREAD_KEYS", &keys(&account))]).ok();
@@ -177,23 +206,28 @@ fn a_group_the_account_is_not_in_is_answered_as_nothing_to_leave() {
 fn every_group_that_cannot_be_left_is_named_at_once_and_nothing_is_touched() {
     let world = World::new();
     let account = account(&world);
-    let args = ["group", "leave", GROUP, "7@chatroom", "wxid_amy", "--yes"];
+    let args = ["group", "leave", GROUP, "wxid_bob", "wxid_amy", "--yes"];
     let error = world.run(&args, &[("WXREAD_KEYS", &keys(&account))]).error();
-    assert!(error.contains("shown as Twins (7@chatroom, 8@chatroom)"), "{error}");
+    assert!(error.contains("wxid_bob is a person, not a group"), "{error}");
     assert!(error.contains("wxid_amy is a person, not a group"), "{error}");
     assert!(!error.contains("nothing was touched: WeChat"), "the groups are named first: {error}");
 }
 
 #[test]
-fn a_group_another_of_the_accounts_groups_is_shown_as_is_refused() {
+fn groups_shown_alike_are_each_planned_to_be_told_by_their_chats() {
+    // docs/adr/0017: two groups of a name are told apart by their member
+    // counts and messages, no longer refused.
     let world = World::new();
     let account = account(&world);
-    let error =
-        world.run(&["group", "leave", "7@chatroom"], &[("WXREAD_KEYS", &keys(&account))]).error();
-    assert!(
-        error.starts_with("more than one of the account's groups is shown as Twins (7@chatroom, 8@chatroom): nothing in WeChat's window tells them apart"),
-        "{error}"
-    );
+    let args = ["group", "leave", "7@chatroom", "8@chatroom"];
+    let json = world.run(&args, &[("WXREAD_KEYS", &keys(&account))]).ok();
+    for id in ["7@chatroom", "8@chatroom"] {
+        let group = group_of(&json, id);
+        assert_eq!(
+            (&group["display_name"], &group["outcome"]),
+            (&json!("Twins"), &json!("planned"))
+        );
+    }
 }
 
 #[test]
@@ -254,12 +288,14 @@ fn its_help_says_it_cannot_be_undone_what_it_needs_and_that_it_takes_the_window(
         "It cannot be undone",
         "Accessibility",
         "Screen & System Audio Recording",
-        "for about ten seconds",
+        "a few seconds each",
         "Without --yes it says what it would do and changes nothing",
+        "with --dry-run it opens each group's chat and says whether it is told to be the group, and leaves none",
+        "its title shows the group's member count and most of the group's newest messages are in it",
         "`wxread doctor` says whether each is allowed",
         "stops at the first group it fails to leave",
         "the same command again",
-        "wxread group leave <id>... [--account <id>] [--yes]",
+        "wxread group leave <id>... [--account <id>] [--dry-run | --yes]",
     ] {
         assert!(words.contains(said), "group leave --help says {said}");
     }

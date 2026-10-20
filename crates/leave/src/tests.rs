@@ -504,6 +504,24 @@ fn the_leave_is_told_by_membership_alone() {
 }
 
 #[test]
+fn the_notice_the_account_wrote_after_ok_tells_it_left() {
+    // 5308573596@chatroom on 2026-10-20: OK at 10:27:00, the notice at
+    // 10:27:01, the membership 11 s after OK.
+    let ok = 1_792_405_620;
+    let notice = Newest { system: true, server_id: 0, sender: Some(ME.into()), at: ok + 1 };
+    assert!(left_by_notice(&notice, ME, ok));
+    for not in [
+        Newest { at: ok - 60, ..notice.clone() },
+        Newest { sender: Some("wxid_owner".into()), ..notice.clone() },
+        Newest { server_id: 4814281552280097615, ..notice.clone() },
+        Newest { system: false, ..notice.clone() },
+        Newest { sender: None, ..notice.clone() },
+    ] {
+        assert!(!left_by_notice(&not, ME, ok), "{not:?}");
+    }
+}
+
+#[test]
 fn the_retry_line_keeps_the_account_asked_for() {
     assert_eq!(line(&[ID], None, Mode::Leave), RETRY);
     assert_eq!(

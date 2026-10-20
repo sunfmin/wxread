@@ -323,6 +323,31 @@ pub fn left(members: &[String], own: &str) -> bool {
     !members.iter().any(|m| m == own)
 }
 
+/// The newest message of a group's chat, as the databases hold it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Newest {
+    /// Whether it is a system message (type 10000): a notice WeChat writes.
+    pub system: bool,
+    /// WeChat's id of it: 0 for one the server never saw.
+    pub server_id: i64,
+    pub sender: Option<String>,
+    /// When it was written, in seconds since the epoch.
+    pub at: i64,
+}
+
+/// Whether `newest` is the notice WeChat writes into the chat when the
+/// account `own` leaves it (`You've left the group chat`, in WeChat's
+/// language): a system message of the account's own, never sent to the
+/// server, written no earlier than the second OK was clicked in,
+/// `clicked`. It comes about a second after OK; the membership can take
+/// ten.
+pub fn left_by_notice(newest: &Newest, own: &str, clicked: i64) -> bool {
+    newest.system
+        && newest.server_id == 0
+        && newest.sender.as_deref() == Some(own)
+        && newest.at >= clicked
+}
+
 /// What is answered when the account is still a member `seconds` after OK.
 pub fn not_confirmed(target: &Target, seconds: u64) -> Refusal {
     Refusal(format!(
