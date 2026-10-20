@@ -1,6 +1,8 @@
-//! What every list wxread answers shares: how many one page holds, the
-//! options that page it, and times, written as RFC 3339 in UTC and read
-//! back from what an agent passes. Nothing here reads or writes.
+//! What every answer that lists or dates something is written with: how
+//! many things one page holds, the options that page, and a time as
+//! RFC 3339 in UTC, written and read back from what an agent passes. Each
+//! list keeps its own cursor, since each sorts by its own key; nothing
+//! here reads or writes.
 
 use flux_rs::attrs::*;
 
@@ -241,6 +243,7 @@ mod tests {
         for given in ["0", "1001", "x", ""] {
             let why = Limit::parse(Some(given), "messages").unwrap_err();
             assert!(why.contains("number of messages from 1 to 1000"), "{why}");
+            assert!(why.contains("leave --limit out for 100"), "{why}");
         }
     }
 

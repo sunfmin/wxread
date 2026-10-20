@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::proto;
+use wxread_contacts::display_name;
 
 /// What a contact is called: the account's remark for it, and its own name.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -25,22 +25,14 @@ pub struct Names {
 impl Names {
     /// What `id` is shown as: None when nothing names it.
     pub fn of(&self, id: &str) -> Option<String> {
-        let named = |s: &Option<String>| s.clone().filter(|s| !s.is_empty());
         let contact = self.contacts.get(id);
-        contact
-            .and_then(|c| named(&c.remark))
-            .or_else(|| self.in_group.get(id).cloned().filter(|s| !s.is_empty()))
-            .or_else(|| contact.and_then(|c| named(&c.nick_name)))
+        let shown = display_name(
+            contact.and_then(|c| c.remark.as_deref()),
+            self.in_group.get(id).map(String::as_str),
+            contact.and_then(|c| c.nick_name.as_deref()),
+        );
+        (!shown.is_empty()).then_some(shown)
     }
-}
-
-/// The members a group's `chat_room.ext_buffer` lists, each by their id,
-/// with the name they gave themselves in the group when they gave one.
-pub fn members(ext_buffer: &[u8]) -> BTreeMap<String, String> {
-    proto::fields(ext_buffer, 1)
-        .into_iter()
-        .filter_map(|m| Some((proto::text(m, &[1])?, proto::text(m, &[2])?)))
-        .collect()
 }
 
 /// The account's own id, out of its directory's name `dir` (WeChat names
@@ -62,7 +54,6 @@ pub fn account_id(dir: &str, known: impl Fn(&str) -> bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::tests::bytes_field;
 
     fn contact(remark: &str, nick: &str) -> Contact {
         Contact { remark: Some(remark.into()), nick_name: Some(nick.into()) }
@@ -80,24 +71,6 @@ mod tests {
         let shown: Vec<_> = ["a", "b", "c", "d", "e"].iter().map(|id| names.of(id)).collect();
         let want = [Some("Mum"), Some("Bobby"), Some("Cat"), Some("Dan"), None];
         assert_eq!(shown, want.map(|s| s.map(String::from)));
-    }
-
-    #[test]
-    fn a_groups_members_are_read_from_its_protobuf() {
-        let member = |id: &str, name: Option<&str>| {
-            let mut m = bytes_field(1, id.as_bytes());
-            if let Some(name) = name {
-                m.extend(bytes_field(2, name.as_bytes()));
-            }
-            bytes_field(1, &m)
-        };
-        let buffer =
-            [member("wxid_a", Some("Ann")), member("wxid_b", None), member("wxid_c", Some("Cy"))]
-                .concat();
-        let members = members(&buffer);
-        assert_eq!(members.len(), 2);
-        assert_eq!(members.get("wxid_a").map(String::as_str), Some("Ann"));
-        assert_eq!(members.get("wxid_c").map(String::as_str), Some("Cy"));
     }
 
     #[test]

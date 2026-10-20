@@ -753,11 +753,12 @@ dependencies = [
  "serde_json",
  "tempfile",
  "wxread-account",
+ "wxread-answer",
  "wxread-chats",
+ "wxread-contacts",
  "wxread-doctor",
  "wxread-keys",
  "wxread-messages",
- "wxread-page",
  "wxread-schema",
  "wxread-sqlcipher",
 ]
@@ -772,11 +773,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "wxread-answer"
+version = "0.1.0"
+dependencies = [
+ "flux-rs",
+ "proptest",
+]
+
+[[package]]
 name = "wxread-chats"
 version = "0.1.0"
 dependencies = [
  "proptest",
- "wxread-page",
+ "wxread-answer",
+ "wxread-contacts",
+]
+
+[[package]]
+name = "wxread-contacts"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "wxread-answer",
 ]
 
 [[package]]
@@ -805,17 +823,10 @@ dependencies = [
  "roxmltree",
  "ruzstd",
  "serde_json",
+ "wxread-answer",
  "wxread-chats",
- "wxread-page",
+ "wxread-contacts",
  "wxread-schema",
-]
-
-[[package]]
-name = "wxread-page"
-version = "0.1.0"
-dependencies = [
- "flux-rs",
- "proptest",
 ]
 
 [[package]]

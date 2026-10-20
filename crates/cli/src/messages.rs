@@ -9,7 +9,7 @@ use rusqlite::types::Value as Sql;
 use rusqlite::{Connection, OptionalExtension as _, params};
 use serde_json::{Value, json};
 use wxread_messages::{CHAT_FLAG, Chat, Contact, Cursor, Names, Range, Row};
-use wxread_page::Limit;
+use wxread_answer::Limit;
 use wxread_schema::CONTACT_DB;
 
 use crate::account::Account;
@@ -167,7 +167,7 @@ fn names(db: &Connection, chat: &str) -> anyhow::Result<Names> {
             .optional()
             .map_err(sql)?
             .flatten();
-        buffer.map(|b| wxread_messages::names::members(&b)).unwrap_or_default()
+        buffer.map(|b| wxread_contacts::names_in_group(&b).into_iter().collect()).unwrap_or_default()
     } else {
         BTreeMap::new()
     };

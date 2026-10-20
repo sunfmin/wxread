@@ -4,8 +4,10 @@
 use std::collections::BTreeSet;
 use std::process::Command;
 
+use serde_json::Value;
+
 use crate::common::World;
-use crate::synthetic::{Account, DATABASES, Said, Session};
+use crate::synthetic::{Account, Contact, DATABASES, Group, Said, Session};
 use wxread_doctor::{DATA_DIR_FLAG, DATA_DIR_VAR, KEYS_FLAG, KEYS_VAR};
 
 /// What the binary prints for `args`, which must exit 0 and leave stderr empty.
@@ -57,7 +59,7 @@ fn run_in(text: &str) -> BTreeSet<String> {
 #[test]
 fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
     let existing = existing();
-    let names = ["chats", "doctor", "keys", "messages"];
+    let names = ["chats", "contact", "contacts", "doctor", "group", "keys", "messages"];
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
     let short = asked(&["-h"]);
@@ -179,4 +181,52 @@ fn messages_answers_exactly_the_keys_its_help_and_the_guide_name() {
     let all: BTreeSet<String> =
         wxread_messages::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
     assert_eq!(kinds, all);
+}
+
+/// Every key of each object in `value`, and of the objects and lists of
+/// objects inside it, after the first level.
+fn fields(value: &Value) -> BTreeSet<String> {
+    let mut found = BTreeSet::new();
+    let mut stack: Vec<&Value> = value.as_object().unwrap().values().collect();
+    while let Some(v) = stack.pop() {
+        match v {
+            Value::Object(o) => {
+                found.extend(o.keys().cloned());
+                stack.extend(o.values());
+            }
+            Value::Array(a) => stack.extend(a),
+            _ => {}
+        }
+    }
+    found
+}
+
+#[test]
+fn contacts_contact_and_group_answer_exactly_the_keys_their_help_and_the_guide_name() {
+    let world = World::new();
+    let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
+    account.contacts =
+        vec![Contact("wxid_amy", "Amy", "Auntie"), Contact("1@chatroom", "Hiking", "")];
+    account.groups = vec![Group {
+        id: "1@chatroom",
+        owner: "wxid_amy",
+        members: vec![("wxid_amy", "A")],
+        notice: Some(("hi", "wxid_amy", 1_760_000_000)),
+    }];
+    account.write();
+    let keys = account.keys(&DATABASES);
+    for args in [&["contacts"][..], &["contact", "wxid_amy"], &["group", "1@chatroom"]] {
+        let json = world.run(args, &[("WXREAD_KEYS", &keys)]).ok();
+        let top: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(answered(args[0]), top, "{args:?}");
+        assert_eq!(guide_row(args[0]), top, "{args:?}");
+        let help = asked(&[args[0], "--help"]);
+        for field in fields(&json) {
+            assert!(
+                help.contains(&format!("              {field} ")),
+                "{} --help says what {field} is",
+                args[0]
+            );
+        }
+    }
 }

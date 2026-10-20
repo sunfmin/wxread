@@ -414,7 +414,7 @@ fn flatten(record: Node, inside: Option<usize>, out: &mut Vec<Value>) {
             "name": text(item, "sourcename"),
             "at": text(item, "srcMsgCreateTime")
                 .and_then(|s| s.parse::<i64>().ok())
-                .and_then(wxread_page::rfc3339),
+                .and_then(wxread_answer::rfc3339),
             "kind": kind.name(),
             "content": content.unwrap_or_default(),
             "type": datatype,

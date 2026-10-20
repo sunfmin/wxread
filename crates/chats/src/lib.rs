@@ -3,7 +3,8 @@
 //! reads the rows out of the session and contact databases; nothing here
 //! reads or writes.
 
-use wxread_page::{CURSOR_FLAG, Limit, rfc3339};
+use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
+use wxread_contacts::display_name;
 
 /// One row of `SessionTable`, and the account's contact of the same id,
 /// when it has one.
@@ -31,9 +32,12 @@ pub enum Kind {
 }
 
 impl Kind {
-    /// The kind of the chat `id`: a group's id is `<n>@chatroom`.
+    /// The kind of the chat `id`: in a group when its contact is one.
     pub fn of(id: &str) -> Kind {
-        if id.ends_with("@chatroom") { Kind::Group } else { Kind::Direct }
+        match wxread_contacts::Kind::of(id) {
+            wxread_contacts::Kind::Group => Kind::Group,
+            wxread_contacts::Kind::Person | wxread_contacts::Kind::OfficialAccount => Kind::Direct,
+        }
     }
 
     pub fn name(self) -> &'static str {
@@ -122,11 +126,9 @@ pub fn page(rows: Vec<Row>, after: Option<&Cursor>, limit: Limit) -> Page {
 }
 
 fn chat(row: Row) -> Chat {
-    let named = |s: Option<String>| s.filter(|s| !s.is_empty());
-    let name = row
-        .contact
-        .and_then(|c| named(c.remark).or_else(|| named(c.nick_name)))
-        .unwrap_or_default();
+    let name = row.contact.map_or_else(String::new, |c| {
+        display_name(c.remark.as_deref(), None, c.nick_name.as_deref())
+    });
     Chat {
         kind: Kind::of(&row.id),
         name,
@@ -140,6 +142,7 @@ fn chat(row: Row) -> Chat {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use wxread_answer::MAX_LIMIT;
 
     fn row(id: &str, sort: i64) -> Row {
         Row {
@@ -221,7 +224,7 @@ mod tests {
             limit in 1usize..7,
         ) {
             let rows: Vec<Row> = sorts.iter().enumerate().map(|(i, &s)| row(&format!("c{i:02}"), s)).collect();
-            let whole = page(rows.clone(), None, Limit::new(wxread_page::MAX_LIMIT).unwrap());
+            let whole = page(rows.clone(), None, Limit::new(MAX_LIMIT).unwrap());
             let mut paged = Vec::new();
             let mut after = None;
             loop {

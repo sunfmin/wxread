@@ -487,7 +487,7 @@ proptest! {
         let read = |after: Option<&Cursor>, limit: usize| {
             page(&chat("wxid_ann"), &Names::default(), rows.clone(), Range::default(), after, Limit::new(limit).unwrap())
         };
-        let whole = read(None, wxread_page::MAX_LIMIT);
+        let whole = read(None, wxread_answer::MAX_LIMIT);
         prop_assert_eq!(whole.messages.len(), rows.len());
         let mut paged = Vec::new();
         let mut after = None;

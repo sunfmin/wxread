@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 pub mod account;
 pub mod chats;
+pub mod contacts;
 pub mod doctor;
 pub mod messages;
 pub mod world;
@@ -54,8 +55,41 @@ enum Command {
         #[arg(long, value_name = "NEXT")]
         cursor: Option<String>,
     },
+    /// Answer one contact in full, by its id
+    Contact {
+        /// The contact's id: a wxid, a group's <n>@chatroom, a gh_ official account
+        #[arg(value_name = "ID")]
+        id: String,
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+    },
+    /// List the account's contacts by id, a page at a time
+    Contacts {
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+        /// Only the contacts whose id, WeChat ID, name or remark holds it
+        #[arg(long, value_name = "TEXT")]
+        query: Option<String>,
+        /// How many contacts a page holds, 1 to 1000 (100 unless given)
+        #[arg(long, value_name = "N")]
+        limit: Option<String>,
+        /// Where the page starts: the `next` of the answer before
+        #[arg(long, value_name = "NEXT")]
+        cursor: Option<String>,
+    },
     /// Find WeChat's accounts and the keys supplied; change nothing, name each fix
     Doctor,
+    /// Answer a group: its name, notice, owner and every member
+    Group {
+        /// The group's id: <n>@chatroom
+        #[arg(value_name = "ID")]
+        id: String,
+        /// The account to read, by its id, when several are logged in
+        #[arg(long, value_name = "ID")]
+        account: Option<String>,
+    },
     /// Read a chat's messages, each as its kind, newest first, a page at a time
     Messages {
         /// The account to read, by its id, when several are logged in
@@ -85,7 +119,10 @@ enum Command {
 fn help_of(name: &str) -> Option<&'static str> {
     match name {
         "chats" => Some(include_str!("help/chats.txt")),
+        "contact" => Some(include_str!("help/contact.txt")),
+        "contacts" => Some(include_str!("help/contacts.txt")),
         "doctor" => Some(include_str!("help/doctor.txt")),
+        "group" => Some(include_str!("help/group.txt")),
         "keys" => Some(include_str!("help/keys.txt")),
         "messages" => Some(include_str!("help/messages.txt")),
         _ => None,
@@ -120,9 +157,20 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
                     "no command was given".to_string()
                 }
                 _ => {
+                    // The first line, and when it ends in a colon the
+                    // indented lines that finish it (the arguments missing).
                     let message = e.render().to_string();
-                    let first = message.lines().next().unwrap_or_default();
-                    first.strip_prefix("error: ").unwrap_or(first).to_string()
+                    let mut lines = message.lines();
+                    let first = lines.next().unwrap_or_default();
+                    let first = first.strip_prefix("error: ").unwrap_or(first);
+                    match first.strip_suffix(':') {
+                        Some(head) => {
+                            let rest: Vec<&str> =
+                                lines.take_while(|l| l.starts_with("  ")).map(str::trim).collect();
+                            format!("{head}: {}", rest.join(", "))
+                        }
+                        None => first.to_string(),
+                    }
                 }
             };
             return answer(Err(anyhow::anyhow!("{message}: run `wxread --help`")), 2);
@@ -131,7 +179,16 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
     let result = match cli.command {
         Command::Chats { account, limit, cursor } => world::World::from_env(cli.data_dir, cli.keys)
             .and_then(|w| chats::run(&w, &chats::Asked { account, limit, cursor })),
+        Command::Contact { id, account } => world::World::from_env(cli.data_dir, cli.keys)
+            .and_then(|w| contacts::one(&w, account.as_deref(), &id)),
+        Command::Contacts { account, query, limit, cursor } => {
+            world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
+                contacts::list(&w, &contacts::Asked { account, query, limit, cursor })
+            })
+        }
         Command::Doctor => world::World::from_env(cli.data_dir, cli.keys).map(|w| doctor::run(&w)),
+        Command::Group { id, account } => world::World::from_env(cli.data_dir, cli.keys)
+            .and_then(|w| contacts::group(&w, account.as_deref(), &id)),
         Command::Messages { account, chat, from, to, limit, cursor } => {
             world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
                 messages::run(&w, &messages::Asked { account, chat, from, to, limit, cursor })

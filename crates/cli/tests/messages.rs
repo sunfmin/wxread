@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use wxread_schema::CONTACT_DB;
 
 use crate::common::{World, snapshot};
-use crate::synthetic::{Account, Contact, Members, Said, field};
+use crate::synthetic::{Account, Contact, Group, Said, field};
 
 const GROUP: &str = "123@chatroom";
 const T: i64 = 1_760_000_000;
@@ -224,7 +224,12 @@ fn account(world: &World) -> Account {
         Contact("wxid_bob", "Bob", ""),
         Contact(GROUP, "Hiking", ""),
     ];
-    account.members = vec![Members(GROUP, vec![("wxid_bob", "Bobby"), ("wxid_dan", "Dan")])];
+    account.groups = vec![Group {
+        id: GROUP,
+        owner: "wxid_bob",
+        members: vec![("wxid_bob", "Bobby"), ("wxid_dan", "Dan")],
+        notice: None,
+    }];
     account.messages = every_kind().into_iter().map(|(said, _, _)| said).collect();
     // Dan is in no contact and named by no row: only the prefix says it is
     // Dan's.
@@ -282,7 +287,7 @@ fn each_kind_is_read_as_its_kind_with_its_fields() {
             .find(|m| m["id"] == id.as_str())
             .unwrap_or_else(|| panic!("{id} in {json}"));
         assert_eq!((&m["kind"], &m[kind]), (&json!(kind), &fields), "{m}");
-        assert_eq!(m["at"], wxread_page::rfc3339(said.create_time).unwrap());
+        assert_eq!(m["at"], wxread_answer::rfc3339(said.create_time).unwrap());
         assert_eq!(
             (m["type"].as_i64(), m["subtype"].as_i64()),
             (Some(said.local_type & 0xffff_ffff), Some(said.local_type >> 32))

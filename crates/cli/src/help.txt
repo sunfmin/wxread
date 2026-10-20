@@ -19,6 +19,7 @@ WHAT IT NEEDS
 RUN FIRST
   wxread doctor     what it found and what is missing, each with its fix
   wxread chats      the account's chats, newest first, once doctor is ok
+  wxread contacts   the account's contacts and groups, with their ids
   wxread messages --chat <id>
                     one chat's messages, each as its kind, newest first
 
@@ -28,7 +29,10 @@ WHAT A COMMAND ANSWERS
   names every fault with its fix. Warnings go to stderr. The keys of each
   answer; `wxread <command> --help` says what each one means:
     chats     account chats next
+    contact   account contact
+    contacts  account contacts next
     doctor    ok data_dir accounts keys findings
+    group     account group
     keys      each database's path under db_storage, to its enc_key and
               salt
     messages  account chat messages next
@@ -38,6 +42,7 @@ THE COMMANDS
       doctor
   Reading the account, run by you or an agent:
       chats messages
+      contacts contact group
   Getting the keys, run by the person whose Mac it is, with sudo:
       keys
 
@@ -50,6 +55,11 @@ RULES
     WAL included.
   - With several accounts logged in, a command that reads one is told
     which: --account <id>, as doctor names it.
+  - A contact, a group and a chat are named by their id: a wxid, a
+    group's <n>@chatroom, an official account's gh_.... `wxread contacts
+    --query <text>` finds an id by a name, a remark or a WeChat ID.
+  - A name is shown as WeChat shows it, as display_name: the account's
+    remark, else the name in the group, else the contact's own name.
   - A list answers a page, and `next`: pass it as --cursor for the page
     after; null on the last.
   - A finding doctor makes is an answer, exit 0: read its `ok` and

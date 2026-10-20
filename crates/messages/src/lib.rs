@@ -6,7 +6,7 @@
 use std::io::Read as _;
 
 use serde_json::{Map, Value, json};
-use wxread_page::{CURSOR_FLAG, Limit, rfc3339};
+use wxread_answer::{CURSOR_FLAG, Limit, rfc3339};
 
 pub mod kinds;
 pub mod media;
@@ -131,7 +131,7 @@ impl Range {
     pub fn parse(from: Option<&str>, to: Option<&str>) -> Result<Range, String> {
         let at = |flag: &str, text: Option<&str>| {
             text.map(|text| {
-                wxread_page::seconds(text).ok_or_else(|| {
+                wxread_answer::seconds(text).ok_or_else(|| {
                     format!(
                         "{flag} {text} is not a time: pass RFC 3339 with its offset (2026-10-20T09:30:00+08:00, 2026-10-20T01:30:00Z), or a date (2026-10-20), its midnight in UTC"
                     )

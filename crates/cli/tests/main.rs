@@ -4,6 +4,7 @@
 
 mod chats;
 mod common;
+mod contacts;
 mod doctor;
 mod errors;
 mod help;

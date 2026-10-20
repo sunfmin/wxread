@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use anyhow::anyhow;
 use rusqlite::Connection;
 use serde_json::{Value, json};
+use wxread_answer::Limit;
 use wxread_chats::{Contact, Cursor, Row};
-use wxread_page::Limit;
 use wxread_schema::{CONTACT_DB, SESSION_DB};
 
 use crate::account::Account;
