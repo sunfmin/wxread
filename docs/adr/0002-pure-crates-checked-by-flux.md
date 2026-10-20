@@ -6,4 +6,4 @@ wxread is one cargo workspace: pure crates (`wxread-keys`, `wxread-doctor`, and 
 
 - `./gate.sh` runs on the pinned nightly Flux is built for; the release builds on stable, where Flux's attributes expand to nothing.
 - What Flux cannot state is tested with proptest; what the binary does is tested by running it.
-- CI runs the same `./gate.sh`, building the pinned checker once and caching it (`.github/workflows/gate.yml`).
+- The gate runs where the change is made, before it lands; CI does not run it, since a runner would have to build the pinned checker (fixpoint is Haskell) from source.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The definition of "may land": the same locally, in CI and for afkconvoy.
+# The definition of "may land": the same for a person and for afkconvoy.
 set -euo pipefail
 cd "$(dirname "$0")"
 

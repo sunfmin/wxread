@@ -15,7 +15,7 @@ wechat-decrypt (both Apache-2.0) found them.
 
 ## Developing
 
-`./gate.sh` decides whether a change may land, here and in CI: `cargo fmt
+`./gate.sh` decides whether a change may land, run where the change is made: `cargo fmt
 --check`, `./verify.sh` (Flux over the pure crates, which must report `0
 trusted; 0 ignored`), `cargo clippy -D warnings` and `cargo nextest run`. It
 runs on rustup's `nightly-2026-09-25` and needs the checker Cargo.toml pins:
