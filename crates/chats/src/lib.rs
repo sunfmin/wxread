@@ -171,11 +171,12 @@ pub fn holding(
         return Err(faults.join("; "));
     }
     let with: BTreeSet<&String> = with.iter().collect();
-    let mut held: BTreeSet<&String> = rooms
-        .iter()
-        .filter(|(_, members)| with.iter().all(|w| members.contains(*w)))
-        .map(|(id, _)| id)
-        .collect();
+    let mut held: BTreeSet<&String> = BTreeSet::new();
+    for (id, members) in rooms {
+        if with.iter().all(|w| members.contains(*w)) {
+            held.insert(id);
+        }
+    }
     if let [one] = with.iter().collect::<Vec<_>>()[..] {
         held.insert(one);
     }
@@ -212,17 +213,18 @@ fn paged(
         sort: std::cmp::Reverse(r.sort_timestamp.unwrap_or(0)),
         id: r.id.clone(),
     };
-    let mut rows: Vec<(Place, Row)> = rows
-        .into_iter()
-        .filter(|r| !r.id.is_empty())
-        .map(|r| (place(&r), r))
-        .filter(|(p, _)| after.is_none_or(|c| *p > c.place))
-        .collect();
-    rows.sort_by(|a, b| a.0.cmp(&b.0));
-    let more = rows.len() > limit.get();
-    rows.truncate(limit.get());
-    let next = if more { rows.last().map(|(p, _)| Cursor { place: p.clone() }) } else { None };
-    Page { chats: rows.into_iter().map(|(_, r)| chat(r, rooms)).collect(), next }
+    let mut placed: Vec<(Place, Row)> = Vec::new();
+    for row in rows {
+        let at = place(&row);
+        if !row.id.is_empty() && after.is_none_or(|c| at > c.place) {
+            placed.push((at, row));
+        }
+    }
+    placed.sort_by(|a, b| a.0.cmp(&b.0));
+    let more = placed.len() > limit.get();
+    placed.truncate(limit.get());
+    let next = if more { placed.last().map(|(p, _)| Cursor { place: p.clone() }) } else { None };
+    Page { chats: placed.into_iter().map(|(_, r)| chat(r, rooms)).collect(), next }
 }
 
 fn chat(row: Row, rooms: &Rooms) -> Chat {
