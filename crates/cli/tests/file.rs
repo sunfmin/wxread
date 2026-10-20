@@ -358,3 +358,119 @@ fn avatar_writes_the_image_wechat_holds_or_answers_it_missing() {
     let error = world.run(&["avatar", "wxid_amy"], &env).error();
     assert!(error.contains("pass --out <path>"), "{error}");
 }
+
+/// A note of the group, Bob's, holding its body, a paragraph, an image, a
+/// file and a video, its items' files under its directory `rec`.
+fn note(id: i64, rec: &str) -> Said {
+    let record = r#"<recordinfo><datalist count="5"><dataitem htmlid="WeNoteHtmlFile" datatype="8" dataid="body1"><datafmt>.htm</datafmt><datasize>12</datasize></dataitem><dataitem datatype="1" dataid="para1"><datadesc>Meet at the gate</datadesc></dataitem><dataitem datatype="2" dataid="img1"><datafmt>jpg</datafmt><datasize>3004</datasize></dataitem><dataitem datatype="8" dataid="gpx1"><datatitle>route.gpx</datatitle><datafmt>gpx</datafmt><datasize>9</datasize></dataitem><dataitem datatype="4" dataid="vid1"><datafmt>mp4</datafmt></dataitem></datalist></recordinfo>"#;
+    let escaped = record.replace('<', "&lt;").replace('>', "&gt;");
+    let content = format!(
+        "<msg><appmsg><title /><des>Meet at the gate</des><type>24</type><recorditem>{escaped}</recorditem></appmsg></msg>"
+    );
+    said(id, 49 | 24 << 32, &content, field(9, &field(1, rec.as_bytes())))
+}
+
+/// The account, with two notes in its group: one whose files WeChat holds,
+/// one of whose image it holds only the thumbnail.
+fn with_notes(world: &World) -> Account {
+    let mut account = account(world);
+    account.messages.extend([note(9120, "aaaa1111bbbb2222"), note(9121, "cccc3333dddd4444")]);
+    let rec = |dir: &str, path: &str| {
+        format!("msg/attach/{}/2025-10/Rec/{dir}/{path}", wxread_media::chat_dir(GROUP))
+    };
+    account.files.extend([
+        (rec("aaaa1111bbbb2222", "Dat/0/0"), b"<p>Meet</p>".to_vec()),
+        (rec("aaaa1111bbbb2222", "Img/2"), seal(&jpeg(7, 3000), Format::V2(key()))),
+        (rec("aaaa1111bbbb2222", "Img/2_t"), seal(&png(7), Format::V2(key()))),
+        (rec("aaaa1111bbbb2222", "F/3/route.gpx"), b"<gpx/>gpx".to_vec()),
+        (rec("cccc3333dddd4444", "Img/2_t"), seal(&png(8), Format::V2(key()))),
+    ]);
+    account.write();
+    account
+}
+
+#[test]
+fn a_notes_items_are_answered_with_their_files_ids_and_whether_wechat_holds_them() {
+    let world = World::new();
+    let account = with_notes(&world);
+    let json =
+        world.run(&["messages", "--chat", GROUP], &[("WXREAD_KEYS", &account.all_keys())]).ok();
+    let note = |id: &str| {
+        let m = json["messages"].as_array().unwrap().iter().find(|m| m["id"] == id).unwrap();
+        assert_eq!(m["kind"], "note", "{m}");
+        m["note"]["items"].clone()
+    };
+    let items = note("9120");
+    let kinds: Vec<&str> =
+        items.as_array().unwrap().iter().map(|i| i["kind"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["file", "text", "image", "file", "video"]);
+    assert_eq!(
+        items[0]["file"],
+        json!({ "file_id": "note:9120:body1", "size": 12, "name": null, "extension": "htm", "file_present": true, "thumbnail_present": null })
+    );
+    assert_eq!(items[1]["text"], json!({ "text": "Meet at the gate" }));
+    assert_eq!(
+        items[2]["image"],
+        json!({ "file_id": "note:9120:img1", "size": 3004, "file_present": true, "thumbnail_present": true })
+    );
+    assert_eq!(
+        (&items[3]["file"]["file_id"], &items[3]["file"]["file_present"]),
+        (&json!("note:9120:gpx1"), &json!(true))
+    );
+    // Where WeChat keeps a note's video is not known: nothing names it.
+    assert_eq!(
+        items[4]["video"],
+        json!({ "file_id": null, "size": null, "seconds": null, "file_present": null, "thumbnail_present": null })
+    );
+    let other = note("9121");
+    assert_eq!(
+        (&other[2]["image"]["file_present"], &other[2]["image"]["thumbnail_present"]),
+        (&json!(false), &json!(true))
+    );
+    assert_eq!(other[0]["file"]["file_present"], false);
+}
+
+#[test]
+fn a_notes_item_is_written_by_its_file_id_or_answered_missing() {
+    let world = World::new();
+    let account = with_notes(&world);
+    let run = Run::new(&world, &account);
+    for (id, thumbnail, bytes, content_type) in [
+        ("note:9120:body1", false, b"<p>Meet</p>".to_vec(), "application/octet-stream"),
+        ("note:9120:img1", false, jpeg(7, 3000), "image/jpeg"),
+        ("note:9120:img1", true, png(7), "image/png"),
+        ("note:9120:gpx1", false, b"<gpx/>gpx".to_vec(), "application/octet-stream"),
+    ] {
+        let path = out(&world, &format!("{}-{thumbnail}", id.replace(':', "-")));
+        let extra: &[&str] = if thumbnail { &["--thumbnail"] } else { &[] };
+        assert_eq!(run.get(id, &path, extra).ok(), written(&path, &bytes, content_type), "{id}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes, "{id}");
+    }
+    // Missing: its thumbnail in its place, and the message to open.
+    let path = out(&world, "missing.jpg");
+    let json = run.get("note:9121:img1", &path, &[]).ok();
+    assert_eq!(
+        (&json["missing"], &json["thumbnail"]),
+        (&json!(true), &written(&path, &png(8), "image/png"))
+    );
+    let fix = json["fix"].as_str().unwrap();
+    assert!(fix.contains("open message 9121 in WeChat") && fix.contains(GROUP), "{fix}");
+    let json = run.get("note:9121:body1", &out(&world, "body"), &[]).ok();
+    assert_eq!((&json["missing"], &json["thumbnail"]), (&json!(true), &Value::Null));
+    // What is not a note's item's file is refused, saying what to pass.
+    for (id, said) in [
+        ("note:9120:para1", "is a text of the note sent as message 9120"),
+        ("note:9120:vid1", "where WeChat for Mac keeps a note's video"),
+        ("note:9120:nope", "has no note sent as message 9120 holding item nope"),
+        ("note:9999:img1", "has no note sent as message 9999"),
+        ("note:9113:img1", "has no note sent as message 9113"),
+        ("note:91x:img1", "is not a note's item's file id"),
+        ("9120", "message 9120 is a note, whose items carry its files"),
+    ] {
+        let error = run.get(id, &out(&world, "refused"), &[]).error();
+        assert!(error.contains(said), "{id}: {error}");
+    }
+    let error = run.get("note:9120:gpx1", &out(&world, "t"), &["--thumbnail"]).error();
+    assert!(error.contains("leave --thumbnail out"), "{error}");
+    assert!(!out(&world, "refused").exists() && !out(&world, "t").exists());
+}
