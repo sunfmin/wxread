@@ -1186,6 +1186,37 @@ fn a_notes_items_name_their_files_by_its_message_and_say_whether_wechat_holds_th
 }
 
 #[test]
+fn whoever_a_notes_items_name_is_shown_as_the_chat_shows_them() {
+    let mut names = Names::default();
+    names.contacts.insert(
+        "wxid_ann".into(),
+        Contact { remark: Some("Annie".into()), nick_name: Some("Ann".into()) },
+    );
+    let said = |id: &str, given: &str| {
+        format!(
+            "<dataitem datatype=\"1\" dataid=\"{id}\"><datadesc>Hi</datadesc><datasrcname>{given}</datasrcname><dataitemsource><realchatname>{id}</realchatname></dataitemsource></dataitem>"
+        )
+    };
+    let content = format!(
+        "<msg><appmsg><type>24</type><recorditem><![CDATA[<recordinfo><datalist>{}{}</datalist></recordinfo>]]></recorditem></appmsg></msg>",
+        said("wxid_ann", "Ann G"),
+        said("wxid_zed", "Zed"),
+    );
+    let r = Row { content: content.into_bytes(), ..note_row() };
+    let m =
+        message(&chat("48614902608@chatroom"), &names, &r, &|_: &Media, _: &Row| Held::default());
+    let senders: Vec<&Value> =
+        m["note"]["items"].as_array().unwrap().iter().map(|i| &i["sender"]).collect();
+    assert_eq!(
+        senders,
+        [
+            &json!({ "id": "wxid_ann", "display_name": "Annie" }),
+            &json!({ "id": "wxid_zed", "display_name": "Zed" }),
+        ]
+    );
+}
+
+#[test]
 fn a_notes_item_is_found_by_its_file_id() {
     let id =
         note::FileId::parse(&format!("note:{NOTE_ID}:084b81e4ceaa08076026a325299e26fe")).unwrap();

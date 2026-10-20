@@ -92,7 +92,7 @@ THE KINDS AND THEIR FIELDS
               inside}]}: each message forwarded, in order; one forwarded
               inside another follows it, its inside the position in this
               list of the forward it sits in (null at the top)
-  note        {items: [{kind, <kind>, sender, sender_name, at, type}]}: a
+  note        {items: [{kind, <kind>, sender, at, type}]}: a
               note (笔记) sent into the chat, read as `wxread favorites`
               reads a favorite's note: each part of it, in order, as its
               kind with that kind's fields: its paragraphs (text {text}),
@@ -106,8 +106,8 @@ THE KINDS AND THEIR FIELDS
               get <file_id> --out <path>` writes (note:<message>:<item>),
               size its bytes; a note's video or voice message has
               file_id and file_present null: where WeChat keeps it is not
-              known. sender, sender_name and at are null: a note keeps
-              none
+              known. sender ({id, display_name}) and at are null when
+              the note keeps none, as a note written by the account does
   solitaire   {id, title, example, starter: {id, display_name},
               entries: [{number, member: {id, display_name}, text, at}],
               text}: a 接龙 (a sign-up list in a group), as this

@@ -420,4 +420,17 @@ fn whoever_a_chat_history_saved_is_shown_by_their_contact_else_by_its_name() {
             &json!({"id": "wxid_zed", "display_name": "Zed"})
         )
     );
+    // So is whoever a chat history inside one, or a note, saved.
+    let bob = "<datadesc>Hi</datadesc><datasrcname>Bobby</datasrcname><dataitemsource><realchatname>wxid_bob</realchatname></dataitemsource>";
+    let nested =
+        format!("<recordxml><recordinfo>{}</recordinfo></recordxml>", list(&[item(1, "n", bob)]));
+    let got = &read(&row(8, 14, 1, &list(&[item(17, "c", &nested)])), &[])["chat_history"];
+    let bob = json!({"id": "wxid_bob", "display_name": "Bob"});
+    assert_eq!(got["items"][0]["chat_history"]["items"][0]["sender"], bob);
+    let note = list(&[item(
+        1,
+        "t",
+        "<datadesc>Hi</datadesc><datasrcname>Bobby</datasrcname><dataitemsource><realchatname>wxid_bob</realchatname></dataitemsource>",
+    )]);
+    assert_eq!(read(&row(9, 18, 1, &note), &[])["note"]["items"][0]["sender"], bob);
 }
