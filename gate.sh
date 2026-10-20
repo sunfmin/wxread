@@ -13,6 +13,12 @@ export PATH RUSTUP_TOOLCHAIN
 
 cargo fmt --all --check
 
+# Every ADR has a number of its own: two branches built in parallel can each
+# take the next free one, and the second to land is caught here. The check is
+# itself tested.
+./adr-numbers-test.sh >/dev/null
+./adr-numbers.sh
+
 # The gate's reading of Flux's summaries is itself tested.
 ./flux-summary-test.sh >/dev/null
 
