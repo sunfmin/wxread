@@ -160,11 +160,13 @@ pub fn by_id(rows: impl IntoIterator<Item = Row>) -> Contacts {
 /// id, starting after `after` (at the first, for none) and holding at most
 /// `limit`.
 pub fn page(contacts: Contacts, query: Option<&str>, after: Option<&Cursor>, limit: Limit) -> Page {
-    let mut found = contacts
+    let mut found: Vec<Row> = contacts
         .into_values()
-        .filter(|row| after.is_none_or(|c| row.id > c.id) && query.is_none_or(|q| matches(row, q)));
-    let contacts: Vec<Contact> = found.by_ref().take(limit.get()).map(contact).collect();
-    let more = found.next().is_some();
+        .filter(|row| after.is_none_or(|c| row.id > c.id) && query.is_none_or(|q| matches(row, q)))
+        .collect();
+    let more = found.len() > limit.get();
+    found.truncate(limit.get());
+    let contacts: Vec<Contact> = found.into_iter().map(contact).collect();
     let next = if more { contacts.last().map(|c| Cursor { id: c.id.clone() }) } else { None };
     Page { contacts, next }
 }
