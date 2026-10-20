@@ -20,6 +20,7 @@ pub mod keys;
 pub mod media;
 mod memory;
 pub mod messages;
+pub mod resign;
 pub mod voice;
 pub mod world;
 
@@ -148,6 +149,15 @@ enum Command {
     },
     /// Read every database key from the running WeChat
     Keys,
+    /// Re-sign WeChat with get-task-allow so `sudo wxread keys` can read it; only with --yes
+    Resign {
+        /// The WeChat app to re-sign (/Applications/WeChat.app, else Weixin.app, unless given)
+        #[arg(long, value_name = "PATH")]
+        app: Option<PathBuf>,
+        /// Re-sign it; without this, only say what it would do and change nothing
+        #[arg(long)]
+        yes: bool,
+    },
     /// Write a voice message as a file that plays, and say what WeChat heard in it
     Voice {
         /// The voice message's id, as `wxread messages` answers it
@@ -211,6 +221,7 @@ fn help_of(name: &str) -> Option<&'static str> {
         "group" => Some(include_str!("help/group.txt")),
         "keys" => Some(include_str!("help/keys.txt")),
         "messages" => Some(include_str!("help/messages.txt")),
+        "resign" => Some(include_str!("help/resign.txt")),
         "voice" => Some(include_str!("help/voice.txt")),
         _ => None,
     }
@@ -296,6 +307,7 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
             })
         }
         Command::Keys => keys::run(cli.data_dir),
+        Command::Resign { app, yes } => resign::run(app, yes),
         Command::Voice { id, account, chat, out, raw } => {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| voice::run(&w, &voice::Asked { id, account, chat, out, raw }))

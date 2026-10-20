@@ -13,6 +13,7 @@ Commands:
   group     a group's notice, owner and members, each named in it
   keys      read every database key from the running WeChat (sudo)
   messages  a chat's messages, each as its kind, a page at a time
+  resign    re-sign WeChat so keys can read it; changes it only with --yes
   voice     a voice message written as a file that plays; WeChat's 转文字
 
 Options:
@@ -20,5 +21,4 @@ Options:
   --keys <file>      the keys of the account's databases (or WXREAD_KEYS)
   -h, --help         this screen; --help the guide: what wxread needs, answers
   --version          the version
-
-`wxread <command> --help` says what a command reads and answers.
+  <command> --help   what a command reads and answers

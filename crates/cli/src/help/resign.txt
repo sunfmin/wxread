@@ -1,0 +1,53 @@
+wxread resign: re-signs WeChat so `sudo wxread keys` can read its memory.
+Without --yes it says what it would do and changes nothing.
+
+WHEN TO RUN IT
+  Once, when `sudo wxread keys` says macOS will not let it read WeChat's
+  memory: a WeChat installed from Tencent is signed with the hardened
+  runtime and without get-task-allow, and macOS will not let even root read
+  it. Run by the person whose Mac it is, never on an agent's own initiative:
+  first `wxread resign` to see what it would do, then `wxread resign --yes`.
+  Then, in order:
+    1. quit WeChat (⌘Q) and open it again: a running WeChat keeps the
+       signature it was started with
+    2. grant the app running wxread (a terminal, an agent's host) Full Disk
+       Access, in System Settings › Privacy & Security › Full Disk Access
+    3. run `sudo wxread keys`
+
+WHAT IT READS AND WRITES
+  The app: --app <path>, else /Applications/WeChat.app, else
+  /Applications/Weixin.app. It asks codesign which entitlements the app is
+  signed with (`codesign -d --entitlements - --xml`) and, with --yes only,
+  re-signs it ad-hoc with the same entitlements plus
+  com.apple.security.get-task-allow:
+      codesign --force --sign - --entitlements <them> <app>
+  Nothing else changes: WeChat's data, its databases and what WeChat does
+  are untouched. An app that carries get-task-allow already is not signed
+  again, so running it twice is running it once.
+
+UNDOING IT
+  Reinstall WeChat from Tencent (the App Store, or weixin.qq.com): the
+  reinstalled app is Tencent's signed build again. Re-signing can stop
+  WeChat updating itself, and reinstalling is also how to update it; after
+  an update, run `wxread resign` again.
+
+WHAT IT ANSWERS
+    app             the app it read, as its path
+    applied         true when this run re-signed it; false for a preview,
+                    and when it carries get-task-allow already
+    get_task_allow  whether the app carries get-task-allow now
+    entitlements    {kept, added}: the entitlements re-signing keeps, by
+                    name, and the ones it adds ([] when there is nothing to
+                    add)
+    next            what to do now, in order: without --yes first the line
+                    that re-signs, then quitting and reopening WeChat, Full
+                    Disk Access, `sudo wxread keys`, and how to undo it
+
+TRIPS YOU UP
+  - Without --yes nothing changes: read the answer, then add --yes.
+  - macOS may refuse to change an app in /Applications: run it as
+    `sudo wxread resign --yes`, and if it is still refused, allow the app
+    running wxread in System Settings › Privacy & Security › App Management.
+  - It needs Apple's codesign: `xcode-select --install` installs it.
+  - It changes WeChat's signature, not SIP: wxread never asks you to turn
+    System Integrity Protection off.
