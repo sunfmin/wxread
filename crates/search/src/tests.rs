@@ -69,6 +69,10 @@ fn each_kind_is_searched_by_the_text_wechat_indexes() {
         Some("Gym\n1 x Rd".into())
     );
     assert_eq!(matched(42, r#"<msg username="wxid_x" nickname="Rex"/>"#), Some("Rex".into()));
+    // A 接龙 by all it shows, as WeChat's index holds it: its title and
+    // each entry, numbered.
+    let solitaire = "<msg><appmsg><title>#接龙\nx ride\n\n1. Ann</title><type>53</type><extinfo><solitaire_info><![CDATA[<solitaire><tt>0-10</tt><content><i><u>wxid_ann</u><t>1</t><r>15-3</r></i></content></solitaire>]]></solitaire_info></extinfo></appmsg></msg>";
+    assert_eq!(matched(app(53), solitaire), Some("#接龙\nx ride\n\n1. Ann".into()));
     // A group's notice posted in its chat, by its text, as WeChat indexes it.
     let notice = "<msg><appmsg><type>87</type><textannouncement><![CDATA[Ride x at 9]]></textannouncement></appmsg></msg>";
     assert_eq!(matched(app(87), notice), Some("Ride x at 9".into()));

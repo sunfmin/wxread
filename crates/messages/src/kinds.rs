@@ -40,11 +40,12 @@ const LINKS: [(i64, &str); 7] = [
     (63, "channels_live"),
 ];
 /// The other subtypes of an app message wxread reads: a file, a sticker, a
-/// forwarded history, a quote, a nudge, a group's notice posted into its
-/// chat, a transfer and a red packet.
+/// forwarded history, a 接龙, a quote, a nudge, a group's notice posted
+/// into its chat, a transfer and a red packet.
 const APP_FILE: i64 = 6;
 const APP_STICKER: i64 = 8;
 const FORWARD: i64 = 19;
+const SOLITAIRE: i64 = 53;
 const QUOTE: i64 = 57;
 const NUDGE: i64 = 62;
 const GROUP_NOTICE: i64 = 87;
@@ -259,13 +260,18 @@ pub fn text(node: Node, path: &str) -> Option<String> {
 
 /// The text a node holds, trimmed, CDATA or not: None when empty.
 fn inner(node: Node) -> Option<String> {
+    Some(untrimmed(node).trim().to_string()).filter(|t| !t.is_empty())
+}
+
+/// The text a node holds, CDATA or not, as it holds it.
+fn untrimmed(node: Node) -> String {
     let mut t = String::new();
     for n in node.children() {
         if let Some(text) = n.text().filter(|_| n.is_text()) {
             t.push_str(text);
         }
     }
-    Some(t.trim().to_string()).filter(|t| !t.is_empty())
+    t
 }
 
 /// Attribute `name` of `node`, trimmed: None when it is absent or empty.
@@ -380,6 +386,7 @@ fn app(root: Node, sub: i64) -> Option<Parsed> {
                 json!({ "title": text(a, "title").unwrap_or_default(), "messages": messages }),
             ))
         }
+        SOLITAIRE => solitaire(a),
         GROUP_NOTICE => Some(group_notice(root, a)),
         NUDGE => {
             let p = child(a, "patinfo")?;
@@ -450,6 +457,64 @@ fn app(root: Node, sub: i64) -> Option<Parsed> {
             ))
         }
     }
+}
+
+/// How WeChat starts the text of every 接龙, before its title.
+const SOLITAIRE_TAG: &str = "#接龙";
+
+/// A 接龙, the `<appmsg>` `a`: what it shows is its `<title>`, and its
+/// `<solitaire_info>`, an XML document of its own, says where in that text
+/// its title, its example and each entry are, and who added each and
+/// when, each person by id, their `display_name` null here: who they are
+/// shown as is the chat's to say ([`crate::message`]). Unknown when it has
+/// no list of entries.
+fn solitaire(a: Node) -> Option<Parsed> {
+    let shown = child(a, "title").map(untrimmed).unwrap_or_default();
+    let units: Vec<u16> = shown.encode_utf16().collect();
+    xml(&text(a, "extinfo/solitaire_info")?, |s| {
+        let mut entries = Vec::new();
+        for (at, i) in named(child(s, "content")?, "i").into_iter().enumerate() {
+            entries.push(json!({
+                "number": at.checked_add(1)?,
+                "member": person(text(i, "u")),
+                "text": text(i, "r").and_then(|r| spanned(&units, &r)),
+                "at": text(i, "t").and_then(|t| t.parse::<i64>().ok()).and_then(wxread_answer::rfc3339),
+            }));
+        }
+        let title = text(s, "tt").and_then(|r| spanned(&units, &r)).and_then(|t| {
+            let t = t.trim();
+            Some(t.strip_prefix(SOLITAIRE_TAG).unwrap_or(t).trim().to_string())
+                .filter(|t| !t.is_empty())
+        });
+        Some(Parsed::of(
+            Kind::Solitaire,
+            json!({
+                "id": text(s, "sid"),
+                "title": title,
+                "example": text(s, "ex").and_then(|r| spanned(&units, &r)),
+                "starter": person(text(s, "au")),
+                "entries": entries,
+                "text": shown.trim(),
+            }),
+        ))
+    })
+}
+
+/// Someone a message names by `id`, as the answer has a person: `{id,
+/// display_name}`; null when it names none.
+fn person(id: Option<String>) -> Value {
+    json!(id.map(|id| json!({ "id": id, "display_name": null })))
+}
+
+/// The part of a text, `units` its UTF-16 code units, that `range` names
+/// as WeChat counts it, `<start>-<length>` in those units (`19-4`): None
+/// when it names none, or past the text's end.
+pub fn spanned(units: &[u16], range: &str) -> Option<String> {
+    let (start, length) = range.trim().split_once('-')?;
+    let start: usize = start.parse().ok()?;
+    let end = start.checked_add(length.parse().ok()?)?;
+    let part = String::from_utf16(units.get(start..end)?).ok()?;
+    Some(part).filter(|p| !p.is_empty())
 }
 
 /// A group's notice posted into its chat, `root` the message and `a` its
