@@ -77,6 +77,14 @@ _Avoid_: msg, record, entry
 What a message is (text, image, voice, file, link, and so on), whatever number WeChat stores it under.
 _Avoid_: type, msg type
 
+**Solitaire**:
+A 接龙: a list a group's members add themselves to under its title, each message of it the whole list as it then stood, the kind `solitaire`; WeChat's solitaire id names one, across its messages.
+_Avoid_: chain, sign-up, poll, relay
+
+**Entry**:
+One line of a solitaire: its number in the list, the member who added it, what it says and when.
+_Avoid_: item, row, signup
+
 **Call**:
 A voice or video call in a chat, as the bubble WeChat leaves of it: whether it connected and for how long, or was cancelled, declined or missed.
 _Avoid_: VoIP, phone call
