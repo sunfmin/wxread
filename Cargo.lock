@@ -649,7 +649,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "silk"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "sha2",
 ]
@@ -766,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "wxread"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -801,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-account"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "wxread-doctor",
  "wxread-keys",
@@ -810,7 +810,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-answer"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flux-rs",
  "proptest",
@@ -819,7 +819,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-articles"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "proptest",
  "roxmltree",
@@ -830,7 +830,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-chats"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "proptest",
  "wxread-answer",
@@ -839,7 +839,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-contacts"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "proptest",
  "wxread-answer",
@@ -847,7 +847,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-crack"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flux-rs",
  "proptest",
@@ -857,7 +857,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-doctor"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flux-rs",
  "proptest",
@@ -866,7 +866,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-favorites"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "md5",
  "proptest",
@@ -878,7 +878,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-keys"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flux-rs",
  "proptest",
@@ -887,7 +887,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-leave"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flux-rs",
  "proptest",
@@ -897,7 +897,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-media"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "aes",
  "md5",
@@ -906,7 +906,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-messages"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "proptest",
  "roxmltree",
@@ -923,7 +923,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-moments"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "proptest",
  "roxmltree",
@@ -934,7 +934,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-resign"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flux-rs",
  "proptest",
@@ -943,14 +943,14 @@ dependencies = [
 
 [[package]]
 name = "wxread-schema"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "md5",
 ]
 
 [[package]]
 name = "wxread-search"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "proptest",
  "serde_json",
@@ -961,7 +961,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-sqlcipher"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "aes",
  "cbc",
@@ -974,7 +974,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-voice"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "proptest",
  "wxread-schema",
@@ -982,7 +982,7 @@ dependencies = [
 
 [[package]]
 name = "wxread-xml"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "roxmltree",
 ]
