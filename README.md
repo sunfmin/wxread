@@ -80,8 +80,9 @@ on stable Rust, makes this repository's release `v<version>` of the two
 archives, `SHA256SUMS` and the formula generated from them, and pushes the
 formula to [`sunfmin/homebrew-tap`](https://github.com/sunfmin/homebrew-tap)
 as `Formula/wxread.rb`. The release needs nothing but the workflow's own
-token; the tap needs the repository secret `HOMEBREW_TAP_TOKEN`, a token that
-may write the tap's contents, and its step fails without it, naming the line
+token; the tap is a second repository, which that token cannot write, so its
+step pushes with the repository secret `HOMEBREW_TAP_DEPLOY_KEY`, an SSH
+deploy key that may write the tap, and fails without it, naming the line
 below that does it by hand.
 
 By hand it is the same steps, on a Mac, with the tag's commit checked out and
@@ -99,7 +100,7 @@ failure: `release` alone makes or refills the GitHub release, and
 
 ```sh
 packaging/release.sh release    # dist/ to this repository's release v<version>
-packaging/release.sh tap        # dist/wxread.rb to the tap: what CI does with HOMEBREW_TAP_TOKEN
+packaging/release.sh tap        # dist/wxread.rb to the tap: what CI does with HOMEBREW_TAP_DEPLOY_KEY
 ```
 
 `build` uses rustup's stable toolchain whatever `cargo` is first on `PATH`,
