@@ -24,6 +24,17 @@ HOW A KEY IS CAPTURED
     contact list, favorites and files. A database nothing touches is not
     captured; `wxread doctor` then names the ones still unkeyed, and you run
     `sudo wxread keys` again, using the parts that hold them.
+  - The one moment that decrypts every database at once is LOGGING IN: a
+    fresh login, and the migration of a phone's history onto the Mac, opens
+    all of them. So the surest single capture is to start the capture at the
+    login screen and log in while it runs: run the copy, leave it at the QR
+    screen, start `sudo wxread keys --seconds 300`, and only then scan the
+    code and log in. Give --seconds enough to cover the login and migration.
+
+  As it captures, keys prints each database it keys to stderr as that key is
+  seen ("captured message/message_0.db (3 so far)"), so a long capture counts
+  up as it runs; the keys themselves are the one JSON object on stdout, still
+  printed once at the end.
 
 WHAT IT NEEDS
   - uv, which keys runs Frida through (it supplies a pinned frida<17). If it
@@ -39,11 +50,14 @@ DO IT WITH A COPY, NEVER THE INSTALLED APP
       cp -c -R /Applications/WeChat.app /tmp/WeChat-copy.app   # APFS clone, ~1s
       wxread resign --app /tmp/WeChat-copy.app --yes           # add get-task-allow
       pkill -x WeChat                                          # quit the real one
-      open -n /tmp/WeChat-copy.app                             # run the copy; log in
-      sudo wxread keys                                         # ← now browse the copy
-  The copy shares the account's data by bundle id, so it opens the same
-  chats. Afterwards quit it and reopen /Applications/WeChat.app. Delete the
-  copy when done. `wxread resign --help` says the rest.
+      open -n /tmp/WeChat-copy.app                             # run the copy (QR screen)
+      sudo wxread keys --seconds 300                           # start capturing, THEN
+                                                               # log in while it runs
+  Start the capture at the copy's login screen and log in while it runs: the
+  login decrypts every database at once (see above). The copy shares the
+  account's data by bundle id, so it logs in to the same account and opens
+  the same chats. Afterwards quit it and reopen /Applications/WeChat.app.
+  Delete the copy when done. `wxread resign --help` says the rest.
 
 WHAT IT ANSWERS
   One object of each database's path under db_storage to its key, in the

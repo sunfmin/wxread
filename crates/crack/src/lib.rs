@@ -8,10 +8,15 @@
 //! first page of each database; everything here is a pure function over those
 //! bytes:
 //!
+//! - [`prove`] is that check for one captured key against one database: the
+//!   [`Key`] it yields when it opens the database's first page, or nothing.
 //! - [`verify`] keeps only the captured keys that open a database — each
-//!   proved by [`wxread_sqlcipher::opens`], the same check every reader makes
-//!   before a page is decrypted — and answers them as the keys, or the one
-//!   line saying none was captured.
+//!   proved by [`prove`], over [`wxread_sqlcipher::opens`], the same check
+//!   every reader makes before a page is decrypted — and answers them as the
+//!   keys, or the one line saying none was captured. A caller that wants to
+//!   report each database the moment its key is seen calls [`prove`] per
+//!   captured key instead, and [`verify`] over everything at the end stays the
+//!   one authoritative answer.
 //! - The other failures a capture can end in (not root, no WeChat, the tool
 //!   missing, Frida refused or failed) each have one line here, carrying the
 //!   command that fixes them; the effect crate picks the one that happened.
@@ -75,8 +80,8 @@ pub fn verify(candidates: &[[u8; KEY_LEN]], dbs: &[Target]) -> Result<Keys, Fail
     let mut found: Vec<(String, Key)> = Vec::new();
     for db in dbs {
         for candidate in candidates {
-            if wxread_sqlcipher::opens(&Key::new(*candidate, None), &db.page1) {
-                found.push((db.path.clone(), Key::new(*candidate, Some(salt_of(&db.page1)))));
+            if let Some(key) = prove(candidate, db) {
+                found.push((db.path.clone(), key));
                 break;
             }
         }
@@ -85,6 +90,20 @@ pub fn verify(candidates: &[[u8; KEY_LEN]], dbs: &[Target]) -> Result<Keys, Fail
         return Err(Failure(NOTHING_CAPTURED.to_string()));
     }
     Ok(Keys::of(found))
+}
+
+/// The [`Key`] a captured `candidate` yields for one database — its 32 bytes
+/// with the salt taken from the database's first page — when the candidate
+/// opens that page by [`wxread_sqlcipher::opens`]; or `None` when it does not.
+/// This is the one check [`verify`] makes per candidate, exposed so a caller
+/// can prove keys one at a time as they are captured and report each database
+/// as it is keyed.
+pub fn prove(candidate: &[u8; KEY_LEN], db: &Target) -> Option<Key> {
+    if wxread_sqlcipher::opens(&Key::new(*candidate, None), &db.page1) {
+        Some(Key::new(*candidate, Some(salt_of(&db.page1))))
+    } else {
+        None
+    }
 }
 
 /// The salt a first page starts with: its first 16 bytes.
@@ -135,6 +154,18 @@ mod tests {
         let value = keys.to_value();
         assert_eq!(value["message/message_0.db"]["enc_key"], wxread_keys::encode(&KEY));
         assert_eq!(value["message/message_0.db"]["salt"], wxread_keys::encode(&SALT));
+    }
+
+    #[test]
+    fn prove_yields_the_key_with_its_salt_for_the_database_it_opens_and_nothing_else() {
+        let db =
+            Target { path: "message/message_0.db".to_string(), page1: page(&KEY, &SALT, b"chat") };
+        let key = prove(&KEY, &db).expect("the key that built the page opens it");
+        let value = wxread_keys::Keys::of(vec![(db.path.clone(), key)]).to_value();
+        assert_eq!(value[&db.path]["enc_key"], wxread_keys::encode(&KEY));
+        assert_eq!(value[&db.path]["salt"], wxread_keys::encode(&SALT));
+        // A key that does not open the page yields nothing.
+        assert!(prove(&[9u8; 32], &db).is_none());
     }
 
     #[test]

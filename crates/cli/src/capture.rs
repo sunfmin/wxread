@@ -39,10 +39,12 @@ pub fn readiness() -> serde_json::Value {
 }
 
 /// Captures the distinct 32-byte keys WeChat hands CommonCrypto while
-/// `seconds` pass, as candidates for [`wxread_crack::verify`] to prove; or the
-/// one line saying why the capture could not run.
+/// `seconds` pass, handing each one to `on_key` the moment it is seen (so the
+/// caller can prove and report it live), as candidates for
+/// [`wxread_crack::verify`]; or the one line saying why the capture could not
+/// run. `on_key` is called once per distinct key, never twice for the same.
 #[cfg(target_os = "macos")]
-pub fn probe(seconds: u64) -> Result<Vec<[u8; KEY_LEN]>, Failure> {
+pub fn probe(seconds: u64, on_key: impl FnMut(&[u8; KEY_LEN])) -> Result<(), Failure> {
     if unsafe { libc::geteuid() } != 0 {
         return Err(Failure(wxread_crack::NOT_ROOT.to_string()));
     }
@@ -52,22 +54,28 @@ pub fn probe(seconds: u64) -> Result<Vec<[u8; KEY_LEN]>, Failure> {
     let Some(uv) = which("uv") else {
         return Err(wxread_crack::tool_missing("uv", UV_INSTALL));
     };
-    run(&uv, pid, seconds)
+    run(&uv, pid, seconds, on_key)
 }
 
 /// Off macOS there is no WeChat for Mac to capture from
 /// (docs/adr/0001-macos-only-and-apache-2.md).
 #[cfg(not(target_os = "macos"))]
-pub fn probe(_seconds: u64) -> Result<Vec<[u8; KEY_LEN]>, Failure> {
+pub fn probe(_seconds: u64, _on_key: impl FnMut(&[u8; KEY_LEN])) -> Result<(), Failure> {
     Err(wxread_crack::capture_failed(
         "wxread keys captures from WeChat for Mac, and this is not a macOS build",
     ))
 }
 
 /// Writes the hook and driver out, runs the driver through uv against `pid`
-/// for `seconds`, and returns the keys it captured.
+/// for `seconds`, and hands each distinct captured key to `on_key` as it
+/// arrives.
 #[cfg(target_os = "macos")]
-fn run(uv: &std::path::Path, pid: i32, seconds: u64) -> Result<Vec<[u8; KEY_LEN]>, Failure> {
+fn run(
+    uv: &std::path::Path,
+    pid: i32,
+    seconds: u64,
+    mut on_key: impl FnMut(&[u8; KEY_LEN]),
+) -> Result<(), Failure> {
     use std::process::{Command, Stdio};
 
     let dir = std::env::temp_dir().join(format!("wxread-capture-{}", std::process::id()));
@@ -120,13 +128,14 @@ fn run(uv: &std::path::Path, pid: i32, seconds: u64) -> Result<Vec<[u8; KEY_LEN]
         text
     });
 
-    let mut keys: Vec<[u8; KEY_LEN]> = Vec::new();
+    let mut seen: Vec<[u8; KEY_LEN]> = Vec::new();
     if let Some(stdout) = child.stdout.take() {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             if let Some(key) = key_of(&line)
-                && !keys.contains(&key)
+                && !seen.contains(&key)
             {
-                keys.push(key);
+                seen.push(key);
+                on_key(&key);
             }
         }
     }
@@ -140,13 +149,13 @@ fn run(uv: &std::path::Path, pid: i32, seconds: u64) -> Result<Vec<[u8; KEY_LEN]
         return Err(wxread_crack::attach_refused(&cause));
     }
     // uv or the driver failed, and nothing was captured to make up for it.
-    if keys.is_empty()
+    if seen.is_empty()
         && let Ok(status) = &status
         && !status.success()
     {
         return Err(wxread_crack::capture_failed(&failure_cause(&errors)));
     }
-    Ok(keys)
+    Ok(())
 }
 
 /// The 32-byte key a driver stdout line carries, if it is a `{"wxkey": …}`
