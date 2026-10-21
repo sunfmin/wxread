@@ -164,11 +164,12 @@ fn the_workflow_runs_the_steps_the_readme_gives_in_order() {
     }
     // `publish` is `release`, then `tap`: the README's one line for both
     assert!(README.contains("\npackaging/release.sh publish "), "{README}");
-    // the release is the repository's own token's to make; the tap needs one
-    // that may write sunfmin/homebrew-tap, and says the fix when it is not set
+    // the release is the repository's own token's to make; the tap needs a
+    // deploy key that may write sunfmin/homebrew-tap, and says the fix when it
+    // is not set
     let tap = WORKFLOW.find("packaging/release.sh tap").unwrap();
-    assert!(WORKFLOW[..tap].contains("HOMEBREW_TAP_TOKEN"), "{WORKFLOW}");
-    assert!(WORKFLOW.contains("No HOMEBREW_TAP_TOKEN"), "{WORKFLOW}");
+    assert!(WORKFLOW[..tap].contains("HOMEBREW_TAP_DEPLOY_KEY"), "{WORKFLOW}");
+    assert!(WORKFLOW.contains("No HOMEBREW_TAP_DEPLOY_KEY"), "{WORKFLOW}");
 }
 
 #[test]

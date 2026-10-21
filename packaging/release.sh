@@ -210,7 +210,16 @@ tap)
     }
     tap=$(mktemp -d)
     trap 'rm -rf "$tap"' EXIT
-    gh repo clone "$TAP" "$tap" -- --quiet --depth 1
+    # CI pushes with an SSH deploy key (HOMEBREW_TAP_SSH_KEY, a key file),
+    # because its own repository token cannot write another repository; a
+    # person at a terminal sets none and pushes over HTTPS with gh's auth.
+    if [ -n "${HOMEBREW_TAP_SSH_KEY:-}" ]; then
+        GIT_SSH_COMMAND="ssh -i $HOMEBREW_TAP_SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+        export GIT_SSH_COMMAND
+        git clone --quiet --depth 1 "git@github.com:$TAP.git" "$tap"
+    else
+        gh repo clone "$TAP" "$tap" -- --quiet --depth 1
+    fi
     mkdir -p "$tap/Formula"
     cp "$formula" "$tap/Formula/$NAME.rb"
     git -C "$tap" add "Formula/$NAME.rb"
