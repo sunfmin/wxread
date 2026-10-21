@@ -88,6 +88,12 @@ fn home() -> Option<PathBuf> {
     std::env::var_os("HOME").filter(|home| !home.is_empty()).map(PathBuf::from)
 }
 
+/// The home directory of user `name`, for another module (the capture tool is
+/// looked for under the invoking user's home when a root `PATH` drops it).
+pub fn home_of_user(name: &str) -> Option<PathBuf> {
+    home_of(name)
+}
+
 /// The home directory of user `name` from the password database, if it has
 /// one.
 fn home_of(name: &str) -> Option<PathBuf> {

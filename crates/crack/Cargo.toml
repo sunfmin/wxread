@@ -1,6 +1,6 @@
 [package]
 name = "wxread-crack"
-description = "Finding a database's key in the running WeChat's memory and proving it opens the database: pure functions over the bytes, checked by Flux (docs/adr/0005-keys-from-memory.md)"
+description = "Proving which key captured from WeChat's crypto calls opens which database: pure functions over the bytes, checked by Flux (docs/adr/0005-keys-from-the-crypto-call.md)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

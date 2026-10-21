@@ -46,7 +46,7 @@ WHAT A COMMAND ANSWERS
     chats     account chats next
     contact   account contact
     contacts  account contacts next
-    doctor    ok data_dir accounts keys findings permissions
+    doctor    ok data_dir accounts keys findings permissions capture
     favorites account favorites next
     file      path size sha256 content_type missing thumbnail fix
     group     account group

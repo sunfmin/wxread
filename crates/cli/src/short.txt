@@ -11,7 +11,7 @@ Commands:
   favorites what the account saved (收藏), each as its kind
   file      file get <id>: write a message's, note's, favorite's or Moment's file
   group     a group's notice, owner, members; group leave leaves groups (--yes)
-  keys      read every database key from the running WeChat (sudo)
+  keys      capture every database key from the running WeChat, with Frida (sudo)
   messages  a chat's messages, each as its kind, a page at a time
   moments   the Moments WeChat loaded: text, media, likes, comments
   resign    re-sign WeChat so keys can read it; changes it only with --yes

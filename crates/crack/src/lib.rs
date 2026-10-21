@@ -1,17 +1,25 @@
-//! Finding each database's key in the running WeChat's memory
-//! (docs/adr/0005-keys-from-memory.md).
+//! Proving which captured key opens which database
+//! (docs/adr/0005-keys-from-the-crypto-call.md).
 //!
-//! WeChat for Mac 4.x keeps every database's key in memory as the raw
-//! 32-byte key, written as the SQLCipher literal `x'<64 hex key><32 hex
-//! salt>'`. The effect crate reads the running WeChat's memory and the first
-//! page of each database; everything here is a pure function over those
+//! WeChat for Mac 4.x keeps no database key resident where a memory scan can
+//! read it: the raw 32-byte key appears only for the instant it is handed to
+//! CommonCrypto to decrypt a page. The effect crate captures those keys with
+//! Frida (one 32-byte candidate per distinct AES-256 key seen) and reads the
+//! first page of each database; everything here is a pure function over those
 //! bytes:
 //!
-//! - [`candidates`] reads every 32-byte key written in a block of memory.
-//! - [`run`] turns what the effect crate gathered — whether the memory could
-//!   be read at all, the candidates, and the databases — into either the keys
-//!   that open the databases (each proved by [`wxread_sqlcipher::opens`]) or
-//!   the one line that says why it could not.
+//! - [`prove`] is that check for one captured key against one database: the
+//!   [`Key`] it yields when it opens the database's first page, or nothing.
+//! - [`verify`] keeps only the captured keys that open a database — each
+//!   proved by [`prove`], over [`wxread_sqlcipher::opens`], the same check
+//!   every reader makes before a page is decrypted — and answers them as the
+//!   keys, or the one line saying none was captured. A caller that wants to
+//!   report each database the moment its key is seen calls [`prove`] per
+//!   captured key instead, and [`verify`] over everything at the end stays the
+//!   one authoritative answer.
+//! - The other failures a capture can end in (not root, no WeChat, the tool
+//!   missing, Frida refused or failed) each have one line here, carrying the
+//!   command that fixes them; the effect crate picks the one that happened.
 
 use wxread_keys::{Key, Keys};
 use wxread_sqlcipher::PAGE;
@@ -21,49 +29,6 @@ pub const KEY_LEN: usize = 32;
 /// How many bytes of a first page are its salt.
 const SALT_LEN: usize = 16;
 
-/// Every distinct 32-byte key written as hex in `memory`: the 64 hex digits
-/// at the start of each run of 64 or more hex digits (WeChat holds the key as
-/// `x'<64 hex key><32 hex salt>'`, so its key is the run's first 64 digits).
-pub fn candidates(memory: &[u8]) -> Vec<[u8; KEY_LEN]> {
-    // Every maximal run of hex digits (anything else, the `x'` and `'` around
-    // WeChat's literal among it, separates them); each run of 64 or more
-    // digits yields the key its first 64 digits spell.
-    let mut out = Vec::new();
-    let mut i = 0usize;
-    let mut run_start = 0usize;
-    let mut in_run = false;
-    while let Some(&byte) = memory.get(i) {
-        if byte.is_ascii_hexdigit() {
-            if !in_run {
-                in_run = true;
-                run_start = i;
-            }
-        } else if in_run {
-            in_run = false;
-            take_key(memory, run_start, &mut out);
-        }
-        match i.checked_add(1) {
-            Some(next) => i = next,
-            None => break,
-        }
-    }
-    if in_run {
-        take_key(memory, run_start, &mut out);
-    }
-    out
-}
-
-/// Reads the key the 64 hex digits at `start` spell into `out`, if there are
-/// 64 digits there to read.
-fn take_key(memory: &[u8], start: usize, out: &mut Vec<[u8; KEY_LEN]>) {
-    if let Some(end) = start.checked_add(wxread_keys::KEY_HEX)
-        && let Some(head) = memory.get(start..end)
-        && let Some(key) = wxread_keys::decode_key(head)
-    {
-        out.push(key);
-    }
-}
-
 /// One database to find the key of: its path under `db_storage`, as the keys
 /// are answered, and its first page.
 #[derive(Debug, Clone)]
@@ -72,70 +37,73 @@ pub struct Target {
     pub page1: [u8; PAGE],
 }
 
-/// Whether the running WeChat's memory could be read at all.
-#[derive(Debug, Clone)]
-pub enum Access {
-    /// wxread was not run as root.
-    NotRoot,
-    /// No running WeChat was found.
-    NotRunning,
-    /// macOS refused reading WeChat's memory; the string is the low cause.
-    Refused(String),
-    /// Its memory was read.
-    Read,
-}
-
 /// Why `keys` cannot answer: the one line it prints, carrying its own fix.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Failure(pub String);
 
-/// What the effect crate gathered for `keys` to decide on: whether the memory
-/// could be read, the key candidates read out of it, and the databases found.
-pub struct Request<'a> {
-    pub access: Access,
-    pub candidates: &'a [[u8; KEY_LEN]],
-    pub dbs: &'a [Target],
-}
+/// `keys` was not run as root, and only root may attach Frida to WeChat.
+pub const NOT_ROOT: &str = "wxread keys captures the keys from the running WeChat with Frida, which only root may attach to: run `sudo wxread keys`";
+/// No WeChat process was found to capture from.
+pub const NOT_RUNNING: &str = "WeChat is not running, so there is nothing to capture keys from: open the re-signed WeChat copy and log in (`wxread keys --help` says how), then run `sudo wxread keys`";
+/// WeChat was attached and hooked, but it decrypted no page while the capture
+/// ran, so no key was seen.
+pub const NOTHING_CAPTURED: &str = "WeChat is running but no database key was captured: while `sudo wxread keys` runs, open chats, use search and open files in WeChat so it decrypts its databases; then run `sudo wxread keys` again";
 
-/// `keys` was not run as root, and only root reads another process's memory.
-pub const NOT_ROOT: &str = "wxread keys reads the keys out of the running WeChat's memory, which only root can read: run `sudo wxread keys`";
-/// No WeChat process was found.
-pub const NOT_RUNNING: &str = "WeChat is not running, so it holds no keys to read: open WeChat for Mac 4.x and log in, then run `sudo wxread keys`";
-/// WeChat is running and its memory was read, but no key in it opens any
-/// database: no account is logged in, or the WeChat read was started before
-/// it was re-signed.
-pub const NOT_LOGGED_IN: &str = "WeChat is running but no key in its memory opens a database on this Mac: log in to WeChat for Mac 4.x (and if you just ran `wxread resign --yes`, quit WeChat and open it again), then run `sudo wxread keys` again";
-
-/// macOS refused reading WeChat's memory, for `cause`: WeChat is a signed
-/// build without `get-task-allow`, and must be re-signed to be read.
-pub fn refused(cause: &str) -> Failure {
+/// The capture tool `name` (uv, which runs Frida) is not installed; `install`
+/// is the command that installs it.
+pub fn tool_missing(name: &str, install: &str) -> Failure {
     Failure(format!(
-        "macOS will not let wxread read WeChat's memory ({cause}): WeChat is a signed build without get-task-allow. Run `wxread resign` to see how it re-signs WeChat so its memory can be read, then `wxread resign --yes`; then quit WeChat, open it again, grant the app running wxread Full Disk Access, and run `sudo wxread keys` again"
+        "wxread keys runs Frida through {name}, and {name} is not installed: install it (`{install}`), then run `sudo wxread keys`"
     ))
 }
 
-/// The keys that open the databases, or the one line saying why there are
-/// none: the memory could not be read, or no key in it opened a database.
-pub fn run(request: &Request) -> Result<Keys, Failure> {
-    match &request.access {
-        Access::NotRoot => return Err(Failure(NOT_ROOT.to_string())),
-        Access::NotRunning => return Err(Failure(NOT_RUNNING.to_string())),
-        Access::Refused(cause) => return Err(refused(cause)),
-        Access::Read => {}
-    }
+/// Frida could not attach to WeChat, for `cause`: almost always because the
+/// running WeChat is a signed build without `get-task-allow`.
+pub fn attach_refused(cause: &str) -> Failure {
+    Failure(format!(
+        "Frida could not attach to WeChat ({cause}): it is a signed build without get-task-allow, so capture from a re-signed copy — clone WeChat.app, `wxread resign --app <copy> --yes`, open the copy and log in, then `sudo wxread keys` (`wxread keys --help` has the steps)"
+    ))
+}
+
+/// Frida or uv ran but ended in an error that is not a refused attach.
+pub fn capture_failed(why: &str) -> Failure {
+    Failure(format!(
+        "Frida could not capture WeChat's keys ({why}): `wxread keys --help` says what the capture needs, then run `sudo wxread keys` again"
+    ))
+}
+
+/// The captured keys that open a database, each proved against its first page
+/// by [`wxread_sqlcipher::opens`]; or [`NOTHING_CAPTURED`] when none does. A
+/// database no captured key opens is simply absent from the answer, never
+/// guessed.
+pub fn verify(candidates: &[[u8; KEY_LEN]], dbs: &[Target]) -> Result<Keys, Failure> {
     let mut found: Vec<(String, Key)> = Vec::new();
-    for db in request.dbs {
-        for candidate in request.candidates {
-            if wxread_sqlcipher::opens(&Key::new(*candidate, None), &db.page1) {
-                found.push((db.path.clone(), Key::new(*candidate, Some(salt_of(&db.page1)))));
+    for db in dbs {
+        for candidate in candidates {
+            if let Some(key) = prove(candidate, db) {
+                found.push((db.path.clone(), key));
                 break;
             }
         }
     }
     if found.is_empty() {
-        return Err(Failure(NOT_LOGGED_IN.to_string()));
+        return Err(Failure(NOTHING_CAPTURED.to_string()));
     }
     Ok(Keys::of(found))
+}
+
+/// The [`Key`] a captured `candidate` yields for one database — its 32 bytes
+/// with the salt taken from the database's first page — when the candidate
+/// opens that page by [`wxread_sqlcipher::opens`]; or `None` when it does not.
+/// This is the one check [`verify`] makes per candidate, exposed so a caller
+/// can prove keys one at a time as they are captured and report each database
+/// as it is keyed.
+pub fn prove(candidate: &[u8; KEY_LEN], db: &Target) -> Option<Key> {
+    if wxread_sqlcipher::opens(&Key::new(*candidate, None), &db.page1) {
+        Some(Key::new(*candidate, Some(salt_of(&db.page1))))
+    } else {
+        None
+    }
 }
 
 /// The salt a first page starts with: its first 16 bytes.
@@ -174,68 +142,72 @@ mod tests {
     }
 
     #[test]
-    fn candidates_reads_the_key_out_of_the_hex_literal_in_memory() {
-        let key_hex = wxread_keys::encode(&KEY);
-        let salt_hex = wxread_keys::encode(&SALT);
-        let memory =
-            format!("....PRAGMA key = \"x'{key_hex}{salt_hex}'\";....zz 0123 deadbeef....");
-        assert!(candidates(memory.as_bytes()).contains(&KEY), "literal");
-        // A bare 64-hex run is a candidate too.
-        assert!(candidates(key_hex.as_bytes()).contains(&KEY), "bare");
-        // Nothing in bytes with no long hex run.
-        assert!(candidates(b"no keys here, just prose and 0xbadf00d").is_empty());
-    }
-
-    #[test]
-    fn run_finds_the_key_of_each_database_among_the_candidates() {
+    fn verify_finds_the_key_of_each_database_among_the_captured() {
         let other = [9u8; 32];
         let dbs = [Target {
             path: "message/message_0.db".to_string(),
             page1: page(&KEY, &SALT, b"chat"),
         }];
-        let request = Request { access: Access::Read, candidates: &[other, KEY], dbs: &dbs };
-        let keys = run(&request).unwrap();
+        // The capture order is whatever CommonCrypto was called in; the wrong
+        // key before the right one changes nothing.
+        let keys = verify(&[other, KEY], &dbs).unwrap();
         let value = keys.to_value();
         assert_eq!(value["message/message_0.db"]["enc_key"], wxread_keys::encode(&KEY));
         assert_eq!(value["message/message_0.db"]["salt"], wxread_keys::encode(&SALT));
     }
 
     #[test]
-    fn each_way_of_reading_nothing_is_its_own_line_with_the_fix() {
+    fn prove_yields_the_key_with_its_salt_for_the_database_it_opens_and_nothing_else() {
+        let db =
+            Target { path: "message/message_0.db".to_string(), page1: page(&KEY, &SALT, b"chat") };
+        let key = prove(&KEY, &db).expect("the key that built the page opens it");
+        let value = wxread_keys::Keys::of(vec![(db.path.clone(), key)]).to_value();
+        assert_eq!(value[&db.path]["enc_key"], wxread_keys::encode(&KEY));
+        assert_eq!(value[&db.path]["salt"], wxread_keys::encode(&SALT));
+        // A key that does not open the page yields nothing.
+        assert!(prove(&[9u8; 32], &db).is_none());
+    }
+
+    #[test]
+    fn nothing_captured_when_no_key_opens_a_database() {
         let dbs = [Target { path: "m.db".to_string(), page1: page(&KEY, &SALT, b"chat") }];
-        let no_dbs: [Target; 0] = [];
-        let cases = [
-            (Access::NotRoot, &no_dbs[..], &[][..], "sudo wxread keys"),
-            (Access::NotRunning, &no_dbs[..], &[][..], "not running"),
-            (Access::Refused("os error 5".into()), &no_dbs[..], &[][..], "`wxread resign --yes`"),
-            // Read, but no candidate opens the one database: not logged in.
-            (Access::Read, &dbs[..], &[[9u8; 32]][..], "no key in its memory opens"),
+        // Captured something, but none of it opens the database.
+        let Failure(line) = verify(&[[9u8; 32]], &dbs).unwrap_err();
+        assert!(line.contains("no database key was captured"), "{line}");
+        // Captured nothing at all is the same answer.
+        assert_eq!(verify(&[], &dbs).unwrap_err(), verify(&[[9u8; 32]], &dbs).unwrap_err());
+    }
+
+    #[test]
+    fn every_failure_line_names_the_command_that_fixes_it() {
+        let lines = [
+            Failure(NOT_ROOT.to_string()),
+            Failure(NOT_RUNNING.to_string()),
+            Failure(NOTHING_CAPTURED.to_string()),
+            tool_missing("uv", "brew install uv"),
+            attach_refused("os error 5"),
+            capture_failed("uv exited with code 1"),
         ];
-        for (access, dbs, candidates, needle) in cases {
-            let request = Request { access, candidates, dbs };
-            let Failure(line) = run(&request).unwrap_err();
-            assert!(line.contains(needle), "{line}");
-            assert!(line.contains("wxread keys"), "every fix names the command: {line}");
+        for Failure(line) in lines {
+            assert!(line.contains("wxread") || line.contains("brew install"), "{line}");
         }
     }
 
     proptest! {
         // Over random keys, salts and bodies, the key that built a page is the
-        // one `run` reports for it, and a different key is not.
+        // one `verify` reports for it, and a different key is not.
         #[test]
-        fn run_reports_only_the_key_that_built_the_page(
+        fn verify_reports_only_the_key_that_built_the_page(
             key: [u8; 32], salt: [u8; 16], body in proptest::collection::vec(any::<u8>(), 0..200),
         ) {
             prop_assume!(key != [0u8; 32]);
             let dbs = [Target { path: "m.db".to_string(), page1: page(&key, &salt, &body) }];
-            let request = Request { access: Access::Read, candidates: &[key], dbs: &dbs };
-            let value = run(&request).unwrap().to_value();
+            let value = verify(&[key], &dbs).unwrap().to_value();
             prop_assert_eq!(value["m.db"]["enc_key"].as_str().unwrap(), wxread_keys::encode(&key));
 
             let mut other = key;
             other[(key[0] as usize) % 32] ^= 1;
-            let request = Request { access: Access::Read, candidates: &[other], dbs: &dbs };
-            prop_assert!(run(&request).is_err());
+            prop_assert!(verify(&[other], &dbs).is_err());
         }
     }
 }

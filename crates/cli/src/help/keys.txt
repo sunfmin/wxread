@@ -1,27 +1,74 @@
-wxread keys: the keys of every database of the logged-in account, read out
-of the running WeChat itself.
+wxread keys: the keys of every database of the logged-in account, captured
+from the running WeChat as it decrypts its databases.
 
 WHEN TO RUN IT
   Once, before any command reads a chat, and again when doctor names a
   database the keys no longer open. Run by the person whose Mac it is, as
-  `sudo wxread keys`: the keys live only in the running WeChat's memory,
-  which only root can read.
+  `sudo wxread keys`: it attaches Frida to WeChat, which only root may do.
 
-WHAT IT READS AND WRITES
-  WeChat for Mac 4.x holds each database's key in its memory, as the raw
-  key the SQLCipher literal x'<64 hex><32 hex>' spells. keys reads the
-  running WeChat's readable-and-writable memory for those literals, and
-  checks each one against a database's first-page HMAC before reporting it,
-  so every key it answers opens its database. It also reads the first page
-  of each database under the account. It writes nothing: wxread keeps no
-  keys.
+HOW A KEY IS CAPTURED
+  WeChat for Mac 4.x keeps no database key anywhere a memory scan can find
+  it: the raw 32-byte key exists only for the instant WeChat hands it to
+  CommonCrypto to decrypt a page. So keys attaches Frida to the running
+  WeChat and hooks those calls, and for every page WeChat decrypts while it
+  runs, captures the key and checks it against a database's first-page HMAC
+  before reporting it — so every key it answers opens its database.
+
+  Two things follow, and both matter:
+  - WeChat must be a build Frida can attach to: one that carries
+    get-task-allow. A WeChat installed from Tencent does not, so capture
+    from a re-signed COPY (below) — the installed app is never touched.
+  - A key is captured only while its database is being decrypted. So, while
+    `sudo wxread keys` runs (25 seconds unless --seconds says otherwise),
+    USE WeChat: open several chats and scroll up, type in search, open the
+    contact list, favorites and files. A database nothing touches is not
+    captured; `wxread doctor` then names the ones still unkeyed, and you run
+    `sudo wxread keys` again, using the parts that hold them.
+  - The one moment that decrypts every database at once is LOGGING IN: a
+    fresh login, and the migration of a phone's history onto the Mac, opens
+    all of them. So the surest single capture is to start the capture at the
+    login screen and log in while it runs: run the copy, leave it at the QR
+    screen, start `sudo wxread keys --seconds 300`, and only then scan the
+    code and log in. Give --seconds enough to cover the login and migration.
+
+  As it captures, keys prints each database it keys to stderr as that key is
+  seen ("captured message/message_0.db (3 so far)"), so a long capture counts
+  up as it runs; the keys themselves are the one JSON object on stdout, still
+  printed once at the end. It does not run out the whole window: once the keys
+  stop coming (nothing new for about ten seconds), the burst is over and it
+  stops and prints what it has. So --seconds is a cap, not a wait — set it long
+  enough to cover a slow phone migration; a quick login ends in well under it.
+
+WHAT IT NEEDS
+  - uv, which keys runs Frida through (it supplies a pinned frida<17). If it
+    is missing, keys says so and names `brew install uv`. The first capture
+    downloads Frida through uv; later ones use it from uv's cache.
+  - The app running wxread granted Full Disk Access.
+  - A running WeChat with get-task-allow: the re-signed copy.
+
+DO IT WITH A COPY, NEVER THE INSTALLED APP
+  Re-signing the WeChat in /Applications would strip its genuine signature
+  and can stop it updating. So clone it and work on the clone; the real app
+  keeps running untouched:
+      cp -c -R /Applications/WeChat.app /tmp/WeChat-copy.app   # APFS clone, ~1s
+      wxread resign --app /tmp/WeChat-copy.app --yes           # add get-task-allow
+      pkill -x WeChat                                          # quit the real one
+      open -n /tmp/WeChat-copy.app                             # run the copy (QR screen)
+      sudo wxread keys --seconds 300                           # start capturing, THEN
+                                                               # log in while it runs
+  Start the capture at the copy's login screen and log in while it runs: the
+  login decrypts every database at once (see above). The copy shares the
+  account's data by bundle id, so it logs in to the same account and opens
+  the same chats. Afterwards quit it and reopen /Applications/WeChat.app.
+  Delete the copy when done. `wxread resign --help` says the rest.
 
 WHAT IT ANSWERS
   One object of each database's path under db_storage to its key, in the
   shape `wechat-cli init` writes its all_keys.json:
     {"message/message_0.db": {"enc_key": "<64 hex>", "salt": "<32 hex>"}}
-  A key is answered only for a database some key in memory opens, so with
-  no account logged in the answer is instead a failure that says so.
+  A key is answered only for a database a captured key opens, so a database
+  WeChat did not decrypt while keys ran is simply absent — browse it and run
+  keys again. With no account logged in, the answer is a failure saying so.
 
 STORING AND SUPPLYING THEM
   It keeps no keys of its own. Store the answer where secrets go (a
@@ -31,20 +78,16 @@ STORING AND SUPPLYING THEM
       WXREAD_KEYS="$(cat <file>)" wxread doctor
   A key stays valid until WeChat creates its databases again (logging out
   and in, some updates); `wxread doctor` then names each database the keys
-  no longer open, and `sudo wxread keys` reads them again.
-
-IF MACOS REFUSES TO READ WECHAT
-  A WeChat installed from Tencent is a signed build without get-task-allow,
-  and macOS will not let even root read its memory. `wxread resign` says
-  how it would re-sign WeChat so it can be read (this does not change what
-  WeChat does), and `wxread resign --yes` does it. Then quit WeChat, open it
-  again, grant the app running wxread Full Disk Access, and run
-  `sudo wxread keys` again. Re-signing can stop WeChat updating itself;
-  reinstall it to undo. `wxread resign --help` says the rest.
+  no longer open, and `sudo wxread keys` captures them again.
 
 TRIPS YOU UP
-  - Run it with sudo, or it refuses: only root reads another app's memory.
+  - Run it with sudo, or it refuses: only root may attach Frida to WeChat.
+  - "Frida could not attach" means the WeChat running has no get-task-allow:
+    run the re-signed copy, not the installed app.
+  - "no database key was captured" means nothing was decrypted while it ran:
+    browse WeChat during the window, and run it again.
   - Under sudo it reads the databases of the user who ran sudo, not root's;
     pass --data-dir <dir> to read another.
-  - With two accounts logged in, it answers the keys of each database its
-    memory holds a key for, under that database's own path.
+  - --seconds <N> (1 to 600) caps how long to capture; the default is 25. It
+    stops early once the keys stop coming, so this is a ceiling, not a wait —
+    raise it (e.g. --seconds 300) only to cover a slow first-login migration.
