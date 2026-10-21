@@ -34,7 +34,10 @@ HOW A KEY IS CAPTURED
   As it captures, keys prints each database it keys to stderr as that key is
   seen ("captured message/message_0.db (3 so far)"), so a long capture counts
   up as it runs; the keys themselves are the one JSON object on stdout, still
-  printed once at the end.
+  printed once at the end. It does not run out the whole window: once the keys
+  stop coming (nothing new for about ten seconds), the burst is over and it
+  stops and prints what it has. So --seconds is a cap, not a wait — set it long
+  enough to cover a slow phone migration; a quick login ends in well under it.
 
 WHAT IT NEEDS
   - uv, which keys runs Frida through (it supplies a pinned frida<17). If it
@@ -85,4 +88,6 @@ TRIPS YOU UP
     browse WeChat during the window, and run it again.
   - Under sudo it reads the databases of the user who ran sudo, not root's;
     pass --data-dir <dir> to read another.
-  - --seconds <N> (1 to 600) sets how long to capture; the default is 25.
+  - --seconds <N> (1 to 600) caps how long to capture; the default is 25. It
+    stops early once the keys stop coming, so this is a ceiling, not a wait —
+    raise it (e.g. --seconds 300) only to cover a slow first-login migration.

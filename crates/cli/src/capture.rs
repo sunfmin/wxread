@@ -21,6 +21,12 @@ const UV_INSTALL: &str = "brew install uv";
 /// The Frida uv supplies to run the driver: pinned below 17, the versions on
 /// which this CommonCrypto hook fires (docs/adr/0005-keys-from-the-crypto-call.md).
 const FRIDA_SPEC: &str = "frida<17";
+/// How long the capture waits for a new database's key with none arriving
+/// before it decides the burst is over and stops early. Logging in decrypts
+/// every database within a second or two, so once nothing new has come for
+/// this long the keys are in; `--seconds` is the cap, not the wait.
+#[cfg(target_os = "macos")]
+const IDLE_STOP: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// What `doctor` says of the capture tool: whether uv is found, what needs
 /// it, and the line that installs it when it is not.
@@ -97,7 +103,7 @@ fn run(
     // while WeChat decrypts a page, so they browse. This is the progress of
     // the run, so it goes to stderr; stdout is the one JSON object.
     eprintln!(
-        "wxread keys: capturing for {seconds}s — open chats, use search and open files in WeChat now so it decrypts its databases"
+        "wxread keys: capturing (up to {seconds}s, stops once the keys stop coming) — log in, or open chats, use search and open files, so WeChat decrypts its databases"
     );
 
     let mut child = match Command::new(uv)
@@ -106,6 +112,7 @@ fn run(
         .arg(&hook)
         .arg(pid.to_string())
         .arg(seconds.to_string())
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -128,19 +135,60 @@ fn run(
         text
     });
 
-    let mut seen: Vec<[u8; KEY_LEN]> = Vec::new();
-    if let Some(stdout) = child.stdout.take() {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            if let Some(key) = key_of(&line)
-                && !seen.contains(&key)
-            {
-                seen.push(key);
-                on_key(&key);
+    // Read the keys off stdout on another thread, over a channel, so the loop
+    // below can wake on a timer: keys stream in while WeChat decrypts, and when
+    // they stop coming the burst is over. Holding the child's stdin keeps the
+    // driver running; dropping it asks the driver to stop (it watches stdin).
+    let stdin = child.stdin.take();
+    let stdout = child.stdout.take();
+    let (tx, rx) = std::sync::mpsc::channel::<[u8; KEY_LEN]>();
+    let reader = std::thread::spawn(move || {
+        if let Some(stdout) = stdout {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                if let Some(key) = key_of(&line)
+                    && tx.send(key).is_err()
+                {
+                    break;
+                }
             }
+        }
+    });
+
+    let mut seen: Vec<[u8; KEY_LEN]> = Vec::new();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
+    loop {
+        let now = std::time::Instant::now();
+        let Some(left) = deadline.checked_duration_since(now) else {
+            break; // the whole window has passed
+        };
+        // Wait for the next key, but no longer than the idle window once at
+        // least one key is in: a quiet stretch that long means the burst is
+        // over, so stop early instead of running out the window.
+        let wait = if seen.is_empty() { left } else { left.min(IDLE_STOP) };
+        match rx.recv_timeout(wait) {
+            Ok(key) => {
+                if !seen.contains(&key) {
+                    seen.push(key);
+                    on_key(&key);
+                }
+            }
+            // Nothing for the whole wait: the burst is over (we have keys), or
+            // the window ran out. Either way, stop.
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                if !seen.is_empty() {
+                    break;
+                }
+            }
+            // The driver closed stdout: it has exited, so we are done.
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
 
-    let status = child.wait();
+    // Ask the driver to stop (it watches stdin for this) and reap it, but do
+    // not wait out its window if it ignores us: kill it after a short grace.
+    drop(stdin);
+    let status = wait_or_kill(&mut child);
+    let _ = reader.join();
     let errors = errors.join().unwrap_or_default();
     let _ = std::fs::remove_dir_all(&dir);
 
@@ -156,6 +204,26 @@ fn run(
         return Err(wxread_crack::capture_failed(&failure_cause(&errors)));
     }
     Ok(())
+}
+
+/// Reaps the driver after its stdin was closed to stop it, without waiting out
+/// its whole window: if it has not exited within a short grace, kill it.
+#[cfg(target_os = "macos")]
+fn wait_or_kill(child: &mut std::process::Child) -> std::io::Result<std::process::ExitStatus> {
+    let grace = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => {
+                if std::time::Instant::now() >= grace {
+                    let _ = child.kill();
+                    return child.wait();
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 /// The 32-byte key a driver stdout line carries, if it is a `{"wxkey": …}`

@@ -12,6 +12,7 @@
 # not captured, and `wxread doctor` then names the databases still unkeyed.
 import json
 import sys
+import threading
 import time
 
 import frida
@@ -50,8 +51,26 @@ except Exception as exc:
     sys.stderr.write(json.dumps({"script_error": str(exc)}) + "\n")
     sys.exit(4)
 
+# Stop when wxread closes our stdin (it does so once the keys stop coming, to
+# end a capture early instead of running the whole window), as well as at the
+# time limit. Watching stdin on a thread keeps the detach below clean — no
+# signal, so frida is never left attached.
+stop = threading.Event()
+
+
+def watch_stdin():
+    try:
+        for _ in sys.stdin:
+            pass
+    except Exception:
+        pass
+    stop.set()
+
+
+threading.Thread(target=watch_stdin, daemon=True).start()
+
 deadline = time.time() + seconds
-while time.time() < deadline:
+while time.time() < deadline and not stop.is_set():
     time.sleep(0.3)
 
 try:

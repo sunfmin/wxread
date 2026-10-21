@@ -3,9 +3,11 @@
 //! capture is [`crate::capture`]'s; this reads the first page of each database
 //! and asks [`wxread_crack`] which captured keys open which databases. As each
 //! key is captured it proves it against the databases present then and reports
-//! the one it opens on stderr, so a long capture counts up as it goes; the one
-//! JSON object on stdout, the authoritative answer, is still printed once at
-//! the end. It keeps nothing and writes nothing.
+//! the one it opens on stderr, so a long capture counts up as it goes, and the
+//! capture stops once the keys stop coming rather than running out the window
+//! ([`crate::capture`]); the one JSON object on stdout, the authoritative
+//! answer, is still printed once at the end. It keeps nothing and writes
+//! nothing.
 
 use std::collections::BTreeSet;
 use std::io::Read;
