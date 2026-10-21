@@ -12,6 +12,7 @@ pub fn run(world: &World) -> Value {
     let seen = world.seen();
     let mut answer = to_json(&seen, &wxread_doctor::diagnose(&seen));
     answer["permissions"] = permissions();
+    answer["capture"] = crate::capture::readiness();
     answer
 }
 

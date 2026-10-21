@@ -558,8 +558,9 @@ fn resign_answers_exactly_the_keys_its_help_and_the_guide_name() {
 #[test]
 fn keys_help_points_at_resign_when_macos_refuses() {
     let help = asked(&["keys", "--help"]);
-    let section = between(&help, "IF MACOS REFUSES TO READ WECHAT", "TRIPS YOU UP").join("\n");
-    assert!(section.contains("`wxread resign`") && section.contains("`wxread resign --yes`"));
+    let section =
+        between(&help, "DO IT WITH A COPY, NEVER THE INSTALLED APP", "WHAT IT ANSWERS").join("\n");
+    assert!(section.contains("wxread resign --app") && section.contains("--yes"), "{section}");
     let resign = asked(&["resign", "--help"]);
     for needle in [
         "WHEN TO RUN IT",

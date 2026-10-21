@@ -38,9 +38,8 @@ sha2 = "0.10"
 # WeChat's databases, decrypted, opened from memory.
 rusqlite = { version = "0.32", features = ["bundled", "serialize"] }
 
-# Reading the running WeChat's memory is a macOS job (docs/adr/0001).
+# Finding and driving the running WeChat is a macOS job (docs/adr/0001).
 [target.'cfg(target_os = "macos")'.dependencies]
-mach2 = "0.4.3"
 # Vision, AppKit and NSWorkspace, which `group leave` drives WeChat's
 # window with (docs/adr/0015-a-group-is-left-by-driving-wechats-window-only-with-yes.md).
 objc2 = "0.6.5"

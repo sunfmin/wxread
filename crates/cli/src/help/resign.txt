@@ -2,17 +2,27 @@ wxread resign: re-signs WeChat so `sudo wxread keys` can read its memory.
 Without --yes it says what it would do and changes nothing.
 
 WHEN TO RUN IT
-  Once, when `sudo wxread keys` says macOS will not let it read WeChat's
-  memory: a WeChat installed from Tencent is signed with the hardened
-  runtime and without get-task-allow, and macOS will not let even root read
-  it. Run by the person whose Mac it is, never on an agent's own initiative:
-  first `wxread resign` to see what it would do, then `wxread resign --yes`.
-  Then, in order:
-    1. quit WeChat (⌘Q) and open it again: a running WeChat keeps the
-       signature it was started with
-    2. grant the app running wxread (a terminal, an agent's host) Full Disk
+  Once, when `sudo wxread keys` says Frida cannot attach to WeChat: a WeChat
+  installed from Tencent is signed with the hardened runtime and without
+  get-task-allow, and macOS lets neither Frida attach nor root read it
+  without it. Run by the person whose Mac it is, never on an agent's own
+  initiative.
+
+RE-SIGN A COPY, NOT THE INSTALLED APP
+  Re-signing /Applications/WeChat.app would strip its genuine Tencent
+  signature and can stop it updating. So clone it and re-sign the clone with
+  --app; the installed app is never touched and keeps running:
+    1. cp -c -R /Applications/WeChat.app /tmp/WeChat-copy.app   (APFS clone)
+    2. wxread resign --app /tmp/WeChat-copy.app                 (preview)
+    3. wxread resign --app /tmp/WeChat-copy.app --yes           (re-sign it)
+    4. quit WeChat (pkill -x WeChat), then open -n /tmp/WeChat-copy.app, log in
+    5. grant the app running wxread (a terminal, an agent's host) Full Disk
        Access, in System Settings › Privacy & Security › Full Disk Access
-    3. run `sudo wxread keys`
+    6. run `sudo wxread keys`, and browse the copy while it captures
+  The copy shares the account's data by bundle id, so it opens the same
+  chats. Quit it and reopen /Applications/WeChat.app when done; delete the
+  copy. (Without --app, resign acts on the installed app in place — undone
+  only by reinstalling WeChat; the copy is why that is not the way to do it.)
 
 WHAT IT READS AND WRITES
   The app: --app <path>, else /Applications/WeChat.app, else

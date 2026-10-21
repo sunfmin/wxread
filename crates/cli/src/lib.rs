@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 pub mod account;
 pub mod articles;
+mod capture;
 pub mod chats;
 pub mod contacts;
 pub mod doctor;
@@ -202,8 +203,12 @@ enum Command {
         #[arg(long, value_name = "NEXT")]
         cursor: Option<String>,
     },
-    /// Read every database key from the running WeChat
-    Keys,
+    /// Capture every database key from the running WeChat with Frida
+    Keys {
+        /// How long to capture for, 1 to 600 seconds (25 unless given)
+        #[arg(long, value_name = "N")]
+        seconds: Option<String>,
+    },
     /// List the Moments WeChat has loaded, newest first, a page at a time
     Moments {
         /// The account to read, by its id, when several are logged in
@@ -427,7 +432,7 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
                 search::run(&w, &asked)
             })
         }
-        Command::Keys => keys::run(cli.data_dir),
+        Command::Keys { seconds } => keys::run(cli.data_dir, seconds),
         Command::Moments { account, contact, limit, cursor } => {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| moments::run(&w, &moments::Asked { account, contact, limit, cursor }))

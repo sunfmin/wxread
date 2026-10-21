@@ -1,46 +1,59 @@
-//! `wxread keys`: reads every database's key out of the running WeChat's
-//! memory and prints them (docs/adr/0005-keys-from-memory.md). It reads the
-//! world — whether wxread is root, whether WeChat is running and readable,
-//! and the first page of each database — and asks [`wxread_crack`] which keys
-//! open which databases. It keeps nothing and writes nothing.
+//! `wxread keys`: captures every database's key from the running WeChat with
+//! Frida and prints them (docs/adr/0005-keys-from-the-crypto-call.md). The
+//! capture is [`crate::capture`]'s; this reads the first page of each database
+//! and asks [`wxread_crack`] which captured keys open which databases. It
+//! keeps nothing and writes nothing.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use wxread_crack::{Access, Request, Target};
+use wxread_crack::Target;
 use wxread_doctor::Listing;
 use wxread_sqlcipher::PAGE;
 
-use crate::memory;
+use crate::capture;
 use crate::world::World;
 
-/// Reads the keys and answers them as one JSON object, or fails with the one
-/// line that says why there are none and how to get them.
-pub fn run(data_dir: Option<PathBuf>) -> anyhow::Result<Value> {
-    // Only root can read another process's memory; everything else is decided
-    // only once wxread is root and has (or could not get) WeChat's memory.
-    let is_root = unsafe { libc::geteuid() } == 0;
-    let (access, candidates, dbs) = if is_root {
-        let (access, candidates) = memory::probe();
-        let dbs = match access {
-            Access::Read => targets(World::from_env(data_dir, None)?.listing()),
-            _ => Vec::new(),
-        };
-        (access, candidates, dbs)
-    } else {
-        (Access::NotRoot, Vec::new(), Vec::new())
+/// How long the capture runs, in seconds, when `--seconds` is not given.
+const DEFAULT_SECONDS: u64 = 25;
+/// The longest a capture may be asked to run.
+const MAX_SECONDS: u64 = 600;
+
+/// Captures the keys and answers them as one JSON object, or fails with the
+/// one line that says why there are none and how to get them.
+pub fn run(data_dir: Option<PathBuf>, seconds: Option<String>) -> anyhow::Result<Value> {
+    let seconds = parse_seconds(seconds)?;
+    let candidates = match capture::probe(seconds) {
+        Ok(candidates) => candidates,
+        Err(wxread_crack::Failure(line)) => return Err(anyhow::anyhow!("{line}")),
     };
-    let request = Request { access, candidates: &candidates, dbs: &dbs };
-    match wxread_crack::run(&request) {
+    // Build the databases to prove the captured keys against only after a
+    // capture that ran, under the home `sudo` was invoked from.
+    let dbs = targets(World::from_env(data_dir, None)?.listing());
+    match wxread_crack::verify(&candidates, &dbs) {
         Ok(keys) => Ok(keys.to_value()),
         Err(wxread_crack::Failure(line)) => Err(anyhow::anyhow!("{line}")),
     }
 }
 
-/// Every database under every account, each with its first page, for the keys
-/// to be matched against. A database shorter than one page, or one that
-/// cannot be read, is left out.
+/// The capture length `--seconds` asks for: a whole number of seconds from 1
+/// to [`MAX_SECONDS`], or [`DEFAULT_SECONDS`] when it is not given.
+fn parse_seconds(seconds: Option<String>) -> anyhow::Result<u64> {
+    let Some(text) = seconds else {
+        return Ok(DEFAULT_SECONDS);
+    };
+    match text.parse::<u64>() {
+        Ok(n) if (1..=MAX_SECONDS).contains(&n) => Ok(n),
+        _ => Err(anyhow::anyhow!(
+            "--seconds must be a whole number of seconds from 1 to {MAX_SECONDS}: pass `--seconds <N>`, or leave it off for {DEFAULT_SECONDS}"
+        )),
+    }
+}
+
+/// Every database under every account, each with its first page, for the
+/// captured keys to be matched against. A database shorter than one page, or
+/// one that cannot be read, is left out.
 fn targets(listing: Listing) -> Vec<Target> {
     let Listing::Accounts(accounts) = listing else {
         return Vec::new();

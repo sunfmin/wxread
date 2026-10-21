@@ -31,6 +31,10 @@ WHAT IT ANSWERS
                it what `wxread group leave` needs, and when it does not,
                the line that allows it (fix, null when granted). Reading
                needs neither, so neither is a finding
+    capture    {uv}: {found, needed_for, fix}: whether uv, which
+               `sudo wxread keys` runs Frida through, is installed, and
+               when it is not, the line that installs it. Reading with keys
+               already stored needs no uv, so it is not a finding
 
 TRIPS YOU UP
   - The keys are one account's: with two accounts logged in, the other's

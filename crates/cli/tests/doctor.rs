@@ -24,9 +24,10 @@ fn an_account_whose_every_database_has_a_key_is_ok() {
     let storage = world.account(&world.data_dir(), "wxid_a_1234", &DATABASES);
     let keys = world.file("keys.json", &World::keys(&DATABASES));
     let mut json = world.run(&["doctor", "--keys", keys.to_str().unwrap()], &[]).ok();
-    // What macOS allows is the host's, and no finding: its shape is
-    // checked apart.
+    // What macOS allows is the host's, and whether uv is installed is the
+    // host's, and neither is a finding: their shapes are checked apart.
     permissions_are_answered(json.as_object_mut().unwrap().remove("permissions").unwrap());
+    capture_is_answered(json.as_object_mut().unwrap().remove("capture").unwrap());
     assert_eq!(
         json,
         json!({
@@ -57,6 +58,20 @@ fn permissions_are_answered(permissions: Value) {
         assert_eq!(one["needed_for"], p.needed_for());
         let fix = if granted { Value::Null } else { Value::from(p.fix()) };
         assert_eq!(one["fix"], fix, "{one}");
+    }
+}
+
+/// `capture` says whether uv, which `sudo wxread keys` runs Frida through, is
+/// found, what needs it, and the fix exactly when it is not found.
+fn capture_is_answered(capture: Value) {
+    let uv = &capture["uv"];
+    let found = uv["found"].as_bool().expect("found is true or false");
+    assert!(uv["needed_for"].as_str().unwrap().contains("sudo wxread keys"), "{uv}");
+    let fix = uv["fix"].clone();
+    if found {
+        assert_eq!(fix, Value::Null, "{uv}");
+    } else {
+        assert!(fix.as_str().unwrap().contains("brew install uv"), "{uv}");
     }
 }
 

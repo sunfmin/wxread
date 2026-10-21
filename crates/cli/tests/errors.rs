@@ -15,12 +15,15 @@ fn a_command_line_wxread_cannot_parse_is_exit_2_and_points_at_the_guide() {
 
 #[test]
 fn keys_without_root_refuses_with_the_line_that_fixes_it() {
-    // The gate runs as the developer, not root; reading WeChat's memory needs
-    // root, so `wxread keys` refuses and names the command that elevates.
+    // The gate runs as the developer, not root; attaching Frida to WeChat
+    // needs root, so `wxread keys` refuses and names the command that elevates.
     let answer = World::new().run(&["keys"], &[]);
     assert_eq!(answer.code, 1);
     let error = answer.error();
-    assert!(error.contains("only root can read") && error.contains("sudo wxread keys"), "{error}");
+    assert!(
+        error.contains("only root may attach") && error.contains("sudo wxread keys"),
+        "{error}"
+    );
 }
 
 #[test]
