@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/keys", "crates/sqlcipher", "crates/crack", "crates/resign", "crates/schema", "crates/answer", "crates/contacts", "crates/chats", "crates/media", "crates/xml", "crates/messages", "crates/articles", "crates/favorites", "crates/moments", "crates/search", "crates/silk", "crates/voice", "crates/doctor", "crates/account", "crates/leave", "crates/cli"]
 
 [workspace.package]
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/sunfmin/wxread"
