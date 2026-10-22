@@ -1,0 +1,100 @@
+wxread reads WeChat for Windows 4.x directly: its encrypted databases and
+files on this PC, with no server in between. It is read by an agent: each
+command prints one JSON object, and every failure names its fix.
+
+WHAT IT NEEDS
+  - WeChat for Windows 4.x, installed and logged in on this PC. Its data
+    directory is %USERPROFILE%\xwechat_files (some builds keep it under
+    Documents\xwechat_files); pass --data-dir <dir> (or set
+    WXREAD_DATA_DIR) when WeChat keeps it elsewhere. Each account is a
+    directory there that holds a db_storage.
+  - The keys of the account's databases. WeChat keys each database apart.
+    This build reads keys; it does not capture them from WeChat's process.
+    Extract the account's keys with a Windows WCDB/SQLCipher key tool, then
+    supply the all_keys.json with --keys <file> or its contents as
+    WXREAD_KEYS. `wxread keys --help` says the shape.
+  - Read access to WeChat's data directory for the account running wxread.
+
+RUN FIRST
+  wxread doctor     what it found and what is missing, each with its fix
+  wxread chats      the account's chats, newest first, once doctor is ok
+  wxread chats --with <id> [--with <id>]
+                    the chat with someone, and the groups that hold
+                    everyone given, smallest first
+  wxread contacts   the account's contacts and groups, with their ids;
+                    --query <name> finds someone's id
+  wxread messages --chat <id>
+                    one chat's messages, each as its kind, newest first
+  wxread search <text>
+                    the messages of every chat that hold a text
+  wxread file get <id> --out <path>
+                    a media message's file, or a note's item's, a
+                    favorite's or a Moment's, written as the file it is
+  wxread favorites  what the account saved (收藏), each as its kind
+  wxread voice <id> --chat <id> --out <path>
+                    a voice message as a file that plays, and its 转文字
+
+WHAT A COMMAND ANSWERS
+  One JSON object on stdout. A failure is {"error": "…"} with a non-zero
+  exit (2 for a command line wxread cannot parse, 1 otherwise), and it
+  names every fault with its fix. Warnings go to stderr. The keys of each
+  answer; `wxread <command> --help` says what each one means:
+    articles  account articles next
+    avatar    path size sha256 content_type missing thumbnail fix
+    chats     account chats next
+    contact   account contact
+    contacts  account contacts next
+    doctor    ok data_dir accounts keys findings permissions capture
+    favorites account favorites next
+    file      path size sha256 content_type missing thumbnail fix
+    group     account group
+    messages  account chat messages next
+    moments   account moments next
+    search    account query searched messages next
+    voice     account chat id path format duration_ms size length_ms
+              transcription
+  file get and avatar answer path, size, sha256 and content_type of the
+  file they wrote; or, when WeChat does not hold it, missing (true),
+  thumbnail and fix, exit 0.
+
+THE COMMANDS
+  Setting up, run by you or an agent:
+      doctor
+  Reading the account, run by you or an agent:
+      chats messages search voice
+      contacts contact group
+      articles favorites moments
+  Getting a media message's, a favorite's or a Moment's file, or an
+  avatar, run by you or an agent:
+      file avatar
+
+  macOS only, and refused here with a fix: keys, resign, group leave.
+  This build never drives WeChat's window.
+
+RULES
+  - wxread reads and never writes WeChat's files, prompts for nothing,
+    elevates nothing and keeps nothing between runs: every run reads the
+    data directory and the keys again.
+  - A database is decrypted into memory and read there: no decrypted byte
+    is written to disk, and what is read is what WeChat wrote last, its
+    WAL included. The one file written is the one `wxread file get`,
+    `wxread avatar` and `wxread voice` are told to write, at --out.
+  - With several accounts logged in, a command that reads one is told
+    which: --account <id>, as doctor names it.
+  - A contact, a group and a chat are named by their id: a wxid, a
+    group's <n>@chatroom, an official account's gh_.... `wxread contacts
+    --query <text>` finds an id by a name, a remark or a WeChat ID;
+    `wxread chats --query <text>` finds a chat by its name.
+  - Every person, group, official account and chat an answer names is
+    {id, display_name}, the same shape everywhere. A group with no name of
+    its own is named by its members' names, joined by "、".
+  - A list answers a page, and `next`: pass it as --cursor for the page
+    after; null on the last.
+  - A finding doctor makes is an answer, exit 0: read its `ok` and
+    `findings`, and the exit code only to tell an answer from an error.
+  - Keys open the databases they were read from: after WeChat creates its
+    databases again (logging out and in, some updates), read them again.
+  - --help, -h and --version print text, not JSON: they are the only
+    exceptions to one JSON object on stdout.
+  - `wxread <command> --help` says when to run it, who runs it, what it
+    reads and writes, what it answers, and what trips you up.

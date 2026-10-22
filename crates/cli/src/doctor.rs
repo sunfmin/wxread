@@ -18,26 +18,25 @@ pub fn run(world: &World) -> Value {
 
 /// Whether macOS gives the app running wxread each permission
 /// `group leave` needs; reading needs neither, so none is a finding.
+/// Other platforms have no macOS permissions to report.
 fn permissions() -> Value {
-    let mut all = serde_json::Map::new();
-    for p in Permission::ALL {
-        let granted = granted(p);
-        all.insert(
-            p.name().to_string(),
-            json!({"granted": granted, "needed_for": p.needed_for(), "fix": (!granted).then(|| p.fix())}),
-        );
+    #[cfg(target_os = "macos")]
+    {
+        let mut all = serde_json::Map::new();
+        for p in Permission::ALL {
+            let granted = crate::window::granted(p);
+            all.insert(
+                p.name().to_string(),
+                json!({"granted": granted, "needed_for": p.needed_for(), "fix": (!granted).then(|| p.fix())}),
+            );
+        }
+        Value::Object(all)
     }
-    Value::Object(all)
-}
-
-#[cfg(target_os = "macos")]
-fn granted(p: Permission) -> bool {
-    crate::window::granted(p)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn granted(_: Permission) -> bool {
-    false
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = Permission::ALL;
+        Value::Object(serde_json::Map::new())
+    }
 }
 
 fn to_json(seen: &Seen, report: &Report) -> Value {

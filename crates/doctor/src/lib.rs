@@ -13,9 +13,24 @@ pub const KEYS_VAR: &str = "WXREAD_KEYS";
 /// The option and variable that name WeChat's data directory.
 pub const DATA_DIR_FLAG: &str = "--data-dir";
 pub const DATA_DIR_VAR: &str = "WXREAD_DATA_DIR";
-/// Where WeChat for Mac 4.x keeps its accounts, under the home directory.
+/// Where WeChat keeps its accounts, under the home directory: WeChat for Mac
+/// 4.x inside its container, and WeChat for Windows 4.x directly under the
+/// user's home.
+#[cfg(target_os = "macos")]
 pub const DATA_DIR_UNDER_HOME: &str =
     "Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files";
+#[cfg(target_os = "windows")]
+pub const DATA_DIR_UNDER_HOME: &str = "xwechat_files";
+#[cfg(all(unix, not(target_os = "macos")))]
+pub const DATA_DIR_UNDER_HOME: &str = "xwechat_files";
+
+/// What WeChat is called on this platform, for findings that name it.
+#[cfg(target_os = "macos")]
+pub const WECHAT: &str = "WeChat for Mac 4.x";
+#[cfg(target_os = "windows")]
+pub const WECHAT: &str = "WeChat for Windows 4.x";
+#[cfg(all(unix, not(target_os = "macos")))]
+pub const WECHAT: &str = "WeChat 4.x";
 /// The directory of an account that holds its databases.
 pub const DB_STORAGE: &str = "db_storage";
 
@@ -227,9 +242,21 @@ impl Permission {
 }
 
 /// What fixes keys that are missing.
+#[cfg(target_os = "macos")]
 pub const GET_KEYS: &str = "`wxread keys --help` says how to get the keys; then pass the file with `--keys <file>`, or its contents as WXREAD_KEYS";
-/// What fixes reading another app's data, which macOS refused.
+#[cfg(target_os = "windows")]
+pub const GET_KEYS: &str = "`wxread keys --help` says why capture is unavailable here; extract the account's database keys with a Windows WCDB/SQLCipher key tool, then pass its all_keys.json with `--keys <file>`, or its contents as WXREAD_KEYS";
+#[cfg(all(unix, not(target_os = "macos")))]
+pub const GET_KEYS: &str =
+    "pass the keys file with `--keys <file>`, or its contents as WXREAD_KEYS";
+/// What fixes reading another app's data, which the platform refused.
+#[cfg(target_os = "macos")]
 pub const ALLOW_READING: &str = "allow the app running wxread (your terminal, or the agent's host) to read other apps' data: System Settings › Privacy & Security › Full Disk Access, then run it again";
+#[cfg(target_os = "windows")]
+pub const ALLOW_READING: &str = "make sure the account running wxread may read WeChat's data directory (right-click it › Properties › Security), then run it again";
+#[cfg(all(unix, not(target_os = "macos")))]
+pub const ALLOW_READING: &str =
+    "make sure the account running wxread may read WeChat's data directory, then run it again";
 
 /// Everything wrong with what was `seen`, each finding with its fix.
 pub fn diagnose(seen: &Seen) -> Report {
@@ -261,7 +288,7 @@ pub fn data_dir_finding(dir: &str, from: Source, listing: &Listing) -> Option<Fi
     let finding = match listing {
         Listing::Missing => Finding {
             problem: format!("WeChat's data directory {dir} does not exist"),
-            fix: format!("install WeChat for Mac 4.x and log in; {elsewhere}"),
+            fix: format!("install {WECHAT} and log in; {elsewhere}"),
         },
         Listing::NotADirectory => Finding {
             problem: format!("WeChat's data directory {dir} is not a directory"),
@@ -273,7 +300,7 @@ pub fn data_dir_finding(dir: &str, from: Source, listing: &Listing) -> Option<Fi
         },
         Listing::Accounts(accounts) if accounts.is_empty() => Finding {
             problem: format!("no account is under {dir}: no directory there holds a {DB_STORAGE}"),
-            fix: format!("log in to WeChat for Mac 4.x on this Mac; {elsewhere}"),
+            fix: format!("log in to {WECHAT} on this machine; {elsewhere}"),
         },
         Listing::Accounts(_) => return None,
     };
@@ -296,7 +323,7 @@ fn judge_keys(seen: &KeysSeen, findings: &mut Vec<Finding>) -> (Option<Keys>, Ke
             findings.push(Finding {
                 problem: format!("the keys file {file} cannot be read ({why})"),
                 fix: format!(
-                    "pass {KEYS_FLAG} a file that holds the keys `wxread keys` answers; {GET_KEYS}"
+                    "pass {KEYS_FLAG} a file that holds the keys, in the all_keys.json shape; {GET_KEYS}"
                 ),
             });
             (None, KeysReport { from: Some(Source::Flag), databases: 0 })

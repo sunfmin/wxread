@@ -260,7 +260,9 @@ impl Account {
                 )
             })
             .collect();
-        format!("{{\"_db_dir\": \"{}\", {}}}", self.storage.display(), entries.join(", "))
+        // The note is JSON too: a Windows path's backslashes must be escaped.
+        let note = self.storage.display().to_string().replace('\\', "\\\\");
+        format!("{{\"_db_dir\": \"{note}\", {}}}", entries.join(", "))
     }
 
     /// Every database it has: the contact and session databases, each
