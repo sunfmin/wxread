@@ -1,0 +1,32 @@
+wxread keys: not available in this Windows build.
+
+WHY
+  Keys live in the running WeChat process, and capturing them needs a hook
+  into WeChat's own database calls. This build does not attach to WeChat for
+  Windows; it reads the databases once their keys are supplied.
+
+HOW TO GET THE KEYS
+  Use a Windows WCDB/SQLCipher key tool for WeChat 4.x (for example a
+  wcdb-key-tool compatible with your WeChat version). It writes an
+  all_keys.json in the shape below. Keep that file where secrets go.
+
+WHAT IT MUST HOLD
+  One JSON object: each database's path under db_storage, to its key.
+    {"message/message_0.db": {"enc_key": "<64 hex>", "salt": "<32 hex>"}}
+  enc_key is the database's 32-byte key as 64 hex digits; salt is the
+  database's 16-byte salt as 32 hex digits (it may be omitted). Entries
+  whose name starts with "_" are notes and are ignored.
+
+SUPPLYING THEM
+      wxread --keys <file> doctor
+  or, holding the keys themselves:
+      set WXREAD_KEYS=<contents of the file>
+      wxread doctor
+  A key stays valid until WeChat creates its databases again (logging out
+  and in, some updates); `wxread doctor` then names each database the keys
+  no longer open.
+
+READING WITHOUT CAPTURE
+  `wxread doctor` reads the data directory and checks each supplied key
+  against each database; nothing is written and WeChat's files are not
+  changed.

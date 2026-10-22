@@ -22,6 +22,7 @@ pub mod keys;
 #[cfg(target_os = "macos")]
 pub mod leave;
 pub mod media;
+#[cfg(target_os = "macos")]
 mod memory;
 pub mod messages;
 pub mod moments;
@@ -36,8 +37,15 @@ pub mod world;
 /// `build.rs`.
 pub const VERSION: &str = env!("WXREAD_VERSION");
 
-/// The guide `--help` prints, and the one screen `-h` prints.
+/// The guide `--help` prints, and the one screen `-h` prints: the Windows
+/// text names this platform's data directory and the keys it must be given.
+#[cfg(target_os = "windows")]
+pub const GUIDE: &str = include_str!("help-windows.txt");
+#[cfg(not(target_os = "windows"))]
 pub const GUIDE: &str = include_str!("help.txt");
+#[cfg(target_os = "windows")]
+pub const SCREEN: &str = include_str!("short-windows.txt");
+#[cfg(not(target_os = "windows"))]
 pub const SCREEN: &str = include_str!("short.txt");
 
 #[derive(Parser)]
@@ -203,7 +211,7 @@ enum Command {
         #[arg(long, value_name = "NEXT")]
         cursor: Option<String>,
     },
-    /// Capture every database key from the running WeChat with Frida
+    /// Capture every database key from the running WeChat with Frida (macOS only)
     Keys {
         /// How long to capture for, 1 to 600 seconds (25 unless given)
         #[arg(long, value_name = "N")]
@@ -224,7 +232,7 @@ enum Command {
         #[arg(long, value_name = "NEXT")]
         cursor: Option<String>,
     },
-    /// Re-sign WeChat with get-task-allow so `sudo wxread keys` can read it; only with --yes
+    /// Re-sign WeChat for Mac with get-task-allow, macOS only; only with --yes
     Resign {
         /// The WeChat app to re-sign (/Applications/WeChat.app, else Weixin.app, unless given)
         #[arg(long, value_name = "PATH")]
@@ -255,7 +263,7 @@ enum Command {
 
 #[derive(Subcommand)]
 enum GroupAction {
-    /// Leave groups through WeChat's window, one after another, each checked before and after; only with --yes
+    /// Leave groups through WeChat for Mac's window, macOS only; only with --yes
     Leave {
         /// Each group's id: <n>@chatroom; - for the ids on stdin
         #[arg(value_name = "ID", required = true)]
@@ -311,18 +319,60 @@ fn help_of(name: &str) -> Option<&'static str> {
         "chats" => Some(include_str!("help/chats.txt")),
         "contact" => Some(include_str!("help/contact.txt")),
         "contacts" => Some(include_str!("help/contacts.txt")),
-        "doctor" => Some(include_str!("help/doctor.txt")),
+        "doctor" => Some(doctor_help()),
         "favorites" => Some(include_str!("help/favorites.txt")),
         "group" => Some(include_str!("help/group.txt")),
-        "group leave" => Some(include_str!("help/group-leave.txt")),
-        "keys" => Some(include_str!("help/keys.txt")),
+        "group leave" => Some(leave_help()),
+        "keys" => Some(keys_help()),
         "messages" => Some(include_str!("help/messages.txt")),
         "moments" => Some(include_str!("help/moments.txt")),
-        "resign" => Some(include_str!("help/resign.txt")),
+        "resign" => Some(resign_help()),
         "search" => Some(include_str!("help/search.txt")),
         "voice" => Some(include_str!("help/voice.txt")),
         _ => None,
     }
+}
+
+/// The help of `doctor`: on Windows it names this platform's data directory
+/// and the empty permissions map.
+#[cfg(target_os = "windows")]
+fn doctor_help() -> &'static str {
+    include_str!("help/doctor-windows.txt")
+}
+#[cfg(not(target_os = "windows"))]
+fn doctor_help() -> &'static str {
+    include_str!("help/doctor.txt")
+}
+
+/// The help of `keys`: on Windows it says capture is not available and how
+/// to supply keys instead.
+#[cfg(target_os = "windows")]
+fn keys_help() -> &'static str {
+    include_str!("help/keys-windows.txt")
+}
+#[cfg(not(target_os = "windows"))]
+fn keys_help() -> &'static str {
+    include_str!("help/keys.txt")
+}
+
+/// The help of `resign`, which only a Mac build can do.
+#[cfg(target_os = "windows")]
+fn resign_help() -> &'static str {
+    include_str!("help/resign-windows.txt")
+}
+#[cfg(not(target_os = "windows"))]
+fn resign_help() -> &'static str {
+    include_str!("help/resign.txt")
+}
+
+/// The help of `group leave`, which only a Mac build can do.
+#[cfg(target_os = "windows")]
+fn leave_help() -> &'static str {
+    include_str!("help/group-leave-windows.txt")
+}
+#[cfg(not(target_os = "windows"))]
+fn leave_help() -> &'static str {
+    include_str!("help/group-leave.txt")
 }
 
 /// The subcommands there are, as the parser knows them.

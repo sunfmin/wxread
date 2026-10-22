@@ -13,13 +13,17 @@ use std::path::PathBuf;
 use wxread_crack::{Failure, KEY_LEN};
 
 /// The hook Frida runs inside WeChat, and the driver that loads it.
+#[cfg(target_os = "macos")]
 const HOOK: &str = include_str!("capture/hook.js");
+#[cfg(target_os = "macos")]
 const DRIVER: &str = include_str!("capture/driver.py");
 
 /// How uv is installed, named when it is missing.
+#[cfg(target_os = "macos")]
 const UV_INSTALL: &str = "brew install uv";
 /// The Frida uv supplies to run the driver: pinned below 17, the versions on
 /// which this CommonCrypto hook fires (docs/adr/0005-keys-from-the-crypto-call.md).
+#[cfg(target_os = "macos")]
 const FRIDA_SPEC: &str = "frida<17";
 /// How long the capture waits for a new database's key with none arriving
 /// before it decides the burst is over and stops early. Logging in decrypts
@@ -32,16 +36,28 @@ const IDLE_STOP: std::time::Duration = std::time::Duration::from_secs(10);
 /// it, and the line that installs it when it is not.
 pub fn readiness() -> serde_json::Value {
     #[cfg(target_os = "macos")]
-    let found = which("uv").is_some();
+    {
+        let found = which("uv").is_some();
+        serde_json::json!({
+            "uv": {
+                "found": found,
+                "needed_for": "`sudo wxread keys`, which runs Frida through uv to capture the keys",
+                "fix": (!found).then(|| format!("install uv: `{UV_INSTALL}`")),
+            }
+        })
+    }
     #[cfg(not(target_os = "macos"))]
-    let found = false;
-    serde_json::json!({
-        "uv": {
-            "found": found,
-            "needed_for": "`sudo wxread keys`, which runs Frida through uv to capture the keys",
-            "fix": (!found).then(|| format!("install uv: `{UV_INSTALL}`")),
-        }
-    })
+    {
+        // Capturing keys from WeChat's process is a macOS job; on other
+        // platforms the keys are supplied from a tool that extracted them.
+        serde_json::json!({
+            "uv": {
+                "found": false,
+                "needed_for": "nothing: `wxread keys` captures from WeChat for Mac only",
+                "fix": null,
+            }
+        })
+    }
 }
 
 /// Captures the distinct 32-byte keys WeChat hands CommonCrypto while
@@ -68,7 +84,7 @@ pub fn probe(seconds: u64, on_key: impl FnMut(&[u8; KEY_LEN])) -> Result<(), Fai
 #[cfg(not(target_os = "macos"))]
 pub fn probe(_seconds: u64, _on_key: impl FnMut(&[u8; KEY_LEN])) -> Result<(), Failure> {
     Err(wxread_crack::capture_failed(
-        "wxread keys captures from WeChat for Mac, and this is not a macOS build",
+        "`wxread keys` captures from the WeChat for Mac process; on Windows, extract the keys with a WCDB/SQLCipher key tool and pass them with `--keys <file>` (or set WXREAD_KEYS)",
     ))
 }
 

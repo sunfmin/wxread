@@ -5,14 +5,28 @@
 //! one place its command lines are built; [`wxread_resign`] decides what to
 //! sign with and what to answer.
 
-use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
+use std::path::Path;
+use std::path::PathBuf;
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
 use serde_json::Value;
+#[cfg(target_os = "macos")]
 use wxread_resign::{APPS, Failure, Merge};
+
+/// Re-signing is a macOS job: only a Mac build of WeChat has a code
+/// signature `codesign` can add `get-task-allow` to.
+#[cfg(not(target_os = "macos"))]
+pub fn run(_app: Option<PathBuf>, _yes: bool) -> anyhow::Result<Value> {
+    anyhow::bail!(
+        "`wxread resign` re-signs WeChat for Mac so Frida may attach to it: run it on the Mac that has that WeChat"
+    )
+}
 
 /// Says what re-signing the app at `app` (else WeChat where it is
 /// installed) would do, or with `yes` does it, and answers what changed.
+#[cfg(target_os = "macos")]
 pub fn run(app: Option<PathBuf>, yes: bool) -> anyhow::Result<Value> {
     let named = app.is_some();
     let app = match app {
@@ -60,6 +74,7 @@ pub fn run(app: Option<PathBuf>, yes: bool) -> anyhow::Result<Value> {
 
 /// The entitlements `app` is signed with, as the XML plist codesign prints
 /// (empty when it has none).
+#[cfg(target_os = "macos")]
 fn entitlements(app: &Path, retry: &str) -> anyhow::Result<String> {
     let out = Command::new("codesign")
         .args(["-d", "--entitlements", "-", "--xml"])
@@ -76,6 +91,7 @@ fn entitlements(app: &Path, retry: &str) -> anyhow::Result<String> {
 /// Re-signs `app` ad-hoc with the entitlements `plist`. codesign reads
 /// entitlements only from a file it can seek (not a pipe), so they are
 /// written to one in the temporary directory, removed once codesign is done.
+#[cfg(target_os = "macos")]
 fn sign(app: &Path, plist: &str, retry: &str) -> anyhow::Result<()> {
     let file = std::env::temp_dir().join(format!("wxread-resign-{}.plist", std::process::id()));
     std::fs::write(&file, plist)
@@ -95,6 +111,7 @@ fn sign(app: &Path, plist: &str, retry: &str) -> anyhow::Result<()> {
 }
 
 /// Why codesign could not be started: missing, or `e` as it is.
+#[cfg(target_os = "macos")]
 fn missing(e: std::io::Error, retry: &str) -> anyhow::Error {
     if e.kind() == std::io::ErrorKind::NotFound {
         fail(wxread_resign::codesign_missing(retry))
@@ -104,11 +121,13 @@ fn missing(e: std::io::Error, retry: &str) -> anyhow::Error {
 }
 
 /// The path as the answer and the failures show it.
+#[cfg(target_os = "macos")]
 fn shown(app: &Path) -> String {
     app.display().to_string()
 }
 
 /// A pure crate's failure, as the error the run prints.
+#[cfg(target_os = "macos")]
 fn fail(Failure(line): Failure) -> anyhow::Error {
     anyhow::anyhow!("{line}")
 }

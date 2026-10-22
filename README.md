@@ -1,10 +1,15 @@
 # wxread
 
-An agent CLI that reads WeChat for Mac 4.x directly: chats, contacts, every
-message kind, favorites, files and voice, and the Moments WeChat has
-loaded; and, only when told to, leaves groups through WeChat's own window.
-Each command prints one JSON object, and every failure names its fix.
-`wxread --help` is the manual.
+An agent CLI that reads WeChat 4.x directly: chats, contacts, every message
+kind, favorites, files and voice, and the Moments WeChat has loaded; on macOS,
+and only when told to, it leaves groups through WeChat's own window. Each
+command prints one JSON object, and every failure names its fix. `wxread
+--help` is the manual.
+
+> **Windows support**: wxread builds and runs on Windows against WeChat for
+> Windows 4.x (`%USERPROFILE%\xwechat_files`). It reads with keys supplied by
+> `--keys`; key capture, `resign` and `group leave` remain macOS-only. See
+> [WINDOWS.md](WINDOWS.md) for build, test, and key instructions.
 
 ```sh
 wxread doctor                               # what it found, and the fix of everything missing
@@ -38,6 +43,19 @@ brew install sunfmin/tap/wxread
 databases are the one thing the installer cannot get: `wxread keys --help`
 says how, and when macOS refuses, `wxread resign --help` says how to let it.
 
+### Windows
+
+There is no Windows installer yet. Build it with Rust's GNU Windows toolchain:
+
+```powershell
+rustup default stable-x86_64-pc-windows-gnu
+cargo build --release
+.\target\release\wxread.exe doctor
+```
+
+See [WINDOWS.md](WINDOWS.md) for the MinGW prerequisite, the runtime DLLs, and
+how to supply keys extracted with a Windows WCDB key tool.
+
 **For an AI agent**: a skill that sends an agent to `wxread --help` installs
 with:
 
@@ -45,7 +63,8 @@ with:
 npx skills add sunfmin/wxread
 ```
 
-macOS only, Apache-2.0 ([ADR 0001](docs/adr/0001-macos-only-and-apache-2.md)).
+macOS and Windows, Apache-2.0 ([ADR 0001](docs/adr/0001-macos-only-and-apache-2.md);
+Windows reading is [ADR 0018](docs/adr/0018-windows-reads-with-supplied-keys.md)).
 The formats are as [wechat-cli](https://github.com/huohuoer/wechat-cli) and
 wechat-decrypt (both Apache-2.0) found them. Voice messages are decoded by
 silk-decoder-rs (MIT), vendored in [crates/silk](crates/silk)

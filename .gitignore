@@ -1,2 +1,6 @@
 target/
 dist/
+
+# WeChat database keys are secrets; never commit an extracted keys file.
+all_keys.json
+wxread-keys.json

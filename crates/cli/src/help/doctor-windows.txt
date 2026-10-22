@@ -1,0 +1,43 @@
+wxread doctor: what wxread can find, and the fix of everything missing.
+
+WHEN TO RUN IT
+  First, and whenever a command fails for something missing. Run by you or
+  an agent; it reads and changes nothing, so it is always safe.
+
+WHAT IT READS
+  - WeChat's data directory: --data-dir, else WXREAD_DATA_DIR, else
+    %USERPROFILE%\xwechat_files (falling back to
+    Documents\xwechat_files). Each directory there that holds a db_storage
+    is an account, and every .db file under its db_storage is one of its
+    databases.
+  - The keys: the file --keys names, else the contents of WXREAD_KEYS.
+It writes nothing, anywhere.
+
+WHAT IT ANSWERS
+  Exit 0 however many findings there are:
+    ok         true when there is no finding
+    data_dir   {path, from}: the data directory, and what named it
+               ("flag", "variable" or "default")
+    accounts   [{id, db_storage, databases, keyed, unkeyed}]: each account,
+               by its directory's name; how many databases it has, how many
+               of them the keys open, and the paths of those they do not
+    keys       {supplied, from, looked, databases}: whether keys were
+               supplied, from the "flag" or the "variable", the places
+               looked in, and how many databases they open
+    findings   [{problem, fix}]: everything wrong, each with the line that
+               fixes it
+    permissions
+               {} on Windows: the macOS permissions `group leave` needs do
+               not exist here
+    capture    {uv}: {found, needed_for, fix}: on Windows `wxread keys` is
+               not available, so found is false and fix is null. Reading
+               with keys already stored needs no capture tool, so it is not
+               a finding
+
+TRIPS YOU UP
+  - The keys are one account's: with two accounts logged in, the other's
+    databases are each named as having no key.
+  - A data-directory read failure, or a key that does not open a database,
+    is a finding, not an error: its fix names what to change.
+  - Only a failure to start at all (no home directory, a command line
+    wxread cannot parse) is an error: {"error": "…"}, non-zero.

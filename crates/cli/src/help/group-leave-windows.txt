@@ -1,0 +1,10 @@
+wxread group leave: macOS only.
+
+WHY
+  Leaving a group is done by driving WeChat for Mac's own window: opening
+  the group, pressing its menu and confirming. This build does not drive
+  WeChat for Windows' window, so it refuses rather than guessing.
+
+WHAT STILL WORKS
+  Reading a group: `wxread group <id>` answers its notice, owner and
+  members. Nothing in this build leaves a group or changes WeChat's files.

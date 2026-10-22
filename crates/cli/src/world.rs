@@ -32,9 +32,9 @@ impl World {
             (Some(dir), _) => (dir, Source::Flag),
             (None, Some(dir)) => (PathBuf::from(dir), Source::Var),
             (None, None) => match home() {
-                Some(home) => (home.join(DATA_DIR_UNDER_HOME), Source::Default),
+                Some(home) => (default_data_dir(home), Source::Default),
                 None => bail!(
-                    "HOME is not set, so WeChat's data directory is not known: set HOME, or pass {DATA_DIR_FLAG} <dir>"
+                    "the home directory is not known: set HOME (or USERPROFILE on Windows), or pass {DATA_DIR_FLAG} <dir>"
                 ),
             },
         };
@@ -76,10 +76,35 @@ impl World {
     }
 }
 
-/// The home directory WeChat's files are under: the user `sudo` was run by,
-/// when there is one (so `sudo wxread keys` reads that user's data, not
-/// root's), else this process's own `HOME`.
+/// The data directory WeChat keeps its accounts in when neither `--data-dir`
+/// nor `WXREAD_DATA_DIR` names one.
+///
+/// WeChat for Windows 4.x keeps `xwechat_files` directly under the user's home
+/// (`C:\Users\<user>\xwechat_files`), while some builds and older installers
+/// put it under `Documents`; the first that exists is used, and the home
+/// directory's own `xwechat_files` is the default when none does.
+fn default_data_dir(home: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        for relative in [DATA_DIR_UNDER_HOME, "Documents/xwechat_files"] {
+            let candidate = home.join(relative);
+            if candidate.is_dir() {
+                return candidate;
+            }
+        }
+        return home.join(DATA_DIR_UNDER_HOME);
+    }
+    #[cfg(not(windows))]
+    {
+        home.join(DATA_DIR_UNDER_HOME)
+    }
+}
+
+/// The home directory WeChat's files are under.
+#[cfg(target_os = "macos")]
 fn home() -> Option<PathBuf> {
+    // The user `sudo` was run by, when there is one, so `sudo wxread keys`
+    // reads that user's data, not root's.
     if let Some(user) = std::env::var("SUDO_USER").ok().filter(|u| !u.is_empty())
         && let Some(dir) = home_of(&user)
     {
@@ -88,14 +113,40 @@ fn home() -> Option<PathBuf> {
     std::env::var_os("HOME").filter(|home| !home.is_empty()).map(PathBuf::from)
 }
 
+/// The home directory WeChat's files are under.
+#[cfg(windows)]
+fn home() -> Option<PathBuf> {
+    // HOME is what a Unix-like shell on Windows (Git Bash, MSYS2, WSL's
+    // Windows-side programs) exports; USERPROFILE is Windows' own answer.
+    if let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) {
+        return Some(PathBuf::from(home));
+    }
+    if let Some(home) = std::env::var_os("USERPROFILE").filter(|home| !home.is_empty()) {
+        return Some(PathBuf::from(home));
+    }
+    // USERPROFILE is the normal answer; HOMEDRIVE and HOMEPATH cover the
+    // environments that only set those.
+    let drive = std::env::var_os("HOMEDRIVE").filter(|drive| !drive.is_empty())?;
+    let path = std::env::var_os("HOMEPATH").filter(|path| !path.is_empty())?;
+    Some(PathBuf::from(format!("{}{}", drive.to_string_lossy(), path.to_string_lossy())))
+}
+
+/// The home directory WeChat's files are under.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME").filter(|home| !home.is_empty()).map(PathBuf::from)
+}
+
 /// The home directory of user `name`, for another module (the capture tool is
 /// looked for under the invoking user's home when a root `PATH` drops it).
+#[cfg(target_os = "macos")]
 pub fn home_of_user(name: &str) -> Option<PathBuf> {
     home_of(name)
 }
 
 /// The home directory of user `name` from the password database, if it has
 /// one.
+#[cfg(target_os = "macos")]
 fn home_of(name: &str) -> Option<PathBuf> {
     use std::os::unix::ffi::OsStrExt;
 

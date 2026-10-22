@@ -1,0 +1,11 @@
+wxread resign: macOS only.
+
+WHY
+  Re-signing adds get-task-allow to the signature of WeChat for Mac so that
+  Frida may attach and capture its keys. Windows has no codesign and this
+  build does not capture keys, so there is nothing to re-sign here.
+
+WHAT TO DO INSTEAD
+  Extract the account's keys with a Windows WCDB/SQLCipher key tool, then
+  pass its all_keys.json to every command with --keys <file> (or set
+  WXREAD_KEYS). `wxread keys --help` says the shape.

@@ -54,3 +54,8 @@ md5 = "0.7"
 [[test]]
 name = "cli"
 path = "tests/main.rs"
+
+# The Windows port's smoke tests; the macOS suite above is `#![cfg(unix)]`.
+[[test]]
+name = "windows"
+path = "tests/windows.rs"
