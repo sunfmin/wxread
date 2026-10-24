@@ -1,0 +1,26 @@
+[package]
+name = "wxread-sqlcipher"
+description = "WeChat 4.x's databases, SQLCipher 4 pages and their WAL, decrypted into a plain SQLite database in memory: pure functions, checked by Flux (docs/adr/0002-pure-crates-checked-by-flux.md)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+wxread-keys = { path = "../keys" }
+aes = "0.8"
+cbc = "0.1"
+hmac = "0.12"
+sha2 = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+
+[dev-dependencies]
+proptest.workspace = true
+
+# `cargo flux` (through ../../verify.sh) checks every refinement in this crate.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }

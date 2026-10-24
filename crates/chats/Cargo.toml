@@ -1,0 +1,19 @@
+[package]
+name = "wxread-chats"
+description = "What wxread chats answers of the rows it read: each chat named, newest first, a page at a time: pure functions, checked by Flux (docs/adr/0002-pure-crates-checked-by-flux.md)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+wxread-answer = { path = "../answer" }
+wxread-contacts = { path = "../contacts" }
+
+[dev-dependencies]
+proptest.workspace = true
+
+# `cargo flux` (through ../../verify.sh) checks every refinement in this crate.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"
