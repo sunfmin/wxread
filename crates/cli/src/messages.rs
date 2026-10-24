@@ -330,3 +330,42 @@ pub(crate) fn in_group(db: &Connection, chat: &str) -> anyhow::Result<BTreeMap<S
         .map(|b| wxread_contacts::names_in_group(&b).into_iter().collect())
         .unwrap_or_default())
 }
+
+/// What the help says of a message of `kind`: its object's fields, and what
+/// each holds. Every kind has its line: a kind added without one does not
+/// compile.
+pub(crate) fn kind_help(kind: wxread_messages::Kind) -> String {
+    use wxread_messages::Kind;
+    match kind {
+        Kind::Text => "`{text}`".into(),
+        Kind::Link => "`{to, title, summary, url, source}`: to is \"web_page\", \"music\", \"video\", \"mini_program\", \"channels_feed\" or \"channels_live\"; source the site, account or mini-program. For a channels feed or live, title is its description (its author's nickname when it has none) and summary its author's nickname: WeChat's own title and description of it are a placeholder for clients too old to show it.".into(),
+        Kind::Quote => "`{text, quoted: {id, sender, excerpt}}`: the reply, and the quoted message's id, sender and, for a text, its words.".into(),
+        Kind::Location => "`{latitude, longitude, name, address}`".into(),
+        Kind::Card => "`{contact}`: the contact the card shares.".into(),
+        Kind::Forward => "`{title, messages: [{sender, at, kind, content, type, inside}]}`: each message forwarded, in order; one forwarded inside another follows it, its inside the position in this list of the forward it sits in (null at the top).".into(),
+        Kind::Note => format!(
+            "`{{items: [{{kind, <kind>, sender, at, type}}]}}`: a note (笔记) sent into the chat, read as `wxread favorites` reads a favorite's note: each part of it, in order, as its kind with that kind's fields: its paragraphs (text `{{text}}`), places (location `{{latitude, longitude, name, address}}`), images (image `{{file_id, size, file_present, thumbnail_present}}`), files (file `{{file_id, size, name, extension, file_present, thumbnail_present}}`), links and the rest; type WeChat's number for the part ({}). Its body as WeChat renders it is a file of extension htm, its first part. file_id is what `wxread file get <file_id> --out <path>` writes ({}<message>:<item>), size its bytes; a note's video or voice message has file_id and file_present null: where WeChat keeps it is not known. sender (`{{id, display_name}}`) and at are null when the note keeps none, as a note written by the account does.",
+            crate::favorites::numbered(&wxread_favorites::DATATYPES),
+            wxread_messages::note::FILE_PREFIX
+        ),
+        Kind::Solitaire => "`{id, title, example, starter: {id, display_name}, entries: [{number, member: {id, display_name}, text, at}], text}`: a 接龙 (a sign-up list in a group), as this message shows it, each who adds or changes an entry sending it again; id WeChat's solitaire id, the same in every message of one 接龙, so the newest of them is its list now (null when WeChat's record holds none, as some do); title what it is for, without WeChat's \"#接龙\"; example the line it gives entries to follow; starter who started it; entries in order: number its place (1 first), member who added it, text what it says, at when it was added (RFC 3339, UTC); each person by id and shown as the sender is; text all it shows, as WeChat shows it.".into(),
+        Kind::Recall => "`{text, recalled}`: a message its sender recalled, which WeChat rewrites into this notice in its place; its sender is who recalled it: the account for its own, else the member who goes by the name in quotes the text shows them by (null when none does, or several), in a direct chat the other; recalled the id of the message recalled, when WeChat's notice holds it (most do not: null).".into(),
+        Kind::Nudge => "`{from, to, text}`: who nudged whom.".into(),
+        Kind::Join => "`{contacts, by, text}`: who joined the group (a list), and who brought them in.".into(),
+        Kind::Leave => "`{contacts, by, text}`: who left or was removed (a list), and by whom.".into(),
+        Kind::Renamed => "`{name, by, text}`: the group's new name, and who gave it.".into(),
+        Kind::Transfer => "`{amount_fen, state, memo}`: the amount in fen (1/100 yuan) when shown, state \"sent\", \"received\" or \"returned\".".into(),
+        Kind::RedPacket => "`{amount_fen, state, memo}`: WeChat shows no amount.".into(),
+        Kind::Call => "`{medium, state, seconds, text}`: a voice or video call, medium \"voice\" or \"video\"; state \"connected\", \"cancelled\" (by the one who called), \"declined\" (by the one called) or \"missed\" (not answered), null when its text says none of these (answered on another device); seconds how long a connected one lasted (通话时长 01:04:50 is 3890), null for the rest; text what WeChat shows of it.".into(),
+        Kind::GroupNotice => "`{text, by, at}`: the group's notice (群公告) posted into its chat: its text; who posted it; when it was posted (RFC 3339, UTC). `wxread group <id>` answers the notice it has now.".into(),
+        Kind::Image => "`{name, md5, file_present, thumbnail_present}`: name finds its file, `msg/attach/<md5 of the chat id>/<YYYY-MM>/Img/<name>.dat` under the account's directory, sealed.".into(),
+        Kind::Video => "`{name, seconds, md5, file_present, thumbnail_present}`: name finds `msg/video/<YYYY-MM>/<name>.mp4` and `<name>_thumb.jpg`.".into(),
+        Kind::File => "`{name, stored_as, size, extension, file_present, thumbnail_present}`: stored_as finds `msg/file/<YYYY-MM>/<stored_as>`; size in bytes.".into(),
+        Kind::Sticker => "`{md5, url, file_present, thumbnail_present}`: url its address on WeChat's CDN, md5 that of its bytes.".into(),
+        Kind::Voice => format!(
+            "`{{length_ms, transcription, file_present, thumbnail_present}}`: transcription the text WeChat heard in it, when the account converted it to text in WeChat (转文字); its sound is in {MEDIA_DB_PATHS}, by the message's id; `wxread voice <id> --chat <chat> --out <path>` writes it as a file that plays."
+        ),
+        Kind::System => "`{text}`: any other notice of WeChat's.".into(),
+        Kind::Unknown => "`{}`: anything else, read from content, type and subtype; a message whose XML does not read is unknown, never an error.".into(),
+    }
+}

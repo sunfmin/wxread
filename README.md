@@ -25,7 +25,7 @@ wxread --keys <file> voice <id> --chat <id> --out v.wav
                                             # a voice message that plays
 wxread --keys <file> group leave <n>@chatroom... [--dry-run | --yes]
                                             # leave groups, one after another, each chat told by its member count and messages; only with --yes
-wxread --help                               # the guide
+wxread --help                               # the whole manual; -h one screen
 ```
 
 ## Install

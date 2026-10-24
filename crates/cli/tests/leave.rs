@@ -270,11 +270,14 @@ fn asked(args: &[&str]) -> String {
     String::from_utf8(out.stdout).unwrap()
 }
 
-/// The lines of `text` after the one starting with `from` up to the one
-/// starting with `to`.
-fn between<'a>(text: &'a str, from: &str, to: &str) -> Vec<&'a str> {
-    let after = text.lines().skip_while(|line| !line.starts_with(from)).skip(1);
-    after.take_while(|line| !line.starts_with(to)).collect()
+/// The name of each item of the list under What it answers in `help`,
+/// `depth` levels deep: `- \`name\`: …`.
+fn answered(help: &str, depth: usize) -> BTreeSet<String> {
+    let marker = format!("{}- `", "  ".repeat(depth));
+    let part = help.lines().skip_while(|line| *line != "**What it answers**").skip(1);
+    let part = part.take_while(|line| !line.starts_with("**") && !line.starts_with('#'));
+    let rest = part.filter_map(|line| line.strip_prefix(&marker));
+    rest.filter_map(|rest| rest.split('`').next()).map(str::to_string).collect()
 }
 
 #[test]
@@ -283,7 +286,6 @@ fn its_help_says_it_cannot_be_undone_what_it_needs_and_that_it_takes_the_window(
     assert_eq!(asked(&["group", "leave", "-h"]), help);
     assert_eq!(asked(&["--keys", "/nowhere", "group", "leave", "1@chatroom", "--help"]), help);
     assert_ne!(asked(&["group", "--help"]), help, "group has its own");
-    let words = help.split_whitespace().collect::<Vec<_>>().join(" ");
     for said in [
         "It cannot be undone",
         "Accessibility",
@@ -295,51 +297,35 @@ fn its_help_says_it_cannot_be_undone_what_it_needs_and_that_it_takes_the_window(
         "`wxread doctor` says whether each is allowed",
         "stops at the first group it fails to leave",
         "the same command again",
-        "wxread group leave <id>... [--account <id>] [--dry-run | --yes]",
+        "wxread group leave - [--account <id>] [--dry-run | --yes]",
+        "\n## Usage\n\n```\nwxread group leave [OPTIONS] <ID>...\n```\n",
     ] {
-        assert!(words.contains(said), "group leave --help says {said}");
+        assert!(help.contains(said), "group leave --help says {said}");
     }
 }
 
 #[test]
-fn it_answers_exactly_the_keys_its_help_and_the_guide_name() {
+fn it_answers_exactly_the_keys_its_help_names() {
     let world = World::new();
     let account = account(&world);
     let json = world.run(&["group", "leave", GROUP], &[("WXREAD_KEYS", &keys(&account))]).ok();
     let help = asked(&["group", "leave", "--help"]);
-    let lines = between(&help, "WHAT IT ANSWERS", "TRIPS YOU UP").into_iter();
-    let keys = lines.filter(|line| line.len() - line.trim_start().len() == 4);
-    let answered: BTreeSet<String> =
-        keys.filter_map(|line| line.split_whitespace().next()).map(str::to_string).collect();
-    assert_eq!(answered, keys_of(&json));
-    let fields = between(&help, "WHAT IT ANSWERS", "TRIPS YOU UP").into_iter();
-    let fields = fields.filter(|line| line.len() - line.trim_start().len() == 16);
-    let named: BTreeSet<String> =
-        fields.filter_map(|line| line.split_whitespace().next()).map(str::to_string).collect();
-    assert_eq!(named, keys_of(&json["groups"][0]), "each key of a group");
-    let mut rows = between(wxread::GUIDE, "WHAT A COMMAND ANSWERS", "THE COMMANDS")
-        .into_iter()
-        .skip_while(|line| !line.starts_with("    group leave "));
-    let row = rows.next().expect("the guide has a row for group leave");
-    let more = rows.take_while(|line| line.starts_with(&" ".repeat(14)));
-    let named: BTreeSet<String> = row
-        .split_whitespace()
-        .skip(2)
-        .chain(more.flat_map(str::split_whitespace))
-        .map(str::to_string)
-        .collect();
-    assert_eq!(named, keys_of(&json));
+    assert_eq!(answered(&help, 0), keys_of(&json));
+    assert_eq!(answered(&help, 1), keys_of(&json["groups"][0]), "each key of a group");
 }
 
 #[test]
-fn the_guide_lists_it_apart_from_the_reading_commands() {
-    let commands = between(wxread::GUIDE, "THE COMMANDS", "RULES");
-    let at = commands.iter().position(|l| l.trim() == "group leave").expect("listed");
-    let heading: Vec<&str> =
-        commands[..at].iter().rev().take_while(|l| !l.starts_with("      ")).copied().collect();
-    let heading = heading.into_iter().rev().collect::<Vec<_>>().join(" ");
-    assert!(heading.contains("Leaving a group, which cannot be undone"), "{heading}");
-    let reading: Vec<&&str> =
-        commands.iter().skip_while(|l| !l.contains("Reading the account")).take(4).collect();
-    assert!(reading.iter().all(|l| !l.contains("leave")), "{reading:?}");
+fn the_manual_lists_it_apart_from_the_reading_commands() {
+    let manual = asked(&["--help"]);
+    let lines: Vec<&str> = manual.lines().collect();
+    let at = lines.iter().position(|l| *l == "#### `wxread group leave`").expect("listed");
+    let group = lines[..at].iter().rev().find(|l| l.starts_with("### ")).unwrap();
+    assert!(group.contains("Leaving a group, which cannot be undone"), "{group}");
+    let reading = lines.iter().skip_while(|l| !l.starts_with("### Reading the account"));
+    let reading: Vec<&&str> = reading
+        .skip(1)
+        .take_while(|l| !l.starts_with("### "))
+        .filter(|l| l.starts_with("#### "))
+        .collect();
+    assert!(!reading.is_empty() && reading.iter().all(|l| !l.contains("leave")), "{reading:?}");
 }

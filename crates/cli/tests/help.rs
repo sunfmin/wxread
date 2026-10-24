@@ -1,5 +1,7 @@
-//! The help: `--help` is the guide an agent learns the tool from, `-h` one
-//! screen, and the commands either names are exactly the commands there are.
+//! The help: `--help` is the manual an agent learns the tool from, one
+//! Markdown text assembled from the help written on each command; `-h` is
+//! one screen; `<command> --help` is that command's part of the manual; and
+//! the commands either names are exactly the commands there are.
 
 use std::collections::BTreeSet;
 use std::process::Command;
@@ -20,58 +22,69 @@ fn asked(args: &[&str]) -> String {
     String::from_utf8(out.stdout).unwrap()
 }
 
-/// The lines of `text` after the one starting with `from` up to the one
-/// starting with `to`.
-fn between<'a>(text: &'a str, from: &str, to: &str) -> Vec<&'a str> {
-    let after = text.lines().skip_while(|line| !line.starts_with(from)).skip(1);
-    after.take_while(|line| !line.starts_with(to)).collect()
+/// What `wxread <command> --help` prints, `command` the words of a command
+/// as `wxread::commands` names it.
+fn help_of(command: &str) -> String {
+    let mut args: Vec<&str> = command.split(' ').collect();
+    args.push("--help");
+    asked(&args)
 }
 
-/// The subcommands the parser has: the ones that exist.
+/// The lines of the part of `text` under its label `**<label>**`, up to the
+/// next label or heading.
+fn part<'a>(text: &'a str, label: &str) -> Vec<&'a str> {
+    let label = format!("**{label}**");
+    let after = text.lines().skip_while(|line| *line != label).skip(1);
+    after.take_while(|line| !is_label(line) && !line.starts_with('#')).collect()
+}
+
+/// Whether `line` is a label, `**<label>**`, that a part starts with.
+fn is_label(line: &str) -> bool {
+    line.len() > 4 && line.starts_with("**") && line.ends_with("**")
+}
+
+/// The name of each list item `depth` levels deep in `lines`, its first
+/// word in backticks: `- \`name\`: …`.
+fn items(lines: &[&str], depth: usize) -> BTreeSet<String> {
+    let marker = format!("{}- `", "  ".repeat(depth));
+    let rest = lines.iter().filter_map(|line| line.strip_prefix(&marker));
+    rest.filter_map(|rest| rest.split('`').next()).map(str::to_string).collect()
+}
+
+/// The keys `command`'s help lists under What it answers, `depth` levels
+/// deep: 0 for the keys of its answer, 1 for theirs.
+fn answered(command: &str, depth: usize) -> BTreeSet<String> {
+    let help = help_of(command);
+    items(&part(&help, "What it answers"), depth)
+}
+
+/// The keys of `value`, an object.
+fn keys_of(value: &Value) -> BTreeSet<String> {
+    value.as_object().unwrap().keys().cloned().collect()
+}
+
+/// The commands there are, at the top: the ones the screen lists.
 fn existing() -> BTreeSet<String> {
-    wxread::commands().into_iter().collect()
+    wxread::commands().into_iter().filter(|c| !c.contains(' ')).collect()
 }
 
-/// The subcommands the guide sorts into groups: its lines of bare names,
-/// a command's own subcommand (`group leave`) counted as the command.
-fn grouped(long: &str) -> BTreeSet<String> {
-    let lines = between(long, "THE COMMANDS", "RULES").into_iter();
-    let lines = lines.filter(|line| line.starts_with("      "));
-    let mut names = BTreeSet::new();
-    for line in lines {
-        let words: Vec<&str> = line.split_whitespace().collect();
-        match words.as_slice() {
-            [command, sub] if wxread::subcommands(command).iter().any(|s| s == sub) => {
-                names.insert(command.to_string());
-            }
-            _ => names.extend(words.iter().map(|w| w.to_string())),
-        }
-    }
-    names
-}
-
-/// The subcommands the screen lists: the first word of each line of its
-/// `Commands:` block.
-fn listed(short: &str) -> BTreeSet<String> {
-    let lines = between(short, "Commands:", "Options:").into_iter();
-    lines.filter_map(|line| line.split_whitespace().next()).map(str::to_string).collect()
-}
-
-/// The word after `wxread ` in every command line `text` shows, an
-/// indented line or a quoted one, that could be a command's name.
+/// The word after `wxread ` in every command `text` quotes in backticks.
 fn run_in(text: &str) -> BTreeSet<String> {
-    let text = text.replace("`wxread ", "\n  wxread ").replace("`sudo wxread ", "\n  wxread ");
-    let lines = text.lines().filter(|line| line.starts_with("  "));
-    let rest = lines.filter_map(|line| line.trim_start().strip_prefix("wxread "));
-    let words = rest.filter_map(|rest| rest.split([' ', '`']).next());
+    let text = text.replace("`sudo wxread ", "`wxread ");
+    let quoted = text.split("`wxread ").skip(1);
+    let words = quoted.filter_map(|rest| rest.split([' ', '`']).next());
     let words =
         words.filter(|word| !word.is_empty() && word.bytes().all(|b| b.is_ascii_lowercase()));
     words.map(str::to_string).collect()
 }
 
 #[test]
-fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
-    let existing = existing();
+fn the_manual_is_whole() {
+    agent_help::check(&wxread::manual()).unwrap();
+}
+
+#[test]
+fn the_manual_and_the_screen_name_exactly_the_commands_there_are() {
     let names = [
         "articles",
         "avatar",
@@ -82,6 +95,7 @@ fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
         "favorites",
         "file",
         "group",
+        "help",
         "keys",
         "messages",
         "moments",
@@ -89,11 +103,25 @@ fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
         "search",
         "voice",
     ];
+    let existing = existing();
     assert_eq!(existing, names.into_iter().map(String::from).collect());
     let long = asked(&["--help"]);
     let short = asked(&["-h"]);
-    assert_eq!(grouped(&long), existing);
-    assert_eq!(listed(&short), existing);
+    let headed: BTreeSet<String> = long
+        .lines()
+        .filter_map(|line| line.strip_prefix("#### `wxread ")?.strip_suffix('`'))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(headed, wxread::commands().into_iter().collect());
+    let listed: BTreeSet<String> = short
+        .lines()
+        .skip_while(|line| *line != "Commands:")
+        .skip(1)
+        .take_while(|line| *line != "Options:")
+        .filter_map(|line| line.split_whitespace().next())
+        .map(str::to_string)
+        .collect();
+    assert_eq!(listed, existing);
     for text in [&long, &short] {
         let run = run_in(text);
         assert!(run.is_subset(&existing), "{run:?} beyond {existing:?}");
@@ -101,115 +129,146 @@ fn the_guide_and_the_screen_name_exactly_the_commands_there_are() {
 }
 
 #[test]
-fn the_guide_and_the_screen_are_the_embedded_files() {
-    assert_eq!(asked(&["--help"]), wxread::GUIDE);
-    assert_eq!(asked(&["-h"]), wxread::SCREEN);
-    assert!(wxread::SCREEN.lines().count() <= 24, "-h is one screen");
-    for section in ["WHAT IT NEEDS", "RUN FIRST", "WHAT A COMMAND ANSWERS", "THE COMMANDS", "RULES"]
-    {
-        assert!(wxread::GUIDE.contains(&format!("\n{section}\n")), "the guide says {section}");
+fn the_manual_and_the_screen_are_what_the_binary_answers() {
+    let manual = wxread::manual();
+    let long = asked(&["--help"]);
+    assert_eq!(long, manual.manual().unwrap());
+    assert_eq!(asked(&["help"]), long);
+    let short = asked(&["-h"]);
+    assert_eq!(short, wxread::screen());
+    assert!(short.lines().count() <= 24, "-h is one screen: {short}");
+    for label in ["What it needs", "Run first", "What a command answers", "Rules"] {
+        assert!(long.contains(&format!("\n**{label}**\n")), "the manual says {label}");
+    }
+    for heading in ["## Commands", "## Topics"] {
+        assert!(long.contains(&format!("\n{heading}\n")), "the manual has {heading}");
     }
 }
 
 #[test]
-fn each_command_has_its_own_guide_whatever_else_its_line_holds() {
-    for command in existing() {
-        let long = asked(&[&command, "--help"]);
-        assert!(long.contains("WHEN TO RUN IT") && long.contains("WHAT IT ANSWERS"), "{command}");
-        assert_eq!(asked(&[&command, "-h"]), long);
-        assert_eq!(asked(&["--keys", "/nowhere", &command, "--help", "--nope"]), long);
+fn no_paragraph_of_the_manual_is_wrapped() {
+    // Outside a code block, a line that follows another without a blank
+    // line between them starts a list item, a heading or a numbered step:
+    // a paragraph is written on one line.
+    let long = asked(&["--help"]);
+    let mut fenced = false;
+    let mut before = "";
+    for line in long.lines() {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+            before = line;
+            continue;
+        }
+        if !fenced && !before.trim().is_empty() && !line.trim().is_empty() {
+            let start = line.trim_start();
+            let numbered = start.split_once(". ").is_some_and(|(n, _)| n.parse::<u32>().is_ok());
+            assert!(
+                start.starts_with("- ") || start.starts_with('#') || numbered,
+                "a paragraph wrapped:\n{before}\n{line}"
+            );
+        }
+        before = line;
+    }
+}
+
+#[test]
+fn each_command_answers_its_own_part_of_the_manual_whatever_else_its_line_holds() {
+    let manual = asked(&["--help"]);
+    for command in wxread::commands() {
+        let long = help_of(&command);
+        let heading = format!("# `wxread {command}`\n");
+        let body = long.strip_prefix(&heading).unwrap_or_else(|| panic!("{command}: {long}"));
+        let one_down = body.replace("\n## ", "\n##### ");
+        assert!(manual.contains(&format!("#{heading}{one_down}")), "{command} is in the manual");
+        let words: Vec<&str> = command.split(' ').collect();
+        assert_eq!(asked(&[words.as_slice(), &["-h"]].concat()), long, "{command} -h");
+        let noisy = [&["--keys", "/nowhere"], words.as_slice(), &["--help", "--nope"]].concat();
+        assert_eq!(asked(&noisy), long, "{command} with more on its line");
+        if command != "file" {
+            for label in ["When to run it", "What it answers"] {
+                assert!(long.contains(&format!("\n**{label}**\n")), "{command} says {label}");
+            }
+        }
         let run = run_in(&long);
         assert!(run.is_subset(&existing()), "{command}: {run:?}");
     }
 }
 
 #[test]
+fn help_shows_a_topic_and_refuses_one_there_is_not() {
+    let manual = wxread::manual();
+    assert_eq!(asked(&["help", "names"]), manual.topic_help("names").unwrap());
+    assert!(asked(&["--help"]).contains("](help:names)"), "the manual links it");
+    let out = Command::new(env!("CARGO_BIN_EXE_wxread")).args(["help", "nope"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let json: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let error = json["error"].as_str().unwrap();
+    assert!(error.contains("`nope`") && error.contains("`names`"), "{error}");
+}
+
+#[test]
 fn messages_help_says_how_to_read_a_chat_forward() {
-    let help = asked(&["messages", "--help"]);
-    let options = between(&help, "OPTIONS", "WHAT IT ANSWERS").join("\n");
-    assert!(options.contains("--oldest-first"), "{options}");
-    let trips = between(&help, "TRIPS YOU UP", "\u{0}").join("\n");
+    let help = help_of("messages");
+    assert!(help.contains("\n- `--oldest-first`: "), "{help}");
+    let trips = part(&help, "Trips you up").join("\n");
     assert!(trips.contains("--oldest-first"), "{trips}");
 }
 
 #[test]
-fn the_guide_says_how_to_find_a_chat_with_someone() {
-    let run_first = between(wxread::GUIDE, "RUN FIRST", "WHAT A COMMAND ANSWERS").join("\n");
+fn the_manual_says_how_to_find_a_chat_with_someone() {
+    let long = asked(&["--help"]);
+    let run_first = part(&long, "Run first").join("\n");
     assert!(run_first.contains("wxread chats --with <id>"), "{run_first}");
     assert!(run_first.contains("--query <name>"), "{run_first}");
-    let chats = asked(&["chats", "--help"]);
-    assert!(chats.contains("--with <id>") && chats.contains("smallest first"), "{chats}");
+    let chats = help_of("chats");
+    assert!(chats.contains("--with <") && chats.contains("smallest first"), "{chats}");
 }
 
 #[test]
 fn the_help_names_the_options_and_variables_wxread_reads() {
-    for text in [asked(&["--help"]), asked(&["-h"]), asked(&["doctor", "--help"])] {
+    for text in [asked(&["--help"]), asked(&["-h"]), help_of("doctor")] {
         for name in [DATA_DIR_FLAG, DATA_DIR_VAR, KEYS_FLAG, KEYS_VAR] {
             assert!(text.contains(name), "{name} in {text}");
         }
     }
 }
 
-/// The keys `doctor --help` lists under WHAT IT ANSWERS: the first word of
-/// each line indented four.
-fn answered(command: &str) -> BTreeSet<String> {
-    let long = asked(&[command, "--help"]);
-    let lines = between(&long, "WHAT IT ANSWERS", "TRIPS YOU UP").into_iter();
-    let keys = lines.filter(|line| line.len() - line.trim_start().len() == 4);
-    keys.filter_map(|line| line.split_whitespace().next()).map(str::to_string).collect()
-}
-
-/// The keys the guide's row for `command` names, the lines that continue
-/// it (indented fourteen) too.
-fn guide_row(command: &str) -> BTreeSet<String> {
-    let mut lines = between(wxread::GUIDE, "WHAT A COMMAND ANSWERS", "THE COMMANDS")
-        .into_iter()
-        .skip_while(|line| !line.starts_with(&format!("    {command} ")));
-    let row = lines.next().expect("the guide has a row for the command");
-    let more = lines.take_while(|line| line.starts_with(&" ".repeat(14)));
-    let words = row.split_whitespace().skip(1).chain(more.flat_map(str::split_whitespace));
-    words.map(str::to_string).collect()
-}
-
 #[test]
-fn doctor_answers_exactly_the_keys_its_help_and_the_guide_name() {
+fn doctor_answers_exactly_the_keys_its_help_names() {
     let json = World::new().run(&["doctor"], &[]).ok();
-    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
-    assert_eq!(answered("doctor"), keys);
-    assert_eq!(guide_row("doctor"), keys);
+    assert_eq!(answered("doctor", 0), keys_of(&json));
 }
 
 #[test]
-fn chats_answers_exactly_the_keys_its_help_and_the_guide_name() {
+fn chats_answers_exactly_the_keys_its_help_names() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     account.sessions = vec![Session("wxid_amy", 1_760_000_000, 0)];
     account.write();
     let json = world.run(&["chats"], &[("WXREAD_KEYS", &account.keys(&DATABASES))]).ok();
-    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
-    assert_eq!(answered("chats"), keys);
-    assert_eq!(guide_row("chats"), keys);
-    let fields: BTreeSet<String> = json["chats"][0].as_object().unwrap().keys().cloned().collect();
-    let help = asked(&["chats", "--help"]);
-    for field in &fields {
-        assert!(
-            help.contains(&format!("              {field} ")),
-            "chats --help says what {field} is"
-        );
-    }
+    assert_eq!(answered("chats", 0), keys_of(&json));
+    assert_eq!(answered("chats", 1), keys_of(&json["chats"][0]), "chats --help says each field");
 }
 
 #[test]
 fn chats_help_says_what_query_matches() {
-    let help = asked(&["chats", "--help"]);
-    for words in ["--query <text>", "id", "remark", "own name", "members' names", "case"] {
+    let help = help_of("chats");
+    for words in ["--query <TEXT>", "id", "remark", "own name", "members' names", "case"] {
         assert!(help.contains(words), "chats --help says {words:?}");
     }
-    assert!(asked(&["--help"]).contains("chats --query"), "the guide names chats --query");
+    assert!(asked(&["--help"]).contains("chats --query"), "the manual names chats --query");
 }
 
 #[test]
-fn voice_answers_exactly_the_keys_its_help_and_the_guide_name() {
+fn chats_help_names_every_folder() {
+    let help = help_of("chats");
+    let folders = items(&part(&help, "The folders"), 0);
+    let all = wxread_chats::Folder::ALL.map(|f| f.id().to_string());
+    assert_eq!(folders, all.into_iter().collect());
+}
+
+#[test]
+fn voice_answers_exactly_the_keys_its_help_names() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     let mut said = Said::text("wxid_amy", 1, 1_760_000_000, "wxid_amy", "<msg/>");
@@ -225,13 +284,11 @@ fn voice_answers_exactly_the_keys_its_help_and_the_guide_name() {
             &[("WXREAD_KEYS", &account.all_keys())],
         )
         .ok();
-    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
-    assert_eq!(answered("voice"), keys);
-    assert_eq!(guide_row("voice"), keys);
+    assert_eq!(answered("voice", 0), keys_of(&json));
 }
 
 #[test]
-fn messages_answers_exactly_the_keys_its_help_and_the_guide_name() {
+fn messages_answers_exactly_the_keys_its_help_names() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     account.messages = vec![Said::text("wxid_amy", 1, 1_760_000_000, "wxid_amy", "hi")];
@@ -239,33 +296,20 @@ fn messages_answers_exactly_the_keys_its_help_and_the_guide_name() {
     let json = world
         .run(&["messages", "--chat", "wxid_amy"], &[("WXREAD_KEYS", &account.all_keys())])
         .ok();
-    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
-    assert_eq!(answered("messages"), keys);
-    assert_eq!(guide_row("messages"), keys);
-    let help = asked(&["messages", "--help"]);
+    assert_eq!(answered("messages", 0), keys_of(&json));
+    // Each field has its line, the kind's own (here `text`) under the kinds.
     let fields: BTreeSet<String> =
-        json["messages"][0].as_object().unwrap().keys().cloned().collect();
-    for field in fields.iter().filter(|f| *f != "text") {
-        assert!(
-            help.contains(&format!("              {field} ")),
-            "messages --help says what {field} is"
-        );
-    }
+        keys_of(&json["messages"][0]).into_iter().filter(|f| f != "text").collect();
+    assert!(fields.is_subset(&answered("messages", 1)), "messages --help says each field");
     // Every kind there is, and only those, has its line in the help.
-    let kinds: BTreeSet<String> = between(&help, "THE KINDS AND THEIR FIELDS", "TRIPS YOU UP")
-        .into_iter()
-        .filter(|line| line.len() - line.trim_start().len() == 2)
-        .filter_map(|line| line.split_whitespace().next())
-        .filter(|word| word.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
-        .map(str::to_string)
-        .collect();
+    let help = help_of("messages");
+    let kinds = items(&part(&help, "The kinds and their fields"), 0);
     let all: BTreeSet<String> =
         wxread_messages::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
     assert_eq!(kinds, all);
     // A channels feed's title is not WeChat's.
-    let words = help.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(
-        words.contains("For a channels feed or live, title is its description"),
+        help.contains("For a channels feed or live, title is its description"),
         "messages --help says what title is for a channels feed"
     );
 }
@@ -289,7 +333,7 @@ fn fields(value: &Value) -> BTreeSet<String> {
 }
 
 #[test]
-fn contacts_contact_and_group_answer_exactly_the_keys_their_help_and_the_guide_name() {
+fn contacts_contact_and_group_answer_exactly_the_keys_their_help_names() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     account.contacts =
@@ -304,22 +348,17 @@ fn contacts_contact_and_group_answer_exactly_the_keys_their_help_and_the_guide_n
     let keys = account.keys(&DATABASES);
     for args in [&["contacts"][..], &["contact", "wxid_amy"], &["group", "1@chatroom"]] {
         let json = world.run(args, &[("WXREAD_KEYS", &keys)]).ok();
-        let top: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
-        assert_eq!(answered(args[0]), top, "{args:?}");
-        assert_eq!(guide_row(args[0]), top, "{args:?}");
-        let help = asked(&[args[0], "--help"]);
+        assert_eq!(answered(args[0], 0), keys_of(&json), "{args:?}");
+        // Each field, at whatever depth, has its line.
+        let named: BTreeSet<String> = (1..4).flat_map(|depth| answered(args[0], depth)).collect();
         for field in fields(&json) {
-            assert!(
-                help.contains(&format!("              {field} ")),
-                "{} --help says what {field} is",
-                args[0]
-            );
+            assert!(named.contains(&field), "{} --help says what {field} is", args[0]);
         }
     }
 }
 
 #[test]
-fn file_get_and_avatar_answer_exactly_the_keys_their_help_and_the_guide_name() {
+fn file_get_and_avatar_answer_exactly_the_keys_their_help_names() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     account.contacts = vec![Contact("wxid_amy", "Amy", ""), Contact("wxid_bob", "Bob", "")];
@@ -337,7 +376,10 @@ fn file_get_and_avatar_answer_exactly_the_keys_their_help_and_the_guide_name() {
     let out = world.root.join("out");
     let out = out.to_str().unwrap();
     for (command, args) in [
-        ("file", [&["file", "get", "8", "--out", out][..], &["file", "get", "7", "--out", out]]),
+        (
+            "file get",
+            [&["file", "get", "8", "--out", out][..], &["file", "get", "7", "--out", out]],
+        ),
         (
             "avatar",
             [&["avatar", "wxid_amy", "--out", out][..], &["avatar", "wxid_bob", "--out", out]],
@@ -346,60 +388,42 @@ fn file_get_and_avatar_answer_exactly_the_keys_their_help_and_the_guide_name() {
         let mut keys_answered = BTreeSet::new();
         for args in args {
             let json = world.run(args, &[("WXREAD_KEYS", &keys)]).ok();
-            keys_answered.extend(json.as_object().unwrap().keys().cloned());
+            keys_answered.extend(keys_of(&json));
         }
-        assert_eq!(answered(command), keys_answered, "{command}");
-        assert_eq!(guide_row(command), keys_answered, "{command}");
+        assert_eq!(answered(command, 0), keys_answered, "{command}");
     }
 }
 
 #[test]
-fn articles_answers_exactly_the_keys_its_help_and_the_guide_name() {
+fn articles_answers_exactly_the_keys_its_help_names() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     let article = Article("Knots", "Eight ways", "https://e.com/k", "https://e.com/k.jpg");
     account.messages = vec![Said::push("gh_crag", "Crag News", 1_760_000_000, &[article])];
     account.write();
     let json = world.run(&["articles"], &[("WXREAD_KEYS", &account.all_keys())]).ok();
-    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
-    assert_eq!(answered("articles"), keys);
-    assert_eq!(guide_row("articles"), keys);
-    let help = asked(&["articles", "--help"]);
-    let article = json["articles"][0].as_object().unwrap();
-    for field in article.keys() {
-        assert!(
-            help.contains(&format!("              {field} ")),
-            "articles --help says what {field} is"
-        );
-    }
-    for field in json["articles"][0]["official_account"].as_object().unwrap().keys() {
-        assert!(help.contains("{id, display_name}") && help.contains(field), "{field}");
+    assert_eq!(answered("articles", 0), keys_of(&json));
+    assert_eq!(answered("articles", 1), keys_of(&json["articles"][0]));
+    let help = help_of("articles");
+    for field in keys_of(&json["articles"][0]["official_account"]) {
+        assert!(help.contains("{id, display_name}") && help.contains(&field), "{field}");
     }
 }
 
 #[test]
-fn moments_answers_exactly_the_keys_its_help_and_the_guide_name() {
+fn moments_answers_exactly_the_keys_its_help_names() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     let xml = r#"<SnsDataItem><TimelineObject><id>9</id><username>wxid_amy</username><createTime>1760000000</createTime><contentDesc>hi</contentDesc><location poiName="Peak" /><ContentObject><type>3</type><title>T</title><contentUrl>https://e.com</contentUrl><mediaList><media><id>1</id><type>6</type></media></mediaList></ContentObject></TimelineObject><LocalExtraInfo><like_user_list><user_comment><username>wxid_bob</username></user_comment></like_user_list><comment_user_list><user_comment><username>wxid_bob</username><content>c</content><ref_username>wxid_amy</ref_username></user_comment></comment_user_list></LocalExtraInfo></SnsDataItem>"#;
     account.moments = vec![Posted(9, "wxid_amy", xml.to_string())];
     account.write();
     let json = world.run(&["moments"], &[("WXREAD_KEYS", &account.all_keys())]).ok();
-    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
-    assert_eq!(answered("moments"), keys);
-    assert_eq!(guide_row("moments"), keys);
-    let help = asked(&["moments", "--help"]);
+    assert_eq!(answered("moments", 0), keys_of(&json));
     let moment = &json["moments"][0];
-    for field in moment.as_object().unwrap().keys() {
-        assert!(
-            help.contains(&format!("              {field} ")),
-            "moments --help says what {field} is"
-        );
-    }
-    for field in moment["media"][0].as_object().unwrap().keys() {
-        assert!(help.contains(&format!("                {field} ")), "media's {field}");
-    }
+    assert_eq!(answered("moments", 1), keys_of(moment));
+    assert_eq!(answered("moments", 2), keys_of(&moment["media"][0]), "media's fields");
     // Each object a Moment holds is listed in the help as `{its keys}`.
+    let help = help_of("moments");
     let listed: Vec<BTreeSet<String>> = help
         .split('{')
         .skip(1)
@@ -413,13 +437,12 @@ fn moments_answers_exactly_the_keys_its_help_and_the_guide_name() {
             Value::Array(all) => all[0].clone(),
             one => one.clone(),
         };
-        let keys: BTreeSet<String> = object.as_object().unwrap().keys().cloned().collect();
-        assert!(listed.contains(&keys), "{part}: {keys:?} listed in the help");
+        assert!(listed.contains(&keys_of(&object)), "{part}: listed in the help");
     }
 }
 
 #[test]
-fn favorites_answers_exactly_the_keys_its_help_and_the_guide_name() {
+fn favorites_answers_exactly_the_keys_its_help_names() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     let favitem = |t: i64, body: &str| {
@@ -451,29 +474,18 @@ fn favorites_answers_exactly_the_keys_its_help_and_the_guide_name() {
     ];
     account.write();
     let json = world.run(&["favorites"], &[("WXREAD_KEYS", &account.all_keys())]).ok();
-    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
-    assert_eq!(answered("favorites"), keys);
-    assert_eq!(guide_row("favorites"), keys);
-    let help = asked(&["favorites", "--help"]);
-    let favorite = json["favorites"][0].as_object().unwrap();
-    for field in favorite.keys().filter(|k| json!(k) != favorite["kind"]) {
-        assert!(
-            help.contains(&format!("               {field} ")),
-            "favorites --help says what {field} is"
-        );
-    }
+    assert_eq!(answered("favorites", 0), keys_of(&json));
+    let favorite = &json["favorites"][0];
+    let own: BTreeSet<String> =
+        keys_of(favorite).into_iter().filter(|k| json!(k) != favorite["kind"]).collect();
+    assert!(own.is_subset(&answered("favorites", 1)), "favorites --help says each field");
     // Every field of every kind answered is named in the help.
+    let help = help_of("favorites");
     for field in fields(&json).iter().filter(|f| !f.contains(char::is_numeric)) {
         assert!(help.contains(field.as_str()), "favorites --help names {field}");
     }
     // Every kind there is, and only those, has its line in the help.
-    let kinds: BTreeSet<String> = between(&help, "THE KINDS AND THEIR FIELDS", "TRIPS YOU UP")
-        .into_iter()
-        .filter(|line| line.len() - line.trim_start().len() == 2)
-        .filter_map(|line| line.split_whitespace().next())
-        .filter(|word| word.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
-        .map(str::to_string)
-        .collect();
+    let kinds = items(&part(&help, "The kinds and their fields"), 0);
     let all: BTreeSet<String> =
         wxread_favorites::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
     assert_eq!(kinds, all);
@@ -481,91 +493,71 @@ fn favorites_answers_exactly_the_keys_its_help_and_the_guide_name() {
 
 #[test]
 fn search_help_says_whitespace_does_not_decide_a_match() {
-    let help = asked(&["search", "--help"]);
-    let trips = between(&help, "TRIPS YOU UP", "\u{0}").join("\n");
+    let help = help_of("search");
+    let trips = part(&help, "Trips you up").join("\n");
     assert!(trips.contains("Whitespace does not decide a match"), "{help}");
     assert!(trips.contains("\"15万行\" and \"15 万行\" both find"), "{help}");
     assert!(help.contains("with or without spaces"), "{help}");
 }
 
 #[test]
-fn search_answers_exactly_the_keys_its_help_and_the_guide_name() {
+fn search_answers_exactly_the_keys_its_help_names() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
     account.messages = vec![Said::text("wxid_amy", 1, 1_760_000_000, "wxid_amy", "hi")];
     account.write();
     let json = world.run(&["search", "hi"], &[("WXREAD_KEYS", &account.all_keys())]).ok();
-    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
-    assert_eq!(answered("search"), keys);
-    assert_eq!(guide_row("search"), keys);
-    let help = asked(&["search", "--help"]);
-    let messages = asked(&["messages", "--help"]);
-    let fields: BTreeSet<String> =
-        json["messages"][0].as_object().unwrap().keys().cloned().collect();
+    assert_eq!(answered("search", 0), keys_of(&json));
     // Its own fields have their line; the rest are a message's, as
     // `wxread messages --help` says them.
-    for field in fields.iter().filter(|f| *f != "text") {
-        let own = help.contains(&format!("              {field} "));
-        let listed = help.contains(&format!("{field},"))
-            && messages.contains(&format!("              {field} "));
-        assert!(own || listed, "search --help says what {field} is");
+    let help = help_of("search");
+    let own = answered("search", 1);
+    let message = answered("messages", 1);
+    for field in keys_of(&json["messages"][0]).iter().filter(|f| *f != "text") {
+        let listed = help.contains(&format!("{field},")) && message.contains(field);
+        assert!(own.contains(field) || listed, "search --help says what {field} is");
     }
-    // Each kind it names, it names by its name.
-    let kinds: BTreeSet<String> =
+    // Every kind is said to be searched, or not, by its name.
+    let searched = part(&help, "What a message is searched by");
+    let named = items(&searched, 0);
+    let all: BTreeSet<String> =
         wxread_messages::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
-    let searched = between(&help, "WHAT A MESSAGE IS SEARCHED BY", "TRIPS YOU UP");
-    let a_kinds_line = |l: &&&str| {
-        l.len() - l.trim_start().len() == 2
-            && l.trim_start().starts_with(|c: char| c.is_ascii_lowercase())
-    };
-    for line in searched.iter().filter(a_kinds_line) {
-        let named = line.split("  ").find(|s| !s.is_empty()).unwrap();
-        for kind in named.split(", ").map(str::trim).filter(|k| !k.is_empty()) {
-            if kind.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') {
-                assert!(kinds.contains(kind), "{kind} is a kind");
-            }
-        }
-    }
+    assert_eq!(named, all);
 }
 
 #[test]
 fn messages_and_search_help_say_what_a_solitaire_is() {
-    let messages = asked(&["messages", "--help"]);
-    let kinds = between(&messages, "THE KINDS AND THEIR FIELDS", "TRIPS YOU UP").join(" ");
-    let words = kinds.split_whitespace().collect::<Vec<_>>().join(" ");
-    for said in ["solitaire {id, title,", "a 接龙", "the same in every message of one 接龙"] {
-        assert!(words.contains(said), "messages --help says {said}");
+    let messages = help_of("messages");
+    let kinds = part(&messages, "The kinds and their fields").join("\n");
+    for said in ["- `solitaire`: `{id, title,", "a 接龙", "the same in every message of one 接龙"]
+    {
+        assert!(kinds.contains(said), "messages --help says {said}");
     }
-    let search = asked(&["search", "--help"]);
-    let searched = between(&search, "WHAT A MESSAGE IS SEARCHED BY", "  The rest are not searched");
-    assert!(
-        searched.iter().any(|l| l.trim_start().starts_with("solitaire ")),
-        "search --help says a solitaire is searched"
-    );
+    let search = help_of("search");
+    let searched = part(&search, "What a message is searched by").join("\n");
+    let indexed = searched.split("The rest are not searched").next().unwrap();
+    assert!(indexed.contains("- `solitaire`: "), "search --help says a solitaire is searched");
 }
 
 #[test]
-fn resign_answers_exactly_the_keys_its_help_and_the_guide_name() {
+fn resign_answers_exactly_the_keys_its_help_names() {
     // The object the command prints is the pure crate's answer;
     // tests/resign.rs runs the command itself against a signed app.
     let merge = wxread_resign::merge("W.app", "").unwrap();
     let json = wxread_resign::answer("W.app", false, &merge, false);
-    let keys: BTreeSet<String> = json.as_object().unwrap().keys().cloned().collect();
-    assert_eq!(answered("resign"), keys);
-    assert_eq!(guide_row("resign"), keys);
+    assert_eq!(answered("resign", 0), keys_of(&json));
 }
 
 #[test]
 fn keys_help_points_at_resign_when_macos_refuses() {
-    let help = asked(&["keys", "--help"]);
-    let section =
-        between(&help, "DO IT WITH A COPY, NEVER THE INSTALLED APP", "WHAT IT ANSWERS").join("\n");
+    let help = help_of("keys");
+    let section = part(&help, "Do it with a copy, never the installed app").join("\n");
     assert!(section.contains("wxread resign --app") && section.contains("--yes"), "{section}");
-    let resign = asked(&["resign", "--help"]);
+    let resign = help_of("resign");
     for needle in [
-        "WHEN TO RUN IT",
-        "WHAT IT READS AND WRITES",
-        "UNDOING IT",
+        "**When to run it**",
+        "**What it reads and writes**",
+        "**Undoing it**",
         "Full Disk Access",
         "quit WeChat",
     ] {

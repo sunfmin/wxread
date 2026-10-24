@@ -221,3 +221,16 @@ fn rooms(db: &Connection) -> anyhow::Result<Rooms> {
     records.remove("");
     Ok(records.into_iter().map(|(id, room)| (id, wxread_contacts::members(&room))).collect())
 }
+
+/// What the help says a folder of WeChat's chat list holds. Every folder
+/// has its line: one added without one does not compile.
+pub(crate) fn folder_help(folder: wxread_chats::Folder) -> &'static str {
+    use wxread_chats::Folder;
+    match folder {
+        Folder::FoldedGroups => {
+            "the groups folded away, each listed by `wxread chats` as a group of its own"
+        }
+        Folder::Subscriptions => "what subscription accounts sent",
+        Folder::Services => "the service accounts",
+    }
+}

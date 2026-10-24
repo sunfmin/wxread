@@ -33,11 +33,13 @@ pub const SYSTEM: i64 = 10000;
 /// A notice WeChat keeps as XML: a recall, among others.
 pub const SYSTEM_XML: i64 = 10002;
 
+/// The subtype of an app message that links a web page.
+pub const WEB_PAGE: i64 = 5;
 /// The subtypes of an app message read as links, and what each links to.
 const LINKS: [(i64, &str); 7] = [
     (3, "music"),
     (4, "video"),
-    (5, "web_page"),
+    (WEB_PAGE, "web_page"),
     (33, "mini_program"),
     (36, "mini_program"),
     (51, "channels_feed"),
@@ -51,7 +53,7 @@ const APP_STICKER: i64 = 8;
 const FORWARD: i64 = 19;
 const NOTE: i64 = 24;
 const SOLITAIRE: i64 = 53;
-const QUOTE: i64 = 57;
+pub const QUOTE: i64 = 57;
 const NUDGE: i64 = 62;
 const GROUP_NOTICE: i64 = 87;
 const TRANSFER: i64 = 2000;

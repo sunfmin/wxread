@@ -25,6 +25,10 @@ pub const IDLE_WAIT_SECONDS: u64 = 30;
 /// group's members after OK, and how often.
 pub const LEFT_WAIT_SECONDS: u64 = 30;
 pub const POLL_MILLIS: u64 = 200;
+/// The WeChat for Mac whose screens and menus a leave was written against:
+/// another reads otherwise, and is refused at the step that no longer
+/// matches.
+pub const SCREENS_OF: &str = "4.1.15";
 /// How many times the chat info is scrolled looking for Leave.
 pub const MAX_SCROLLS: u32 = 8;
 /// How many of the chats a search lists by the name are opened, looking

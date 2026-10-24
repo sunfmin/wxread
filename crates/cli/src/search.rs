@@ -278,3 +278,35 @@ fn scan(
     }
     Ok(found)
 }
+
+/// What a message of `kind` is searched by, as WeChat indexes it; or, for
+/// a kind WeChat does not index, `Err` with what it is. Every kind has its
+/// line: a kind added without one does not compile.
+pub(crate) fn searched_by(kind: wxread_messages::Kind) -> Result<&'static str, &'static str> {
+    use wxread_messages::Kind;
+    match kind {
+        Kind::Text => Ok("its words."),
+        Kind::Quote => Ok("its reply's words, not what it quotes."),
+        Kind::Link => Ok("its title and summary."),
+        Kind::File => Ok("its name."),
+        Kind::Location => Ok("its name and address."),
+        Kind::Card => Ok("the name the card gives the contact it shares."),
+        Kind::Forward => Ok("its title and what each message in it says."),
+        Kind::Note => Ok(
+            "the words of its paragraphs, and its places' names and addresses and its files' names.",
+        ),
+        Kind::Solitaire => Ok("all a 接龙 shows: its title and each entry, numbered."),
+        Kind::Transfer | Kind::RedPacket => Ok("its memo."),
+        Kind::GroupNotice => Ok("its text: a group's notice posted into its chat."),
+        Kind::Image | Kind::Video | Kind::Voice | Kind::Sticker => {
+            Err("media, whose words WeChat does not index.")
+        }
+        Kind::Call => Err(
+            "a voice or video call, `{medium, state, seconds, text}`: voice or video, connected, cancelled, declined or missed, and how many seconds a connected one lasted.",
+        ),
+        Kind::Recall | Kind::Nudge | Kind::Join | Kind::Leave | Kind::Renamed | Kind::System => {
+            Err("one of WeChat's notices.")
+        }
+        Kind::Unknown => Err("a message wxread does not read the kind of."),
+    }
+}

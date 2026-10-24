@@ -751,7 +751,8 @@ fn menu(pid: i32, item: MenuItem) -> anyhow::Result<()> {
     }
     let [(menu, name), _] = item.titles();
     bail!(
-        "WeChat has no menu item {menu} › {name}: its menus are not WeChat 4.1.15's, so nothing was clicked"
+        "WeChat has no menu item {menu} › {name}: its menus are not WeChat {}'s, so nothing was clicked",
+        wxread_leave::SCREENS_OF
     )
 }
 

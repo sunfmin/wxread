@@ -5,4 +5,4 @@ description: Reads WeChat for Mac 4.x directly — chats, contacts, messages of 
 
 # wxread
 
-Run `wxread --help` and read all of it before anything else. It is the tool's own guide: what it needs, what to run first, and which command's help to read next.
+Run `wxread --help` and read all of it before anything else. It is the tool's whole manual: what it needs, what to run first, and every command, grouped by who runs it.

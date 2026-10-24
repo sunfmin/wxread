@@ -94,3 +94,42 @@ pub fn row(db: &Connection, id: i64) -> anyhow::Result<Option<Row>> {
 fn sql(e: rusqlite::Error) -> anyhow::Error {
     anyhow!(wxread_account::not_wechats(FAVORITE_DB, &e.to_string()))
 }
+
+/// What the help says of a favorite of `kind`: its object's fields, and
+/// what each holds. Every kind has its line: a kind added without one does
+/// not compile.
+pub(crate) fn kind_help(kind: wxread_favorites::Kind) -> &'static str {
+    use wxread_favorites::Kind;
+    match kind {
+        Kind::Text => "`{text}`",
+        Kind::Link => {
+            "`{title, summary, url, cover, source}`: source the site or official account it is from."
+        }
+        Kind::Image => "`{file_id, size, file_present, thumbnail_present}`",
+        Kind::Video => "`{file_id, size, seconds, file_present, thumbnail_present}`",
+        Kind::Voice => {
+            "`{file_id, size, length_ms, file_present, thumbnail_present}`: its file as WeChat recorded it."
+        }
+        Kind::File => "`{file_id, size, name, extension, file_present, thumbnail_present}`",
+        Kind::Location => "`{latitude, longitude, name, address}`",
+        Kind::Music => "`{title, summary, url, audio_url}`",
+        Kind::ChatHistory => {
+            "`{title, summary, items: [{kind, <kind>, sender, at, type}]}`: each message saved, in order, as its kind with the fields above (a chat history saved in it with its own items); sender `{id, display_name}`, shown as WeChat shows their contact, else by the name the history gives; at when it was said, type WeChat's number for it."
+        }
+        Kind::Note => {
+            "`{items: [{kind, <kind>, sender, at, type}]}`: each part of the note, in order: its paragraphs (text), images, files, places; its body as WeChat renders it is a file of extension htm, written by `wxread file get`."
+        }
+        Kind::MiniProgram => "`{title, app, app_id, path}`",
+        Kind::Channels => "`{title, author, summary}`: a post of 视频号.",
+        Kind::Unknown => {
+            "`{}`: anything else, read from content and type; a favorite whose XML does not read is its kind by its type with its fields null, never an error."
+        }
+    }
+}
+
+/// WeChat's numbers of a favorite's kinds, or of its items', as the help
+/// gives them: "1 text, 2 image, …", in WeChat's order.
+pub(crate) fn numbered(types: &[(i64, wxread_favorites::Kind)]) -> String {
+    let named = types.iter().map(|(n, kind)| format!("{n} {}", kind.name()));
+    named.collect::<Vec<_>>().join(", ")
+}
