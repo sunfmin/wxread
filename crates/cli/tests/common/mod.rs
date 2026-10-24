@@ -70,11 +70,8 @@ impl World {
 
     /// The keys of `databases`, in the shape `wxread keys` answers.
     pub fn keys(databases: &[&str]) -> String {
-        let entries: Vec<String> = databases
-            .iter()
-            .map(|db| format!("\"{db}\": {{\"enc_key\": \"{KEY}\", \"salt\": \"{}\"}}", &KEY[..32]))
-            .collect();
-        format!("{{{}}}", entries.join(", "))
+        let keyed = databases.iter().map(|db| (*db, [KEY.to_string(), KEY[..32].to_string()]));
+        Value::Object(keys_shown(keyed)).to_string()
     }
 
     /// Writes `text` to a file in the world, and says where.
@@ -101,6 +98,32 @@ impl World {
         command.args(args).env_clear().env("HOME", &self.home);
         command
     }
+}
+
+/// The keys of each database of `keyed`, its path under db_storage with the
+/// hex of its key and its salt, as `wxread keys --help` shows them: its
+/// example filled in, each `<n hex>` with the one of the two that has n
+/// digits, so the keys every test supplies are in the shape the help shows.
+pub fn keys_shown<'a>(
+    keyed: impl IntoIterator<Item = (&'a str, [String; 2])>,
+) -> serde_json::Map<String, Value> {
+    let blocks = agent_help::code_blocks(&wxread::manual(), "json");
+    let shown: Vec<_> = blocks.iter().filter(|b| b.at == "`wxread keys`").collect();
+    let [shown] = shown.as_slice() else { panic!("one example of the keys: {shown:?}") };
+    let example: serde_json::Map<String, Value> = serde_json::from_str(&shown.code).unwrap();
+    let [entry] = example.values().collect::<Vec<_>>()[..] else { panic!("{example:?}") };
+    let mut keys = serde_json::Map::new();
+    for (db, hexes) in keyed {
+        let mut filled = entry.as_object().unwrap().clone();
+        for value in filled.values_mut() {
+            let digits = value.as_str().and_then(|v| v.strip_prefix('<')?.strip_suffix(" hex>"));
+            let digits: usize = digits.unwrap_or_else(|| panic!("{value}")).parse().unwrap();
+            let hex = hexes.iter().find(|h| h.len() == digits).unwrap_or_else(|| panic!("{value}"));
+            *value = Value::from(hex.as_str());
+        }
+        keys.insert(db.to_string(), Value::Object(filled));
+    }
+    keys
 }
 
 /// Every path under `dir`, with its bytes and when it was last changed.

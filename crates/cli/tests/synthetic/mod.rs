@@ -250,17 +250,10 @@ impl Account {
     /// The keys of `databases`, in the shape `wxread keys` answers, with a
     /// tool's own note beside them.
     pub fn keys(&self, databases: &[&str]) -> String {
-        let entries: Vec<String> = databases
-            .iter()
-            .map(|db| {
-                format!(
-                    "\"{db}\": {{\"enc_key\": \"{}\", \"salt\": \"{}\"}}",
-                    hex(&self.key(db)),
-                    hex(&self.salt(db))
-                )
-            })
-            .collect();
-        format!("{{\"_db_dir\": \"{}\", {}}}", self.storage.display(), entries.join(", "))
+        let keyed = databases.iter().map(|db| (*db, [hex(&self.key(db)), hex(&self.salt(db))]));
+        let mut keys = crate::common::keys_shown(keyed);
+        keys.insert("_db_dir".into(), self.storage.display().to_string().into());
+        serde_json::Value::Object(keys).to_string()
     }
 
     /// Every database it has: the contact and session databases, each

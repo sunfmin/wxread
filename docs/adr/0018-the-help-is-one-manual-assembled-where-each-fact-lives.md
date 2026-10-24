@@ -20,4 +20,5 @@ wxread's help was text files: a guide (`help.txt`) for `--help`, a screen (`shor
 
 - No help is a text file and nothing is wrapped: a paragraph is one line, and a test fails on one that is not.
 - A number the code changes changes in the help with it; a kind, a folder or a command added without help fails to build, or fails `check`.
+- An example the manual shows that a test runs is taken from the manual's code blocks (`agent_help::code_blocks`): the tests supply keys in the shape `wxread keys --help` shows, and run the lines it shows for supplying them, so an example cannot drift from one that works.
 - `wxread help` is a command, and prints text, not JSON, as `--help`, `-h` and `--version` do.
