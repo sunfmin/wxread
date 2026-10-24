@@ -46,6 +46,35 @@ fn an_account_whose_every_database_has_a_key_is_ok() {
     );
 }
 
+#[test]
+fn each_way_the_keys_help_shows_to_supply_the_keys_opens_every_database() {
+    let world = World::new();
+    world.account(&world.data_dir(), "wxid_a_1234", &DATABASES);
+    let file = world.file("keys.json", &World::keys(&DATABASES));
+    let blocks = agent_help::code_blocks(&wxread::manual(), "sh");
+    let shown: Vec<&str> = blocks
+        .iter()
+        .filter(|b| b.at == "`wxread keys`" && b.code.contains("<file>"))
+        .map(|b| b.code.as_str())
+        .collect();
+    assert_eq!(shown.len(), 2, "--keys and WXREAD_KEYS: {shown:?}");
+    let bin = std::path::Path::new(env!("CARGO_BIN_EXE_wxread")).parent().unwrap();
+    for code in shown {
+        let line = code.replace("<file>", &format!("'{}'", file.display()));
+        let out = std::process::Command::new("/bin/sh")
+            .args(["-c", &line])
+            .env_clear()
+            .env("HOME", &world.home)
+            .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+            .output()
+            .unwrap();
+        let json: Value =
+            serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{line}: {e}"));
+        assert_eq!(json["keys"]["supplied"], true, "{line}: {json}");
+        assert_eq!(json["accounts"][0]["keyed"], 3, "{line}: {json}");
+    }
+}
+
 /// `permissions` says, for each permission `group leave` needs, whether it
 /// is granted, what needs it, and the fix exactly when it is not granted.
 fn permissions_are_answered(permissions: Value) {
