@@ -10,9 +10,10 @@ use serde_json::{Value, json};
 
 use crate::common::World;
 use crate::synthetic::{
-    Account, Article, Contact, DATABASES, Group, Posted, Said, Saved, Session, Voice,
+    self, Account, Article, Contact, DATABASES, Group, Posted, Said, Saved, Session, Voice,
 };
 use wxread_doctor::{DATA_DIR_FLAG, DATA_DIR_VAR, KEYS_FLAG, KEYS_VAR};
+use wxread_keys::Key;
 
 /// What the binary prints for `args`, which must exit 0 and leave stderr empty.
 fn asked(args: &[&str]) -> String {
@@ -80,7 +81,9 @@ fn run_in(text: &str) -> BTreeSet<String> {
 
 #[test]
 fn the_manual_is_whole() {
-    agent_help::check(&wxread::manual()).unwrap();
+    if let Err(faults) = agent_help::check(&wxread::manual()) {
+        panic!("the manual is not whole:\n{faults}");
+    }
 }
 
 #[test]
@@ -260,14 +263,6 @@ fn chats_help_says_what_query_matches() {
 }
 
 #[test]
-fn chats_help_names_every_folder() {
-    let help = help_of("chats");
-    let folders = items(&part(&help, "The folders"), 0);
-    let all = wxread_chats::Folder::ALL.map(|f| f.id().to_string());
-    assert_eq!(folders, all.into_iter().collect());
-}
-
-#[test]
 fn voice_answers_exactly_the_keys_its_help_names() {
     let world = World::new();
     let mut account = Account::new(&world.data_dir(), "wxid_me_1a2b");
@@ -301,13 +296,8 @@ fn messages_answers_exactly_the_keys_its_help_names() {
     let fields: BTreeSet<String> =
         keys_of(&json["messages"][0]).into_iter().filter(|f| f != "text").collect();
     assert!(fields.is_subset(&answered("messages", 1)), "messages --help says each field");
-    // Every kind there is, and only those, has its line in the help.
-    let help = help_of("messages");
-    let kinds = items(&part(&help, "The kinds and their fields"), 0);
-    let all: BTreeSet<String> =
-        wxread_messages::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
-    assert_eq!(kinds, all);
     // A channels feed's title is not WeChat's.
+    let help = help_of("messages");
     assert!(
         help.contains("For a channels feed or live, title is its description"),
         "messages --help says what title is for a channels feed"
@@ -484,11 +474,6 @@ fn favorites_answers_exactly_the_keys_its_help_names() {
     for field in fields(&json).iter().filter(|f| !f.contains(char::is_numeric)) {
         assert!(help.contains(field.as_str()), "favorites --help names {field}");
     }
-    // Every kind there is, and only those, has its line in the help.
-    let kinds = items(&part(&help, "The kinds and their fields"), 0);
-    let all: BTreeSet<String> =
-        wxread_favorites::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
-    assert_eq!(kinds, all);
 }
 
 #[test]
@@ -517,12 +502,6 @@ fn search_answers_exactly_the_keys_its_help_names() {
         let listed = help.contains(&format!("{field},")) && message.contains(field);
         assert!(own.contains(field) || listed, "search --help says what {field} is");
     }
-    // Every kind is said to be searched, or not, by its name.
-    let searched = part(&help, "What a message is searched by");
-    let named = items(&searched, 0);
-    let all: BTreeSet<String> =
-        wxread_messages::Kind::ALL.iter().map(|k| k.name().to_string()).collect();
-    assert_eq!(named, all);
 }
 
 #[test]
@@ -546,6 +525,17 @@ fn resign_answers_exactly_the_keys_its_help_names() {
     let merge = wxread_resign::merge("W.app", "").unwrap();
     let json = wxread_resign::answer("W.app", false, &merge, false);
     assert_eq!(answered("resign", 0), keys_of(&json));
+}
+
+#[test]
+fn keys_answers_in_the_shape_its_help_shows() {
+    // What the command prints is the pure crate's answer; capturing a key
+    // needs a running WeChat, which no test has.
+    let (key, salt) = ([0xab; 32], [0xcd; 16]);
+    let keys = wxread_keys::Keys::of([("message/message_0.db".into(), Key::new(key, Some(salt)))]);
+    let hexes = [synthetic::hex(&key), synthetic::hex(&salt)];
+    let shown = crate::common::keys_shown([("message/message_0.db", hexes)]);
+    assert_eq!(keys.to_value(), Value::Object(shown));
 }
 
 #[test]

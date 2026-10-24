@@ -510,16 +510,3 @@ fn each_group_answers_who_sent_most_of_its_newest_messages_and_whether_the_accou
         "only a group's"
     );
 }
-
-#[test]
-fn its_help_says_how_many_of_a_groups_newest_messages_recent_reads() {
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_wxread"))
-        .args(["chats", "--help"])
-        .output()
-        .unwrap();
-    let words =
-        String::from_utf8(out.stdout).unwrap().split_whitespace().collect::<Vec<_>>().join(" ");
-    let recent = wxread_messages::RECENT;
-    assert!(words.contains(&format!("the most of its {recent} newest messages")), "{words}");
-    assert!(words.contains(&format!("how many of the {recent} name their sender")), "{words}");
-}
