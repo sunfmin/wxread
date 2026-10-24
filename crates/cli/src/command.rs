@@ -680,7 +680,7 @@ pub(crate) enum Command {
     ///
     /// **How a key is captured**
     ///
-    /// WeChat for Mac 4.x keeps no database key anywhere a memory scan can find it: the raw 32-byte key exists only for the instant WeChat hands it to CommonCrypto to decrypt a page. So keys attaches Frida to the running WeChat and hooks those calls, and for every page WeChat decrypts while it runs, captures the key and checks it against a database's first-page HMAC before reporting it — so every key it answers opens its database.
+    /// WeChat for Mac 4.x keeps no database key anywhere a memory scan can find it: the raw {const:KEY_BYTES}-byte key exists only for the instant WeChat hands it to CommonCrypto to decrypt a page. So keys attaches Frida to the running WeChat and hooks those calls, and for every page WeChat decrypts while it runs, captures the key and checks it against a database's first-page HMAC before reporting it — so every key it answers opens its database.
     ///
     /// Two things follow, and both matter:
     ///
@@ -970,8 +970,8 @@ pub(crate) enum FileAction {
     ///
     /// A Moment's medium, by its id (<the Moment's id>:<its place>), in the account's sns/sns.db, then its file WeChat cached while Moments were viewed, under the account's directory, k the MD5 in lowercase hex of <the Moment's id>_<the medium's id>_<n>, as the Moment's XML gives the two ids, in any month (WeChat files it under the month it was posted):
     ///
-    /// - `image`: cache/<YYYY-MM>/Sns/Img/<k[..2]>/<k[2..]>, n 2; its thumbnail n 1, else n 6, the smaller copies WeChat keeps. Sealed as a message's image is.
-    /// - `video`: cache/<YYYY-MM>/Sns/Video/<k[..2]>/<k[2..]>.mp4, n 3; its thumbnail the .jpg beside it. Not sealed.
+    /// - `image`: cache/<YYYY-MM>/Sns/Img/<k[..2]>/<k[2..]>, n {const:MOMENT_IMAGE}; its thumbnail n {const:MOMENT_IMAGE_THUMBNAILS}, the smaller copies WeChat keeps. Sealed as a message's image is.
+    /// - `video`: cache/<YYYY-MM>/Sns/Video/<k[..2]>/<k[2..]>.mp4, n {const:MOMENT_VIDEO}; its thumbnail the .jpg beside it. Not sealed.
     ///
     /// Each database is decrypted into memory, with its key: the file `--keys` names, else the contents of `WXREAD_KEYS`.
     ///
@@ -1130,6 +1130,12 @@ pub(crate) fn manual() -> Help {
         .constant("FAVORITE_FILE", wxread_favorites::FILE_PREFIX)
         .constant("FAVORITE_SHELF", wxread_favorites::SHELF)
         .constant("NOTE_FILE", wxread_messages::note::FILE_PREFIX)
+        .constant("MOMENT_IMAGE", wxread_media::MOMENT_IMAGE)
+        .constant(
+            "MOMENT_IMAGE_THUMBNAILS",
+            wxread_media::MOMENT_IMAGE_THUMBNAILS.map(|n| n.to_string()).join(", else n "),
+        )
+        .constant("MOMENT_VIDEO", wxread_media::MOMENT_VIDEO)
         .constant("KVCOMM_DIR", wxread_media::image::KVCOMM_DIRS[0])
         .constant("SAMPLE_RATE", wxread_voice::SAMPLE_RATE)
         .constant(
@@ -1141,6 +1147,7 @@ pub(crate) fn manual() -> Help {
         .constant("CAPTURE_IDLE_SECONDS", crate::capture::IDLE_STOP_SECONDS)
         .constant("FRIDA_SPEC", crate::capture::FRIDA_SPEC)
         .constant("UV_INSTALL", crate::capture::UV_INSTALL)
+        .constant("KEY_BYTES", wxread_keys::KEY_BYTES)
         .constant("KEY_HEX", wxread_keys::KEY_HEX)
         .constant("SALT_HEX", wxread_keys::SALT_HEX)
         .constant("APPS", wxread_resign::APPS.join(", else "))

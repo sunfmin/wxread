@@ -554,3 +554,20 @@ fn keys_help_points_at_resign_when_macos_refuses() {
         assert!(resign.contains(needle), "resign --help says {needle}");
     }
 }
+
+#[test]
+fn file_get_help_names_the_moment_copies_the_code_reads() {
+    use wxread_media::{MOMENT_IMAGE, MOMENT_IMAGE_THUMBNAILS, MOMENT_VIDEO};
+    let help = help_of("file get");
+    let [first, second] = MOMENT_IMAGE_THUMBNAILS;
+    let image = format!("n {MOMENT_IMAGE}; its thumbnail n {first}, else n {second},");
+    assert!(help.contains(&image), "file get --help says {image}");
+    let video = format!(".mp4, n {MOMENT_VIDEO};");
+    assert!(help.contains(&video), "file get --help says {video}");
+}
+
+#[test]
+fn keys_help_names_the_key_size_the_code_reads() {
+    let bytes = format!("the raw {}-byte key", wxread_keys::KEY_BYTES);
+    assert!(help_of("keys").contains(&bytes), "keys --help says {bytes}");
+}

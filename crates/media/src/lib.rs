@@ -25,11 +25,12 @@
 //!   WeChat for Mac 4.1, every file of the 21 notes of one account named so;
 //! - a Moment's image: `cache/<YYYY-MM>/Sns/Img/<k[..2]>/<k[2..]>`, no
 //!   extension, sealed ([`image`]), `k` the MD5 in lowercase hex of
-//!   `<post id>_<media id>_2` (`_1` its thumbnail, `_6` a smaller copy),
+//!   `<post id>_<media id>_<n>`, `n` [`MOMENT_IMAGE`] (its thumbnail one
+//!   of [`MOMENT_IMAGE_THUMBNAILS`], the smaller copies),
 //!   the ids as `sns/sns.db`'s XML says them (the post's `<id>`, which is
 //!   the row's `tid` read unsigned; the media's `<id>`) and the month the
 //!   one it was posted in; a Moment's video is
-//!   `cache/<YYYY-MM>/Sns/Video/<k[..2]>/<k[2..]>.mp4` by `_3`, its
+//!   `cache/<YYYY-MM>/Sns/Video/<k[..2]>/<k[2..]>.mp4` by [`MOMENT_VIDEO`], its
 //!   thumbnail the `.jpg` beside it. Found on WeChat for Mac 4.1.5, as
 //!   docs/moment-cache.md records with the script that counts it again.
 
@@ -39,6 +40,14 @@ pub mod image;
 /// for the thumbnail.
 pub const OUT_FLAG: &str = "--out";
 pub const THUMBNAIL_FLAG: &str = "--thumbnail";
+
+/// The copies WeChat caches of a Moment's media, each by the number that
+/// ends the name it is cached under (`<post id>_<media id>_<n>`): an
+/// image's own, its smaller ones in the order taken for its thumbnail, and
+/// a video's (its thumbnail the `.jpg` beside it).
+pub const MOMENT_IMAGE: u8 = 2;
+pub const MOMENT_IMAGE_THUMBNAILS: [u8; 2] = [1, 6];
+pub const MOMENT_VIDEO: u8 = 3;
 
 /// A media message's file: what finds it, each part None when the message
 /// does not say it.
@@ -153,16 +162,17 @@ impl Media {
                 vec![format!("Rec/{r}/F/{place}/{n}"), format!("Rec/{r}/Dat/{place}/{n}")]
             }
             (Media::MomentImage { post, media }, false) => {
-                vec![moment("Img", *post, *media, 2, "")]
+                vec![moment("Img", *post, *media, MOMENT_IMAGE, "")]
             }
-            (Media::MomentImage { post, media }, true) => {
-                vec![moment("Img", *post, *media, 1, ""), moment("Img", *post, *media, 6, "")]
-            }
+            (Media::MomentImage { post, media }, true) => MOMENT_IMAGE_THUMBNAILS
+                .iter()
+                .map(|&n| moment("Img", *post, *media, n, ""))
+                .collect(),
             (Media::MomentVideo { post, media }, false) => {
-                vec![moment("Video", *post, *media, 3, ".mp4")]
+                vec![moment("Video", *post, *media, MOMENT_VIDEO, ".mp4")]
             }
             (Media::MomentVideo { post, media }, true) => {
-                vec![moment("Video", *post, *media, 3, ".jpg")]
+                vec![moment("Video", *post, *media, MOMENT_VIDEO, ".jpg")]
             }
             _ => Vec::new(),
         }
@@ -199,7 +209,7 @@ pub struct Held {
 }
 
 /// The path in a month of `cache`, under `Sns/<shelf>` and ending `ext`,
-/// of the copy `copy` (an image's 2, its smaller 1 and 6; a video's 3)
+/// of the copy `copy` (one of [`MOMENT_IMAGE`] and the others beside it)
 /// WeChat caches of media `media` of Moment `post`.
 fn moment(shelf: &str, post: u64, media: u64, copy: u8, ext: &str) -> String {
     let k = format!("{:x}", md5::compute(format!("{post}_{media}_{copy}")));
