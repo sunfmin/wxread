@@ -22,9 +22,9 @@ use crate::capture;
 use crate::world::World;
 
 /// How long the capture runs, in seconds, when `--seconds` is not given.
-const DEFAULT_SECONDS: u64 = 25;
+pub(crate) const DEFAULT_SECONDS: u64 = 25;
 /// The longest a capture may be asked to run.
-const MAX_SECONDS: u64 = 600;
+pub(crate) const MAX_SECONDS: u64 = 600;
 
 /// Captures the keys and answers them as one JSON object, or fails with the
 /// one line that says why there are none and how to get them.

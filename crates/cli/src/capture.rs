@@ -17,16 +17,17 @@ const HOOK: &str = include_str!("capture/hook.js");
 const DRIVER: &str = include_str!("capture/driver.py");
 
 /// How uv is installed, named when it is missing.
-const UV_INSTALL: &str = "brew install uv";
+pub(crate) const UV_INSTALL: &str = "brew install uv";
 /// The Frida uv supplies to run the driver: pinned below 17, the versions on
 /// which this CommonCrypto hook fires (docs/adr/0005-keys-from-the-crypto-call.md).
-const FRIDA_SPEC: &str = "frida<17";
+pub(crate) const FRIDA_SPEC: &str = "frida<17";
 /// How long the capture waits for a new database's key with none arriving
 /// before it decides the burst is over and stops early. Logging in decrypts
 /// every database within a second or two, so once nothing new has come for
 /// this long the keys are in; `--seconds` is the cap, not the wait.
+pub(crate) const IDLE_STOP_SECONDS: u64 = 10;
 #[cfg(target_os = "macos")]
-const IDLE_STOP: std::time::Duration = std::time::Duration::from_secs(10);
+const IDLE_STOP: std::time::Duration = std::time::Duration::from_secs(IDLE_STOP_SECONDS);
 
 /// What `doctor` says of the capture tool: whether uv is found, what needs
 /// it, and the line that installs it when it is not.

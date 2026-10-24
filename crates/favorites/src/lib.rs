@@ -105,7 +105,7 @@ impl Kind {
 
 /// A favorite's `type`, and what it is: a short video (16) is a video, a
 /// song shared from an app (21) music.
-const TYPES: [(i64, Kind); 14] = [
+pub const TYPES: [(i64, Kind); 14] = [
     (1, Kind::Text),
     (2, Kind::Image),
     (3, Kind::Voice),
@@ -123,7 +123,7 @@ const TYPES: [(i64, Kind); 14] = [
 ];
 
 /// An item's `datatype`, and what it is.
-const DATATYPES: [(i64, Kind); 12] = [
+pub const DATATYPES: [(i64, Kind); 12] = [
     (1, Kind::Text),
     (2, Kind::Image),
     (3, Kind::Voice),
