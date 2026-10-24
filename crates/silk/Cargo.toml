@@ -1,0 +1,10 @@
+[package]
+name = "silk"
+description = "A SILK v3 decoder in safe Rust, WeChat's voice codec: silk-decoder-rs 0.1.0 (MIT, see LICENSE), vendored for a decode from bytes, as bizkernel vendored it (docs/adr/0007-voice-is-decoded-in-process.md)"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT"
+
+[dev-dependencies]
+sha2 = "0.10"

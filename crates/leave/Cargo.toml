@@ -1,0 +1,23 @@
+[package]
+name = "wxread-leave"
+description = "Leaving a group through WeChat's window: which group, the steps, how each screen is told by its text, and every refusal with its fix, as pure functions checked by Flux (docs/adr/0015-a-group-is-left-by-driving-wechats-window-only-with-yes.md)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+flux-rs.workspace = true
+wxread-doctor = { path = "../doctor" }
+
+[dev-dependencies]
+proptest.workspace = true
+serde_json.workspace = true
+
+# `cargo flux` (through ../../verify.sh) checks every refinement in this crate.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }

@@ -1,0 +1,58 @@
+[package]
+name = "wxread"
+description = "An agent CLI that reads WeChat for Mac 4.x directly"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+# One test program, tests/main.rs, not one a file.
+autotests = false
+
+[dependencies]
+wxread-account = { path = "../account" }
+wxread-answer = { path = "../answer" }
+wxread-articles = { path = "../articles" }
+wxread-moments = { path = "../moments" }
+wxread-chats = { path = "../chats" }
+wxread-contacts = { path = "../contacts" }
+wxread-doctor = { path = "../doctor" }
+wxread-favorites = { path = "../favorites" }
+wxread-keys = { path = "../keys" }
+wxread-leave = { path = "../leave" }
+wxread-crack = { path = "../crack" }
+wxread-media = { path = "../media" }
+wxread-messages = { path = "../messages" }
+wxread-resign = { path = "../resign" }
+wxread-schema = { path = "../schema" }
+wxread-search = { path = "../search" }
+wxread-sqlcipher = { path = "../sqlcipher" }
+wxread-voice = { path = "../voice" }
+# WeChat's voice codec, decoded in-process (docs/adr/0007-voice-is-decoded-in-process.md).
+silk = { path = "../silk" }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+# The manual, assembled from the help written where each fact lives.
+agent-help = { git = "https://github.com/sunfmin/agent-cli" }
+serde_json.workspace = true
+libc = "0.2.191"
+# The SHA-256 a written file is answered with.
+sha2 = "0.10"
+# WeChat's databases, decrypted, opened from memory.
+rusqlite = { version = "0.32", features = ["bundled", "serialize"] }
+
+# Finding and driving the running WeChat is a macOS job (docs/adr/0001).
+[target.'cfg(target_os = "macos")'.dependencies]
+# Vision, AppKit and NSWorkspace, which `group leave` drives WeChat's
+# window with (docs/adr/0015-a-group-is-left-by-driving-wechats-window-only-with-yes.md).
+objc2 = "0.6.5"
+
+[dev-dependencies]
+tempfile = "3"
+# Content compressed as WeChat compresses it, in the synthetic accounts.
+ruzstd = "0.8"
+# A sticker's MD5, as its message names it.
+md5 = "0.7"
+
+[[test]]
+name = "cli"
+path = "tests/main.rs"
