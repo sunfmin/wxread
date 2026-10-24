@@ -11,23 +11,24 @@ use std::collections::BTreeMap;
 use flux_rs::attrs::*;
 use serde_json::{Value, json};
 
-/// How many hex digits a key is (32 bytes) and a salt is (16 bytes), in the
-/// shape the keys are written and read.
-pub const KEY_HEX: usize = 64;
+/// How many bytes a key is, and how many hex digits a key is and a salt is
+/// (16 bytes), in the shape the keys are written and read.
+pub const KEY_BYTES: usize = 32;
+pub const KEY_HEX: usize = KEY_BYTES * 2;
 pub const SALT_HEX: usize = 32;
 
 /// One database's key, and the salt its first page starts with when the
 /// keys say it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Key {
-    pub enc_key: [u8; 32],
+    pub enc_key: [u8; KEY_BYTES],
     pub salt: Option<[u8; 16]>,
 }
 
 impl Key {
     /// A key of these bytes, with this salt (as `wxread keys` answers it,
     /// always knowing the salt) or without one.
-    pub fn new(enc_key: [u8; 32], salt: Option<[u8; 16]>) -> Key {
+    pub fn new(enc_key: [u8; KEY_BYTES], salt: Option<[u8; 16]>) -> Key {
         Key { enc_key, salt }
     }
 
@@ -117,7 +118,7 @@ fn entry_key(entry: &Value) -> Result<Key, &'static str> {
 }
 
 /// A database key written as 64 hex digits (a string).
-fn key32(hex: &str) -> Option<[u8; 32]> {
+fn key32(hex: &str) -> Option<[u8; KEY_BYTES]> {
     decode_key(hex.as_bytes())
 }
 
@@ -129,8 +130,8 @@ fn salt16(hex: &str) -> Option<[u8; 16]> {
 
 /// A database key written as 64 hex digits, from the bytes of those digits:
 /// the shape the running WeChat holds it in. `None` for anything else.
-pub fn decode_key(hex: &[u8]) -> Option<[u8; 32]> {
-    let mut out = [0u8; 32];
+pub fn decode_key(hex: &[u8]) -> Option<[u8; KEY_BYTES]> {
+    let mut out = [0u8; KEY_BYTES];
     unhex(hex, &mut out).then_some(out)
 }
 
