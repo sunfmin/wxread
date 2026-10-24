@@ -1,19 +1,25 @@
 //! The effect layer: reads the world, asks the pure crates what to make of
 //! it, and prints the answer (docs/adr/0002-pure-crates-checked-by-flux.md).
-//! Every command prints one JSON object on stdout; `--help`, `-h` and
-//! `--version` print text.
+//! Every command prints one JSON object on stdout; `--help`, `-h`,
+//! `--version` and `wxread help` print text.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches};
 use serde_json::{Value, json};
+
+use command::{Cli, Command, FileAction, GroupAction, Span, Which};
+
+// The binary each topic's `wxread help <topic>` names.
+agent_help::binary!("wxread");
 
 pub mod account;
 pub mod articles;
 mod capture;
 pub mod chats;
+mod command;
 pub mod contacts;
 pub mod doctor;
 pub mod favorites;
@@ -36,261 +42,6 @@ pub mod world;
 /// `build.rs`.
 pub const VERSION: &str = env!("WXREAD_VERSION");
 
-/// The guide `--help` prints, and the one screen `-h` prints.
-pub const GUIDE: &str = include_str!("help.txt");
-pub const SCREEN: &str = include_str!("short.txt");
-
-#[derive(Parser)]
-#[command(name = "wxread", version = VERSION, disable_help_flag = true, disable_help_subcommand = true)]
-struct Cli {
-    /// WeChat's data directory, its xwechat_files (also WXREAD_DATA_DIR)
-    #[arg(long, global = true, value_name = "DIR")]
-    data_dir: Option<PathBuf>,
-    /// The file the keys of the account's databases are in (or their contents as WXREAD_KEYS)
-    #[arg(long, global = true, value_name = "FILE")]
-    keys: Option<PathBuf>,
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// List the articles official accounts sent, newest first, a page at a time
-    Articles {
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-        /// Only the articles of this official account, by its gh_ id
-        #[arg(long, value_name = "ID")]
-        official_account: Option<String>,
-        /// How many articles a page holds, 1 to 1000 (100 unless given)
-        #[arg(long, value_name = "N")]
-        limit: Option<String>,
-        /// Where the page starts: the `next` of the answer before
-        #[arg(long, value_name = "NEXT")]
-        cursor: Option<String>,
-    },
-    /// Write the avatar WeChat holds of a contact, as the image it is
-    Avatar {
-        /// The contact's id: a wxid, a group's <n>@chatroom, a gh_ official account
-        #[arg(value_name = "ID")]
-        id: String,
-        /// The file to write it to
-        #[arg(long, value_name = "PATH")]
-        out: Option<PathBuf>,
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-    },
-    /// List the account's chats, newest first, a page at a time
-    Chats {
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-        /// Only the chats that hold this contact, by id; again for each one more, smallest first
-        #[arg(long, value_name = "ID")]
-        with: Vec<String>,
-        /// Only the chats whose id, name or own name holds it, whatever its case
-        #[arg(long, value_name = "TEXT")]
-        query: Option<String>,
-        /// How many chats a page holds, 1 to 1000 (100 unless given)
-        #[arg(long, value_name = "N")]
-        limit: Option<String>,
-        /// Where the page starts: the `next` of the answer before
-        #[arg(long, value_name = "NEXT")]
-        cursor: Option<String>,
-    },
-    /// Answer one contact in full, by its id
-    Contact {
-        /// The contact's id: a wxid, a group's <n>@chatroom, a gh_ official account
-        #[arg(value_name = "ID")]
-        id: String,
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-    },
-    /// List the account's contacts by id, a page at a time
-    Contacts {
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-        /// Only the contacts whose id, WeChat ID, name or remark holds it
-        #[arg(long, value_name = "TEXT")]
-        query: Option<String>,
-        /// How many contacts a page holds, 1 to 1000 (100 unless given)
-        #[arg(long, value_name = "N")]
-        limit: Option<String>,
-        /// Where the page starts: the `next` of the answer before
-        #[arg(long, value_name = "NEXT")]
-        cursor: Option<String>,
-    },
-    /// Find WeChat's accounts and the keys supplied; change nothing, name each fix
-    Doctor,
-    /// List what the account saved (收藏), each as its kind, newest first, a page at a time
-    Favorites {
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-        /// How many favorites a page holds, 1 to 1000 (100 unless given)
-        #[arg(long, value_name = "N")]
-        limit: Option<String>,
-        /// Where the page starts: the `next` of the answer before
-        #[arg(long, value_name = "NEXT")]
-        cursor: Option<String>,
-    },
-    /// Get a media message's or a favorite's file: an image, video, file, sticker or voice message
-    File {
-        #[command(subcommand)]
-        action: FileAction,
-    },
-    /// Answer a group: its name, notice, owner and every member; `group leave` leaves it
-    #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
-    Group {
-        #[command(subcommand)]
-        action: Option<GroupAction>,
-        /// The group's id: <n>@chatroom
-        #[arg(value_name = "ID", required = true)]
-        id: Option<String>,
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-    },
-    /// Read a chat's messages, each as its kind, newest first (or oldest), a page at a time
-    Messages {
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-        /// The chat to read, by its id as `wxread chats` lists it
-        #[arg(long, value_name = "ID")]
-        chat: Option<String>,
-        /// The first time read: RFC 3339, or a date
-        #[arg(long, value_name = "TIME")]
-        from: Option<String>,
-        /// The time reading stops before: RFC 3339, or a date
-        #[arg(long, value_name = "TIME")]
-        to: Option<String>,
-        /// How many messages a page holds, 1 to 1000 (100 unless given)
-        #[arg(long, value_name = "N")]
-        limit: Option<String>,
-        /// Where the page starts: the `next` of the answer before
-        #[arg(long, value_name = "NEXT")]
-        cursor: Option<String>,
-        /// Read the chat forward, from its first message: oldest first
-        #[arg(long)]
-        oldest_first: bool,
-    },
-    /// Find messages across every chat, newest first, a page at a time
-    Search {
-        /// The text to find, in any case and with or without spaces between its words
-        #[arg(value_name = "TEXT")]
-        text: Option<String>,
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-        /// Only this chat's messages, by its id as `wxread chats` lists it
-        #[arg(long, value_name = "ID")]
-        chat: Option<String>,
-        /// The first time read: RFC 3339, or a date
-        #[arg(long, value_name = "TIME")]
-        from: Option<String>,
-        /// The time reading stops before: RFC 3339, or a date
-        #[arg(long, value_name = "TIME")]
-        to: Option<String>,
-        /// How many messages a page holds, 1 to 1000 (100 unless given)
-        #[arg(long, value_name = "N")]
-        limit: Option<String>,
-        /// Where the page starts: the `next` of the answer before
-        #[arg(long, value_name = "NEXT")]
-        cursor: Option<String>,
-    },
-    /// Capture every database key from the running WeChat with Frida
-    Keys {
-        /// How long to capture for, 1 to 600 seconds (25 unless given)
-        #[arg(long, value_name = "N")]
-        seconds: Option<String>,
-    },
-    /// List the Moments WeChat has loaded, newest first, a page at a time
-    Moments {
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-        /// Only the Moments this contact posted, by their id
-        #[arg(long, value_name = "ID")]
-        contact: Option<String>,
-        /// How many Moments a page holds, 1 to 1000 (100 unless given)
-        #[arg(long, value_name = "N")]
-        limit: Option<String>,
-        /// Where the page starts: the `next` of the answer before
-        #[arg(long, value_name = "NEXT")]
-        cursor: Option<String>,
-    },
-    /// Re-sign WeChat with get-task-allow so `sudo wxread keys` can read it; only with --yes
-    Resign {
-        /// The WeChat app to re-sign (/Applications/WeChat.app, else Weixin.app, unless given)
-        #[arg(long, value_name = "PATH")]
-        app: Option<PathBuf>,
-        /// Re-sign it; without this, only say what it would do and change nothing
-        #[arg(long)]
-        yes: bool,
-    },
-    /// Write a voice message as a file that plays, and say what WeChat heard in it
-    Voice {
-        /// The voice message's id, as `wxread messages` answers it
-        #[arg(value_name = "ID")]
-        id: String,
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-        /// The chat the message is in, by its id as `wxread chats` lists it
-        #[arg(long, value_name = "ID")]
-        chat: Option<String>,
-        /// The file to write: a WAV, or with --raw the SILK as WeChat keeps it
-        #[arg(long, value_name = "PATH")]
-        out: Option<PathBuf>,
-        /// Write the SILK as WeChat keeps it, byte for byte
-        #[arg(long)]
-        raw: bool,
-    },
-}
-
-#[derive(Subcommand)]
-enum GroupAction {
-    /// Leave groups through WeChat's window, one after another, each checked before and after; only with --yes
-    Leave {
-        /// Each group's id: <n>@chatroom; - for the ids on stdin
-        #[arg(value_name = "ID", required = true)]
-        ids: Vec<String>,
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-        /// Leave them; without this, only say what it would do and change nothing
-        #[arg(long)]
-        yes: bool,
-        /// Open each one's chat and say whether it is told to be the group; never leave
-        #[arg(long)]
-        dry_run: bool,
-    },
-}
-
-#[derive(Subcommand)]
-enum FileAction {
-    /// Write a media message's or a Moment's file, or its thumbnail, as the file it is
-    Get {
-        /// The message's id, as `wxread messages` answers it, a favorite's file_id, or a Moment's medium's, as `wxread moments` does
-        #[arg(value_name = "ID")]
-        id: String,
-        /// The thumbnail WeChat keeps of an image or a video, not the file
-        #[arg(long)]
-        thumbnail: bool,
-        /// The file to write it to
-        #[arg(long, value_name = "PATH")]
-        out: Option<PathBuf>,
-        /// The account to read, by its id, when several are logged in
-        #[arg(long, value_name = "ID")]
-        account: Option<String>,
-    },
-}
-
 /// What fixes a command that writes a file and was given no `--out`.
 fn out_of(out: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     out.filter(|o| !o.as_os_str().is_empty()).ok_or_else(|| {
@@ -302,51 +53,46 @@ fn out_of(out: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     })
 }
 
-/// The help file of subcommand `name`: what `wxread <name> --help` prints.
-fn help_of(name: &str) -> Option<&'static str> {
-    match name {
-        "articles" => Some(include_str!("help/articles.txt")),
-        "avatar" => Some(include_str!("help/avatar.txt")),
-        "file" => Some(include_str!("help/file.txt")),
-        "chats" => Some(include_str!("help/chats.txt")),
-        "contact" => Some(include_str!("help/contact.txt")),
-        "contacts" => Some(include_str!("help/contacts.txt")),
-        "doctor" => Some(include_str!("help/doctor.txt")),
-        "favorites" => Some(include_str!("help/favorites.txt")),
-        "group" => Some(include_str!("help/group.txt")),
-        "group leave" => Some(include_str!("help/group-leave.txt")),
-        "keys" => Some(include_str!("help/keys.txt")),
-        "messages" => Some(include_str!("help/messages.txt")),
-        "moments" => Some(include_str!("help/moments.txt")),
-        "resign" => Some(include_str!("help/resign.txt")),
-        "search" => Some(include_str!("help/search.txt")),
-        "voice" => Some(include_str!("help/voice.txt")),
-        _ => None,
-    }
+/// The manual `--help` answers, assembled from the help written on each
+/// command and topic: what `agent_help::check` holds whole.
+pub fn manual() -> agent_help::Help {
+    command::manual()
 }
 
-/// The subcommands there are, as the parser knows them.
+/// The one screen `-h` answers.
+pub fn screen() -> String {
+    command::screen()
+}
+
+/// Every command there is, as it is run after `wxread`, at every depth:
+/// `group leave` after `group`.
 pub fn commands() -> Vec<String> {
-    Cli::command().get_subcommands().map(|c| c.get_name().to_string()).collect()
-}
-
-/// The subcommands of subcommand `command`, as the parser knows them:
-/// `group leave` is `group`'s.
-pub fn subcommands(command: &str) -> Vec<String> {
-    let cli = Cli::command();
-    let of = cli.get_subcommands().find(|c| c.get_name() == command);
-    of.map(|c| c.get_subcommands().map(|s| s.get_name().to_string()).collect()).unwrap_or_default()
+    fn walk(command: &clap::Command, path: &str, all: &mut Vec<String>) {
+        for sub in command.get_subcommands() {
+            let path = format!("{path}{}", sub.get_name());
+            all.push(path.clone());
+            walk(sub, &format!("{path} "), all);
+        }
+    }
+    let mut all = Vec::new();
+    walk(&Cli::command(), "", &mut all);
+    all
 }
 
 /// Runs the command `args` names: prints its one JSON object, or for a
 /// failure `{"error": …}`, and says how it ended.
 pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
     let args: Vec<OsString> = args.into_iter().collect();
-    if let Some(text) = help(&args) {
-        print!("{text}");
-        return ExitCode::SUCCESS;
+    let manual = command::manual();
+    if let Some(text) = help(&manual, &args) {
+        return text_or(text);
     }
-    let cli = match Cli::try_parse_from(&args) {
+    let command = match manual.clap() {
+        Ok(command) => command,
+        Err(e) => return answer(Err(anyhow::anyhow!("{e}")), 1),
+    };
+    let parsed = command.try_get_matches_from(&args).and_then(|m| Cli::from_arg_matches(&m));
+    let cli = match parsed {
         Ok(cli) => cli,
         Err(e) => {
             use clap::error::ErrorKind::{
@@ -381,64 +127,79 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> ExitCode {
         }
     };
     let result = match cli.command {
-        Command::Articles { account, official_account, limit, cursor } => {
+        Command::Help { topic: None } => return text_or(manual.manual()),
+        Command::Help { topic: Some(topic) } => return text_or(manual.topic_help(&topic)),
+        Command::Articles { account: Which { account }, official_account, limit, cursor } => {
             world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
                 articles::run(&w, &articles::Asked { account, official_account, limit, cursor })
             })
         }
-        Command::Avatar { id, out, account } => out_of(out).and_then(|out| {
+        Command::Avatar { id, out, account: Which { account } } => out_of(out).and_then(|out| {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| file::avatar(&w, account.as_deref(), &id, &out))
         }),
-        Command::File { action: FileAction::Get { id, thumbnail, out, account } } => out_of(out)
-            .and_then(|out| {
-                world::World::from_env(cli.data_dir, cli.keys)
-                    .and_then(|w| file::get(&w, &file::Asked { id, thumbnail, out, account }))
-            }),
-        Command::Chats { account, with, query, limit, cursor } => {
+        Command::File {
+            action: FileAction::Get { id, thumbnail, out, account: Which { account } },
+        } => out_of(out).and_then(|out| {
+            world::World::from_env(cli.data_dir, cli.keys)
+                .and_then(|w| file::get(&w, &file::Asked { id, thumbnail, out, account }))
+        }),
+        Command::Chats { account: Which { account }, with, query, limit, cursor } => {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| chats::run(&w, &chats::Asked { account, with, query, limit, cursor }))
         }
-        Command::Contact { id, account } => world::World::from_env(cli.data_dir, cli.keys)
-            .and_then(|w| contacts::one(&w, account.as_deref(), &id)),
-        Command::Contacts { account, query, limit, cursor } => {
+        Command::Contact { id, account: Which { account } } => {
+            world::World::from_env(cli.data_dir, cli.keys)
+                .and_then(|w| contacts::one(&w, account.as_deref(), &id))
+        }
+        Command::Contacts { account: Which { account }, query, limit, cursor } => {
             world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
                 contacts::list(&w, &contacts::Asked { account, query, limit, cursor })
             })
         }
         Command::Doctor => world::World::from_env(cli.data_dir, cli.keys).map(|w| doctor::run(&w)),
-        Command::Favorites { account, limit, cursor } => {
+        Command::Favorites { account: Which { account }, limit, cursor } => {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| favorites::run(&w, &favorites::Asked { account, limit, cursor }))
         }
         Command::Group {
-            action: Some(GroupAction::Leave { ids, account, yes, dry_run }), ..
+            action: Some(GroupAction::Leave { ids, account: Which { account }, yes, dry_run }),
+            ..
         } => world::World::from_env(cli.data_dir, cli.keys)
             .and_then(|w| leave(&w, ids, account, yes, dry_run)),
-        Command::Group { action: None, id, account } => {
+        Command::Group { action: None, id, account: Which { account } } => {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| contacts::group(&w, account.as_deref(), &id.unwrap_or_default()))
         }
-        Command::Messages { account, chat, from, to, limit, cursor, oldest_first } => {
-            world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
-                let asked =
-                    messages::Asked { account, chat, from, to, limit, cursor, oldest_first };
-                messages::run(&w, &asked)
-            })
-        }
-        Command::Search { text, account, chat, from, to, limit, cursor } => {
-            world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
-                let asked = search::Asked { text, account, chat, from, to, limit, cursor };
-                search::run(&w, &asked)
-            })
-        }
+        Command::Messages {
+            account: Which { account },
+            chat,
+            span: Span { from, to },
+            limit,
+            cursor,
+            oldest_first,
+        } => world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
+            let asked = messages::Asked { account, chat, from, to, limit, cursor, oldest_first };
+            messages::run(&w, &asked)
+        }),
+        Command::Search {
+            text,
+            account: Which { account },
+            chat,
+            span: Span { from, to },
+            limit,
+            cursor,
+        } => world::World::from_env(cli.data_dir, cli.keys).and_then(|w| {
+            let asked = search::Asked { text, account, chat, from, to, limit, cursor };
+            search::run(&w, &asked)
+        }),
         Command::Keys { seconds } => keys::run(cli.data_dir, seconds),
-        Command::Moments { account, contact, limit, cursor } => {
+        Command::Moments { account: Which { account }, contact, limit, cursor } => {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| moments::run(&w, &moments::Asked { account, contact, limit, cursor }))
         }
         Command::Resign { app, yes } => resign::run(app, yes),
-        Command::Voice { id, account, chat, out, raw } => {
+        Command::Voice { id, account: Which { account }, chat, out, raw } => {
             world::World::from_env(cli.data_dir, cli.keys)
                 .and_then(|w| voice::run(&w, &voice::Asked { id, account, chat, out, raw }))
         }
@@ -467,21 +228,41 @@ fn leave(
 }
 
 /// The help `args` ask for, if they ask for any: `--help` or `-h` before
-/// any `--`, of the first subcommand named, or of wxread itself. It is
-/// answered before anything is parsed, so a command's help is printed
-/// whatever else its line lacks.
-fn help(args: &[OsString]) -> Option<&'static str> {
+/// any `--`, of the command its words name (each a subcommand of the one
+/// before), or of wxread itself: the whole manual for `--help`, one screen
+/// for `-h`. It is answered before anything is parsed, so a command's help
+/// is printed whatever else its line lacks.
+fn help(manual: &agent_help::Help, args: &[OsString]) -> Option<Result<String, agent_help::Error>> {
     let words: Vec<&str> =
         args.iter().skip(1).map(|a| a.to_str().unwrap_or("")).take_while(|a| *a != "--").collect();
     let long = words.contains(&"--help");
     if !long && !words.contains(&"-h") {
         return None;
     }
-    let named = words.windows(2).find_map(|pair| help_of(&pair.join(" ")));
-    match named.or_else(|| words.iter().find_map(|w| help_of(w))) {
-        Some(text) => Some(text),
-        None if long => Some(GUIDE),
-        None => Some(SCREEN),
+    let mut command = Cli::command();
+    let mut path = Vec::new();
+    for word in words {
+        if let Some(sub) = command.find_subcommand(word).cloned() {
+            path.push(word);
+            command = sub;
+        }
+    }
+    Some(match path.as_slice() {
+        [] if long => manual.manual(),
+        [] => Ok(command::screen()),
+        path => manual.command_help(path),
+    })
+}
+
+/// Prints a text the manual answered, or fails naming what is wrong with
+/// what was asked for.
+fn text_or(text: Result<String, agent_help::Error>) -> ExitCode {
+    match text {
+        Ok(text) => {
+            print!("{text}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => answer(Err(anyhow::anyhow!("{e}")), 1),
     }
 }
 
