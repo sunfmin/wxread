@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<msg>
+	<appmsg>
+		<title>#接龙9.12 14:00-17:00 新手专场的自由对弈(Casual game)
+
+AfterglowCoffee(拱墅区42号-6);
+例 名字+分数
+
+1. Ann
+2. ____ （折后 ELO 600）
+3. Cat-（很久没下棋了 elo没概念了）
+4. Dan （国象联盟1000）</title>
+		<action>view</action>
+		<type>53</type>
+		<extinfo>
+			<solitaire_info>&lt;solitaire&gt;&lt;tt&gt;0-70&lt;/tt&gt;&lt;ex&gt;71-7&lt;/ex&gt;&lt;tl&gt;0-0&lt;/tl&gt;&lt;s&gt;.&lt;/s&gt;&lt;au&gt;wxid_ann&lt;/au&gt;&lt;hrt&gt;1&lt;/hrt&gt;&lt;loss&gt;0&lt;/loss&gt;&lt;content&gt;&lt;s&gt;4&lt;/s&gt;&lt;i&gt;&lt;u&gt;wxid_ann&lt;/u&gt;&lt;h&gt;0&lt;/h&gt;&lt;s&gt;.&lt;/s&gt;&lt;t&gt;1789027203&lt;/t&gt;&lt;r&gt;83-3&lt;/r&gt;&lt;/i&gt;&lt;i&gt;&lt;u&gt;wxid_bob&lt;/u&gt;&lt;h&gt;0&lt;/h&gt;&lt;s&gt;.&lt;/s&gt;&lt;t&gt;1789027342&lt;/t&gt;&lt;r&gt;90-17&lt;/r&gt;&lt;/i&gt;&lt;i&gt;&lt;u&gt;wxid_cat&lt;/u&gt;&lt;h&gt;0&lt;/h&gt;&lt;s&gt;.&lt;/s&gt;&lt;t&gt;1789036024&lt;/t&gt;&lt;r&gt;111-20&lt;/r&gt;&lt;/i&gt;&lt;i&gt;&lt;u&gt;wxid_dan&lt;/u&gt;&lt;h&gt;0&lt;/h&gt;&lt;s&gt;.&lt;/s&gt;&lt;t&gt;1789171394&lt;/t&gt;&lt;r&gt;135-14&lt;/r&gt;&lt;/i&gt;&lt;/content&gt;&lt;/solitaire&gt;</solitaire_info>
+		</extinfo>
+		<finderLiveProductShare>
+			<isPriceBeginShow>false</isPriceBeginShow>
+		</finderLiveProductShare>
+		<gameshare>
+			<appbrandext>
+				<priority>-1</priority>
+			</appbrandext>
+			<duration>-1</duration>
+		</gameshare>
+		<appattach />
+	</appmsg>
+	<fromusername>wxid_dan</fromusername>
+	<scene>0</scene>
+	<appinfo>
+		<version>1</version>
+		<appname></appname>
+	</appinfo>
+	<commenturl></commenturl>
+</msg>

@@ -1,0 +1,15 @@
+[package]
+name = "wxread-schema"
+description = "The tables of WeChat 4.x's databases wxread reads, declared as WeChat declares them: what its queries name and the tests' synthetic accounts are made from"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+md5 = "0.7"
+
+# `cargo flux` (through ../../verify.sh) checks every refinement in this crate.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"

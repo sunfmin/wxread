@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<msg>
+	<appmsg appid="" sdkver="0">
+		<title>#接龙
+周四10:30莫干山
+
+1. 🐝Ann</title>
+		<type>53</type>
+		<appattach>
+			<cdnthumbaeskey />
+			<aeskey />
+		</appattach>
+		<extinfo>
+			<solitaire_info><![CDATA[<solitaire><tt>0-14</tt><s>.</s><au>wxid_ann</au><hrt>1</hrt><loss>1</loss><sid>1792387959382_6313</sid><content><s>1</s><i><u>wxid_ann</u><h>0</h><s>.</s><t>1792387949</t><r>19-5</r></i></content></solitaire>]]></solitaire_info>
+		</extinfo>
+	</appmsg>
+	<fromusername>wxid_ann</fromusername>
+	<scene>0</scene>
+	<appinfo>
+		<version>1</version>
+		<appname></appname>
+	</appinfo>
+	<commenturl></commenturl>
+</msg>

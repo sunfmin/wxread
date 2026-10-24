@@ -1,0 +1,25 @@
+[package]
+name = "wxread-articles"
+description = "What wxread articles answers of the messages official accounts sent: each article of a push on its own, newest first, a page at a time: pure functions, checked by Flux (docs/adr/0002-pure-crates-checked-by-flux.md)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+wxread-answer = { path = "../answer" }
+# The XML WeChat keeps an app message in.
+roxmltree = "0.21"
+wxread-messages = { path = "../messages" }
+wxread-xml = { path = "../xml" }
+
+[dev-dependencies]
+proptest.workspace = true
+
+# `cargo flux` (through ../../verify.sh) checks every refinement in this crate.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }
